@@ -1,0 +1,13 @@
+# qwen3.8-coder — Qwen3.8-27B dense NVFP4, for heavier reasoning (slower prefill ~90 tok/s on M4 Pro)
+# Same Qwen "precise coding" sampling. 32K context to allow co-residency with qwen3.6-coder on 64GB.
+# Create: ollama create qwen3.8-coder -f ollama/Modelfile.qwen3.8-coder
+FROM qwen3.8:27b-nvfp4
+
+PARAMETER num_ctx 32768
+PARAMETER num_predict 32768
+PARAMETER temperature 0.6
+PARAMETER top_p 0.95
+PARAMETER top_k 20
+PARAMETER min_p 0
+PARAMETER presence_penalty 0
+PARAMETER repeat_penalty 1
