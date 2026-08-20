@@ -17,7 +17,7 @@
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/Users/uk/Library/Logs/ollama/ollama.log</string>
-  <key>StandardErrorPath</key><string>/Users/uk/Library/Logs/ollama/ollama.log</string>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/ollama/ollama.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/ollama/ollama.log</string>
 </dict>
 </plist>

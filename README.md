@@ -64,7 +64,7 @@ Qwen3.6/3.8은 기본 thinking ON. 실측(qwen3.6 nvfp4, 단순 코딩 질문):
 
 ## 서버 (LaunchAgent)
 
-`com.ollama.serve.plist` — 로그인 시 자동 시작, 비정상 종료 시 재시작.
+`com.ollama.serve.plist.template` → `~/Library/LaunchAgents/com.ollama.serve.plist` — 로그인 시 자동 시작, 비정상 종료 시 재시작.
 
 | 환경변수 | 값 | 이유 |
 |---|---|---|
@@ -79,32 +79,32 @@ Qwen3.6/3.8은 기본 thinking ON. 실측(qwen3.6 nvfp4, 단순 코딩 질문):
 
 ## 설치 / 재현
 
-아래 명령은 이 디렉터리(README가 있는 폴더) 안에서 실행한다. `-f ollama/...` 가 상대 경로이기 때문이다.
-
 ```bash
-brew install ollama
-
-# 모델
-ollama pull qwen3.6:35b-a3b-nvfp4
-ollama pull qwen3.8:27b-nvfp4          # 선택
-
-# 파생 모델 (가중치 공유, 디스크 추가 없음)
-ollama create qwen3.6-coder -f ollama/Modelfile.qwen3.6-coder
-ollama create qwen3.8-coder -f ollama/Modelfile.qwen3.8-coder
-
-# 서버 영구화 (plist 안의 경로가 자기 홈인지 확인)
-mkdir -p ~/Library/Logs/ollama
-cp ollama/com.ollama.serve.plist ~/Library/LaunchAgents/
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ollama.serve.plist
-
-# 확인
-curl -s http://127.0.0.1:11434/api/version
-ollama ps
+git clone https://github.com/leechoonguk/local-llm.git && cd local-llm
+./ollama/install.sh              # qwen3.6-coder 만
+./ollama/install.sh --with-27b   # qwen3.8-coder 까지
 ```
 
-재시작/중지:
+`install.sh`가 하는 일(재실행 안전):
+
+1. `ollama`가 없으면 `brew install ollama`
+2. `com.ollama.serve.plist.template`의 `__HOME__`과 ollama 경로를 채워 `~/Library/LaunchAgents/com.ollama.serve.plist` 생성 후 LaunchAgent 등록 (기존 것은 교체)
+3. `ollama pull` → `ollama create`로 파생 모델 생성 (가중치 공유, 디스크 추가 없음)
+
+수동으로 할 경우 이 디렉터리 안에서:
 
 ```bash
+ollama pull qwen3.6:35b-a3b-nvfp4
+ollama create qwen3.6-coder -f ollama/Modelfile.qwen3.6-coder
+mkdir -p ~/Library/Logs/ollama
+sed "s|__HOME__|$HOME|g" ollama/com.ollama.serve.plist.template > ~/Library/LaunchAgents/com.ollama.serve.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ollama.serve.plist
+```
+
+확인 / 재시작 / 중지:
+
+```bash
+curl -s http://127.0.0.1:11434/api/version && ollama ps
 launchctl kickstart -k gui/$(id -u)/com.ollama.serve   # 재시작
 launchctl bootout gui/$(id -u)/com.ollama.serve        # 중지
 ```
@@ -191,9 +191,10 @@ Hermes 시스템 프롬프트는 약 23K 토큰이라 세션 첫 턴은 콜드 p
 
 ```
 ollama/
+  install.sh                       # 전체 설치 (멱등)
   Modelfile.qwen3.6-coder
   Modelfile.qwen3.8-coder
-  com.ollama.serve.plist
+  com.ollama.serve.plist.template  # __HOME__ 치환 후 LaunchAgents에 설치
 ```
 
 ## 참고 자료
