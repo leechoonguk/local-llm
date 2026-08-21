@@ -1,0 +1,11 @@
+# ~/.omp/agent/config.yml 에 병합할 조각. install.sh는 이 파일을 덮어쓰지 않고
+# 키 존재만 확인한다 - config.yml에는 omp 자신이 쓰는 값(setupVersion, theme,
+# 모델 셀렉터가 저장하는 역할 배정)이 함께 살기 때문이다.
+#
+# models.yml 은 전부 우리 것이라 install.sh가 그대로 설치한다.
+modelRoles:
+  # 코딩 본체. 35B MoE(활성 3B), 창 65536.
+  default: ollama/qwen3.6-coder
+  # 제목·메모리·사고강도 분류·비정상 종료 감지. 4B, 창 8192, thinking off.
+  # `smol`이 아니라 `tiny`여야 한다 - README 참고(prewalk 타깃).
+  tiny: ollama-nothink/qwen3.5-aux:latest

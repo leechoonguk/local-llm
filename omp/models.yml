@@ -1,0 +1,34 @@
+# One Ollama server, two entries - `api` is a provider-level field that
+# `modelOverrides` cannot override, and `extraBody` (the only way to turn Qwen
+# thinking off) is applied on the chat-completions path only. Coding wants
+# thinking on, summaries and background work want it off, so the split is the
+# schema's, not a preference.
+providers:
+  ollama:
+    baseUrl: http://127.0.0.1:11434/v1
+    api: openai-responses
+    auth: none
+    discovery:
+      type: ollama
+    modelOverrides:
+      qwen3.6-coder:latest:
+        compactionModel: ollama-nothink/qwen3.6-coder:latest
+
+  # Every call here is a call that must not think: session titles, memory
+  # queries, thinking classification (4B), and compaction summaries (the coder
+  # itself, same loaded slot - only the path differs, so summaries keep 35B
+  # quality). Ollama ignores every switch except `reasoning_effort: none`.
+  ollama-nothink:
+    baseUrl: http://127.0.0.1:11434/v1
+    api: openai-completions
+    auth: none
+    compat:
+      extraBody:
+        reasoning_effort: none
+    models:
+      - id: qwen3.6-coder:latest
+        contextWindow: 65536
+        maxTokens: 4096
+      - id: qwen3.5-aux:latest
+        contextWindow: 8192
+        maxTokens: 1024

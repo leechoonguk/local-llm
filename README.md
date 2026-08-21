@@ -22,6 +22,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 |---|---|---|---|
 | `qwen3.6-coder` | `qwen3.6:35b-a3b-nvfp4` (MoE 35B, 활성 3B, 4bit) | 23GB | **주력**. 코딩/에이전트 |
 | `qwen3.8-coder` | `qwen3.8:27b-nvfp4` (dense 27B, 4bit) | 18GB | 무거운 추론. prefill 느림 |
+| `qwen3.5-aux` | `qwen3.5:4b-nvfp4` (dense 4B, 4bit) | 4GB | 보조 작업(제목/메모리/분류). 코더와 동시 상주 |
 
 ### 선정 근거 (M4 Pro 실측)
 
@@ -45,7 +46,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 | `temperature` | 0.6 | 일반 대화용 기본값은 1.0 |
 | `top_p` / `top_k` / `min_p` | 0.95 / 20 / 0 | |
 | `presence_penalty` | 0 | 코딩 권장. Ollama 기본 매니페스트는 1.5 |
-| `num_ctx` | 65536 (3.6) / 32768 (3.8) | Ollama 기본 4096은 에이전트용으로 불가. 64GB에서 두 모델 동시 상주 가능한 조합 |
+| `num_ctx` | 65536 (3.6) / 32768 (3.8) / 8192 (aux) | Ollama 기본 4096은 에이전트용으로 불가. 64GB에서 코더 두 개 + 보조가 동시 상주 가능한 조합 |
 | `num_predict` | 32768 | Qwen 권장 출력 길이. **thinking 토큰을 포함**하므로 작게 주면 답변이 잘린다 |
 
 ## Thinking 제어
@@ -71,7 +72,7 @@ Qwen3.6/3.8은 기본 thinking ON. 실측(qwen3.6 nvfp4, 단순 코딩 질문):
 | `OLLAMA_HOST` | 127.0.0.1:11434 | |
 | `OLLAMA_KEEP_ALIVE` | 1h | 기본 5분이면 대화 사이에 모델이 내려가 매번 5~11초 재로드 |
 | `OLLAMA_NUM_PARALLEL` | 1 | 슬롯당 KV가 잡히므로 2→1로 64K ctx 기준 ~5GB 절약. 보조 요청은 thinking off라 직렬화돼도 0.4~1s |
-| `OLLAMA_MAX_LOADED_MODELS` | 1 | Hermes·omp 모두 qwen3.6-coder 사용. 27B는 쓸 때만 스왑(5~10s) |
+| `OLLAMA_MAX_LOADED_MODELS` | 2 (64GB+) / 1 (그 아래) | 코더 + 보조 모델 동시 상주. `install.sh`가 RAM을 보고 채운다 — 1이면 보조 호출마다 코더가 내려간다(왕복 5~10s). 27B는 여전히 쓸 때만 스왑 |
 
 컨텍스트 길이는 env(`OLLAMA_CONTEXT_LENGTH`)가 아니라 Modelfile `num_ctx`로 관리한다. `/v1` OpenAI 호환 API는 `num_ctx`를 요청에 실을 수 없기 때문이다.
 
@@ -87,9 +88,11 @@ git clone https://github.com/leechoonguk/local-llm.git && cd local-llm
 
 `install.sh`가 하는 일(재실행 안전):
 
-1. `ollama`가 없으면 `brew install ollama`
-2. `com.ollama.serve.plist.template`의 `__HOME__`과 ollama 경로를 채워 `~/Library/LaunchAgents/com.ollama.serve.plist` 생성 후 LaunchAgent 등록 (기존 것은 교체)
-3. `ollama pull` → `ollama create`로 파생 모델 생성 (가중치 공유, 디스크 추가 없음)
+1. **호스트 검사** — arm64 macOS가 아니면 즉시 중단한다(MLX 태그는 Apple Silicon 전용. 안 막으면 수십 GB를 내려받고 나서 실패한다). RAM으로 두 가지를 정한다: `OLLAMA_MAX_LOADED_MODELS`(64GB 이상 2, 그 아래 1)와 **보조 모델 설치 여부**. 슬롯이 하나면 보조 호출마다 코더가 왕복 5~10s 스왑하므로 손해다 — 그런 호스트에는 아예 설치하지 않고 `tiny`를 비워 둔다(이미 가리키고 있으면 경고한다). 워크로드를 아는 경우 `OLLAMA_MAX_LOADED_MODELS=2 ./ollama/install.sh`로 덮을 수 있다.
+2. `ollama`가 없으면 `brew install ollama`
+3. `com.ollama.serve.plist.template`의 `__HOME__`·ollama 경로·`__MAX_LOADED_MODELS__`를 채워 `~/Library/LaunchAgents/com.ollama.serve.plist` 생성 후 LaunchAgent 등록 (기존 것은 교체)
+4. `ollama pull` → `ollama create`로 파생 모델 생성 (가중치 공유, 디스크 추가 없음)
+5. **omp 설정** — `omp config path`로 실제 에이전트 디렉터리를 찾아(프로필·`PI_CONFIG_DIR`·XDG를 따른다) `omp/models.yml`을 설치한다. 단 그 파일에 우리가 관리하지 않는 provider(예: `anthropic`)가 있으면 **덮어쓰지 않고** `models.yml.local-llm`으로 남긴다. `config.yml`은 키 존재만 확인한다
 
 수동으로 할 경우 이 디렉터리 안에서:
 
@@ -97,7 +100,8 @@ git clone https://github.com/leechoonguk/local-llm.git && cd local-llm
 ollama pull qwen3.6:35b-a3b-nvfp4
 ollama create qwen3.6-coder -f ollama/Modelfile.qwen3.6-coder
 mkdir -p ~/Library/Logs/ollama
-sed "s|__HOME__|$HOME|g" ollama/com.ollama.serve.plist.template > ~/Library/LaunchAgents/com.ollama.serve.plist
+sed -e "s|__HOME__|$HOME|g" -e "s|__MAX_LOADED_MODELS__|2|g" \
+  ollama/com.ollama.serve.plist.template > ~/Library/LaunchAgents/com.ollama.serve.plist
 launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.ollama.serve.plist
 ```
 
@@ -116,6 +120,7 @@ launchctl bootout gui/$(id -u)/com.ollama.serve        # 중지
 Ollama가 GPU 가용 메모리를 RAM의 약 90%로 잡으므로 상한은 ~43GB.
 
 - `qwen3.6-coder` 단독 사용 (64K ctx ≈ 37GB). 27B와 동시 상주는 불가(스왑됨).
+- 보조 4B는 `install.sh`가 **설치하지 않는다** — 슬롯이 1이라 호출마다 코더가 왕복 5~10s 스왑하기 때문이다. `modelRoles.tiny`는 비워 두거나 클라우드 소형 모델로 둔다.
 - mxfp8(38GB)은 컨텍스트를 줄여도 부적합.
 - 그 외 절차는 동일.
 
@@ -123,23 +128,79 @@ Ollama가 GPU 가용 메모리를 RAM의 약 90%로 잡으므로 상한은 ~43GB
 
 ### oh-my-pi (omp)
 
-`~/.omp/agent/models.yml`:
+omp 설정도 이 저장소가 관리한다. `install.sh`가 `omp/models.yml`을 `~/.omp/agent/models.yml`로 **그대로 설치**하고(기존 내용이 다르면 `.replaced-<타임스탬프>`로 보존), `config.yml`은 **건드리지 않고 키만 확인**한다 — 거기엔 omp 자신이 쓰는 값(`setupVersion`, `theme`, 모델 셀렉터가 저장하는 역할 배정)이 함께 살기 때문이다. 필요한 두 줄은 `omp/config.fragment.yml`에 있다:
 
 ```yaml
-providers:
-  ollama:
-    baseUrl: http://127.0.0.1:11434/v1   # /v1 필수 — 없으면 POST /responses 404
-    api: openai-responses
-    auth: none
-    discovery:
-      type: ollama                       # /api/show 로 컨텍스트 길이 자동 감지
+modelRoles:
+  default: ollama/qwen3.6-coder            # 코딩 본체 (35B, 창 65536)
+  tiny: ollama-nothink/qwen3.5-aux:latest  # 제목·메모리·분류 (4B, thinking off)
 ```
 
-`~/.omp/agent/config.yml`: `modelRoles.default: ollama/qwen3.6-coder`
+provider 설정은 두 엔트리이고 아래 절에 전문이 있다. baseUrl에 `/v1`이 **필수**인 점만 먼저 — 빼면 `POST /responses`가 404다.
 
 - omp 문서 예시는 baseUrl에 `/v1`이 없지만, 실제로는 `/v1`을 붙여야 Responses API(`/v1/responses`)에 닿는다.
 - 비대화형 실행(`omp -p "..."`) 시 stdin이 파이프면 EOF를 기다리며 멈춘다 → `</dev/null` 필요.
 - 검증: `sandbox/`에 LRU 캐시 구현 + pytest 작성·실행 과제를 `--auto-approve`로 수행, 툴콜 21회, 177초, 8 tests passed.
+
+#### 보조 작업과 압축 (`modelRoles.tiny`, `compactionModel`)
+
+omp는 제목 생성·메모리 질의·사고강도 분류·비정상 종료 감지를 `tiny` 역할로 돌린다(미설정이면 `@smol`). 코더에 맡기면 보조 요청 하나가 thinking 토큰 수천 개를 쓰고, `OLLAMA_NUM_PARALLEL=1`이라 그동안 코딩이 멈춘다.
+
+thinking을 끄는 경로는 하나뿐이다 (qwen3.6-coder 실측, `max_tokens: 300`):
+
+| 요청 필드 | thinking | completion 토큰 |
+|---|---|---|
+| (없음) | 켜짐 | 300 (상한 소진, 답변 없음) |
+| `reasoning: {"effort": "minimal"}` | **켜짐 (무시됨)** | 300 (상한 소진, 답변 없음) |
+| `reasoning: {"effort": "none"}` | 꺼짐 | **6** (답변 생성) |
+
+omp의 thinking 레벨은 `minimal|low|medium|high`뿐이고 `none`이 없다 — `--model x:minimal`로는 못 끈다. 필드를 직접 실으려면 `compat.extraBody`를 쓰는데, 이건 **`api: openai-completions`에서만 적용된다**. `openai-responses`로 두면 임의 키까지 전부 body에서 누락된다(실측).
+
+한 서버인데 provider 엔트리가 **두 개**인 이유는 스키마 때문이다:
+
+1. `api`는 provider 레벨 필드다 — `modelOverrides`가 덮을 수 있는 목록(`contextWindow`, `maxTokens`, `compat`, `compactionModel`, `remoteCompaction`, ...)에 `api`가 없다. 모델별로 경로를 갈아탈 수 없다.
+2. `extraBody`는 completions 경로에서만 실린다.
+3. 코더가 두 역할을 겸한다 — 코딩은 thinking ON, 요약은 OFF. 같은 provider + 같은 모델 id는 compat을 하나만 가지므로 분리가 불가피하다.
+
+반대로 **thinking을 꺼야 하는 호출은 전부 한 엔트리에 모인다** — 제목/메모리/분류(4B)와 압축 요약(코더 자신)은 설정이 같다:
+
+```yaml
+providers:
+  ollama:                            # 코딩 본체 (thinking ON)
+    baseUrl: http://127.0.0.1:11434/v1
+    api: openai-responses
+    auth: none
+    discovery:
+      type: ollama
+    modelOverrides:
+      qwen3.6-coder:latest:
+        compactionModel: ollama-nothink/qwen3.6-coder:latest
+
+  ollama-nothink:                    # 생각하면 안 되는 호출 전부
+    baseUrl: http://127.0.0.1:11434/v1
+    api: openai-completions          # extraBody는 이 경로에서만 실린다
+    auth: none
+    compat:
+      extraBody:
+        reasoning_effort: none       # ollama가 유일하게 듣는 값
+    models:
+      - id: qwen3.6-coder:latest     # 압축 요약 - 이미 로드된 슬롯, 추가 메모리 0
+        contextWindow: 65536
+        maxTokens: 4096
+      - id: qwen3.5-aux:latest       # 제목/메모리/분류
+        contextWindow: 8192
+        maxTokens: 1024
+```
+
+`config.yml`: `modelRoles.tiny: ollama-nothink/qwen3.5-aux:latest`
+
+압축을 4B에 넘기지는 않는다 — 수만 토큰을 요약하는 일이라 세션 기억이 열화된다. 같은 코더를 다른 경로로 부르므로 품질은 35B 그대로이고 thinking만 꺼진다.
+
+**`smol`이 아니라 `tiny`여야 한다.** `tiny`를 비워두면 `@smol`로 폴백하므로 `smol`만 채워도 보조 작업은 돌아간다. 하지만 `smol`은 백그라운드 전용이 아니다 — 모델 스위처 순환 대상(`cycleOrder: [smol, default, slow]`)이고, `--smol` 플래그가 가리키며, **prewalk의 기본 타깃**이다(`--prewalk-into` 기본값이 `smol` 역할). prewalk는 todo 목록이 생긴 뒤 첫 편집에서 활성 모델을 "빠르고 싼" 모델로 갈아타는 기능이라, `smol`에 4B/8K를 걸어두면 그 순간부터 **실제 코드 편집이 4B로 내려간다**. 제목 6토큰 쓰라고 올린 모델에 편집을 넘기는 셈이다. `tiny`에는 그 경로가 없다.
+
+`smol`은 비워두는 편이 안전하다. 채우려면 코딩 가능한 모델이어야 하는데, 로컬에서 그 조건을 만족하는 `qwen3.8-coder`(18GB)를 올리면 `MAX_LOADED_MODELS=2` 상태에서 코더나 보조 중 하나가 내려간다 — 이득이 없다. 클라우드 소형 모델이라면 경합 없이 채울 수 있다.
+
+실증: `modelRoles.default: ollama/qwen3.6-coder`로 툴 3회짜리 과제를 두 번 돌리고(54초 / 29초, 둘 다 정답) `ollama-nothink` 자리에 로깅 프록시를 세웠다. 압축 요청이 `POST /v1/chat/completions`으로 `model: qwen3.6-coder:latest`, `reasoning_effort: "none"`, 시스템 프롬프트 `"Summarize user–AI coding-assistant conversations... Output ONLY the structured summary"`와 함께 도착했고, 세션 엔트리에도 `compaction` 1건이 남았다. 압축의 기본 주체는 **세션 모델 자신**이며(`sameModel: true`), 이 override가 그 경로만 바꾼다. 제목 생성은 `-p` 단발 실행에서는 프로세스가 먼저 끝나 경합에 걸린다(세션 파일의 `title` 엔트리는 생성 시점에 빈 자리표시자로 먼저 기록된다) — 대화형 세션에서 4B로 나가는 것은 별도로 확인했다(`/v1/chat/completions` 854ms, `ollama ps`에 `qwen3.5-aux` 등장).
 
 ### Hermes Agent
 
@@ -191,10 +252,14 @@ Hermes 시스템 프롬프트는 약 23K 토큰이라 세션 첫 턴은 콜드 p
 
 ```
 ollama/
-  install.sh                       # 전체 설치 (멱등)
+  install.sh                       # 전체 설치 (멱등: 서버 + 모델 + omp 설정)
   Modelfile.qwen3.6-coder
+  Modelfile.qwen3.5-aux
   Modelfile.qwen3.8-coder
   com.ollama.serve.plist.template  # __HOME__ 치환 후 LaunchAgents에 설치
+omp/
+  models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치
+  config.fragment.yml              # config.yml 에 병합할 조각 (덮어쓰지 않음)
 ```
 
 ## 참고 자료
