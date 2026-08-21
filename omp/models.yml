@@ -10,9 +10,16 @@ providers:
     auth: none
     discovery:
       type: ollama
+    # 창을 손으로 박는다. discovery는 `/api/show`의 `num_ctx`를 정확히 읽지만,
+    # 라이브 캐시는 재해석마다 문서화된 폴백(128000)으로 되돌아간다 - 실행 중인
+    # 세션에서 `22% / 28200 토큰`이 기록됐고, 28200/0.22 = 128k다. 그 숫자를 믿으면
+    # omp가 65536을 넘겨 컨텍스트를 채우고 프로바이더 오류로 떨어진다.
     modelOverrides:
       qwen3.6-coder:latest:
+        contextWindow: 65536
         compactionModel: ollama-nothink/qwen3.6-coder:latest
+      qwen3.8-coder:latest:
+        contextWindow: 32768
 
   # Every call here is a call that must not think: session titles, memory
   # queries, thinking classification (4B), and compaction summaries (the coder
