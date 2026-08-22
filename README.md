@@ -302,6 +302,13 @@ ollama/
   Modelfile.qwen3.5-aux
   Modelfile.qwen3.8-coder
   com.ollama.serve.plist.template  # __HOME__ 치환 후 LaunchAgents에 설치
+bench/
+  run.py / report.py               # 코딩 모델 검증 하네스 (단일 로드, 실행 테스트 채점). results/는 gitignore
+  tasks/                           # tN_prompt.md + tN_test.*
+.claude/
+  skills/bench-model, add-model    # Claude Code 스킬: 모델 검증 / 모델 추가 절차
+  hooks/omp-sync-reminder.sh       # omp 설정·Modelfile 편집 시 라이브 반영 알림
+CLAUDE.md                          # Claude 작업 규칙과 환경 사실
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치
   config.fragment.yml              # config.yml 에 병합할 조각 (덮어쓰지 않음)
