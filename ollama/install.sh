@@ -27,6 +27,44 @@ fi
 if (( MAX_LOADED >= 2 )); then WITH_AUX=1; else WITH_AUX=0; fi
 echo "host: ${RAM_GB}GB RAM -> OLLAMA_MAX_LOADED_MODELS=$MAX_LOADED, 보조 모델 $([[ $WITH_AUX -eq 1 ]] && echo 설치 || echo 생략)"
 
+# --- GPU wired memory limit -------------------------------------------------
+# macOS는 GPU가 고정(wired)할 수 있는 메모리를 RAM의 ~75%로 막는다(48GB 호스트는
+# ~36GB, 64GB는 ~48GB). 모델이 이 한도를 넘으면 Ollama가 레이어를 CPU로 내려
+# 속도가 급락한다. 실측(qwen35moe 35B-A3B, num_ctx 65536): Q4_K_M 33GB,
+# Q5_K_M ~36GB, Q6_K ~40GB. 48GB에서 Q5/Q6를 돌리고 64GB에서 Q6 + 보조 4B를
+# 같이 올리려면 한도를 올려야 한다. OS 몫은 남긴다 - 0으로 두면 기본값이다.
+WIRED_MB="${OLLAMA_WIRED_LIMIT_MB:-}"
+if [[ -z "$WIRED_MB" ]]; then
+  if   (( RAM_GB >= 96 )); then WIRED_MB=$(( (RAM_GB - 12) * 1024 ))
+  elif (( RAM_GB >= 64 )); then WIRED_MB=$(( (RAM_GB - 8) * 1024 ))   # 64GB -> 57344
+  elif (( RAM_GB >= 48 )); then WIRED_MB=$(( (RAM_GB - 8) * 1024 ))   # 48GB -> 40960
+  else WIRED_MB=0; fi   # 35B는 어차피 안 들어간다 - 기본 한도 유지
+fi
+SYSCTL_CONF=/etc/sysctl.conf
+if (( WIRED_MB > 0 )); then
+  CUR="$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
+  if [[ "$CUR" != "$WIRED_MB" ]] || ! grep -qxF "iogpu.wired_limit_mb=$WIRED_MB" "$SYSCTL_CONF" 2>/dev/null; then
+    echo "gpu: iogpu.wired_limit_mb $CUR -> $WIRED_MB (${RAM_GB}GB 호스트, sudo 필요)"
+    if sudo -n true 2>/dev/null || sudo -v; then
+      sudo sysctl -w "iogpu.wired_limit_mb=$WIRED_MB" >/dev/null
+      # 재부팅 후에도 유지: /etc/sysctl.conf는 부팅 시 읽힌다. 기존 줄은 교체한다.
+      sudo touch "$SYSCTL_CONF"
+      if grep -q '^iogpu.wired_limit_mb=' "$SYSCTL_CONF"; then
+        sudo sed -i '' "s/^iogpu.wired_limit_mb=.*/iogpu.wired_limit_mb=$WIRED_MB/" "$SYSCTL_CONF"
+      else
+        echo "iogpu.wired_limit_mb=$WIRED_MB" | sudo tee -a "$SYSCTL_CONF" >/dev/null
+      fi
+      echo "gpu: 영구 적용 ($SYSCTL_CONF)"
+    else
+      echo "gpu: sudo 거부 - 한도를 올리지 못했다. 수동: sudo sysctl -w iogpu.wired_limit_mb=$WIRED_MB" >&2
+    fi
+  else
+    echo "gpu: iogpu.wired_limit_mb=$WIRED_MB (이미 적용됨)"
+  fi
+else
+  echo "gpu: ${RAM_GB}GB 호스트 - wired limit 기본값 유지"
+fi
+
 OLLAMA_BIN="$(command -v ollama || true)"
 if [[ -z "$OLLAMA_BIN" ]]; then
   echo "ollama not found — installing via Homebrew"
@@ -61,6 +99,9 @@ echo "server: $(curl -s http://127.0.0.1:11434/api/version)"
 # --- Models -----------------------------------------------------------------
 ollama pull qwen3.6:35b-a3b-nvfp4
 ollama create qwen3.6-coder -f "$HERE/Modelfile.qwen3.6-coder"
+# 기본 코더. 공식 라이브러리의 ornith-1.5:35b는 Q4_K_M뿐이라 HF GGUF에서 Q5_K_M을 받는다.
+ollama pull hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q5_K_M
+ollama create ornith-coder-q5 -f "$HERE/Modelfile.ornith-coder-q5"
 if [[ $WITH_AUX -eq 1 ]]; then
   ollama pull qwen3.5:4b-nvfp4
   ollama create qwen3.5-aux -f "$HERE/Modelfile.qwen3.5-aux"
@@ -107,7 +148,7 @@ if [[ -d "$OMP_DIR" ]]; then
     echo "omp: installed models.yml into $OMP_DIR (providers: ollama, ollama-nothink)"
   fi
   CFG="$OMP_DIR/config.yml"
-  REQUIRED=("default: ollama/qwen3.6-coder")
+  REQUIRED=("default: ollama/ornith-coder-q5")
   if [[ $WITH_AUX -eq 1 ]]; then
     REQUIRED+=("tiny: ollama-nothink/qwen3.5-aux:latest")
   fi
@@ -127,4 +168,4 @@ fi
 echo
 ollama list
 echo
-echo "done. test: ollama run qwen3.6-coder 'Reply with exactly: OK'"
+echo "done. test: ollama run ornith-coder-q5 'Reply with exactly: OK'"
