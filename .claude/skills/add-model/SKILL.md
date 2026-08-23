@@ -13,13 +13,13 @@ description: 이 레포에 Ollama 모델을 추가/교체한다 — Modelfile, i
 - 모델 카드에서 권장 샘플링(temp/top_p/top_k)을 찾아 출처를 주석에 남긴다.
 
 ## 2. Modelfile — `ollama/Modelfile.<name>`
-기존 `Modelfile.qwen3.6-coder`를 복사해 FROM과 헤더 주석만 바꾼다. 코더는 `num_ctx 65536 / num_predict 32768`, 보조는 `8192 / 1024`. `ollama create <name> -f ollama/Modelfile.<name>`.
+기존 `Modelfile.qwen3.6-coder`를 복사해 FROM과 헤더 주석만 바꾼다. 코더는 `num_ctx 131072 / num_predict 8192`(README "컨텍스트 레시피"), 보조는 `8192 / 1024`. 출력 예약은 모델마다 달라 장기 세션으로 확인한다. `ollama create <name> -f ollama/Modelfile.<name>`.
 
 ## 3. install.sh
 `# --- Models ---` 블록에 `ollama pull` + `ollama create` 추가. 선택 설치면 `--with-27b`처럼 플래그 분기. 기본 코더를 바꾸면 `REQUIRED=("default: ollama/<name>")`와 마지막 `echo "done. test: ..."`도 바꾼다.
 
 ## 4. omp/models.yml
-- `providers.ollama.modelOverrides.<name>:latest` — `contextWindow`(= num_ctx), `maxTokens: 8192`(코더), `compactionModel: ollama-nothink/<name>:latest`.
+- `providers.ollama.modelOverrides.<name>:latest` — `contextWindow`(= num_ctx), `maxTokens`(= num_predict), `compactionModel: ollama-nothink/<name>:latest`.
 - `providers.ollama-nothink.models`에 `- id: <name>:latest, contextWindow, maxTokens: 4096` 추가(압축 요약이 같은 로드 슬롯을 쓰게).
 - 왜 이렇게 나뉘는지는 파일 상단 주석. 합치지 말 것.
 

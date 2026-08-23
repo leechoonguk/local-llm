@@ -30,9 +30,9 @@ echo "host: ${RAM_GB}GB RAM -> OLLAMA_MAX_LOADED_MODELS=$MAX_LOADED, 보조 모�
 # --- GPU wired memory limit -------------------------------------------------
 # macOS는 GPU가 고정(wired)할 수 있는 메모리를 RAM의 ~75%로 막는다(48GB 호스트는
 # ~36GB, 64GB는 ~48GB). 모델이 이 한도를 넘으면 Ollama가 레이어를 CPU로 내려
-# 속도가 급락한다. 실측(qwen35moe 35B-A3B, num_ctx 65536): Q4_K_M 33GB,
-# Q5_K_M ~36GB, Q6_K ~40GB. 48GB에서 Q5/Q6를 돌리고 64GB에서 Q6 + 보조 4B를
-# 같이 올리려면 한도를 올려야 한다. OS 몫은 남긴다 - 0으로 두면 기본값이다.
+# 속도가 급락한다. 실측(qwen35moe 35B-A3B nvfp4): 로드 23GB, 창이 차면 +~10GB.
+# 창 131072는 48GB 기본 한도(~36GB)에 걸릴 수 있어 올린다. OS 몫은 남긴다 -
+# 0으로 두면 기본값이다.
 WIRED_MB="${OLLAMA_WIRED_LIMIT_MB:-}"
 if [[ -z "$WIRED_MB" ]]; then
   if   (( RAM_GB >= 96 )); then WIRED_MB=$(( (RAM_GB - 12) * 1024 ))
@@ -99,9 +99,6 @@ echo "server: $(curl -s http://127.0.0.1:11434/api/version)"
 # --- Models -----------------------------------------------------------------
 ollama pull qwen3.6:35b-a3b-nvfp4
 ollama create qwen3.6-coder -f "$HERE/Modelfile.qwen3.6-coder"
-# 기본 코더. 공식 라이브러리의 ornith-1.5:35b는 Q4_K_M뿐이라 HF GGUF에서 Q5_K_M을 받는다.
-ollama pull hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q5_K_M
-ollama create ornith-coder-q5 -f "$HERE/Modelfile.ornith-coder-q5"
 if [[ $WITH_AUX -eq 1 ]]; then
   ollama pull qwen3.5:4b-nvfp4
   ollama create qwen3.5-aux -f "$HERE/Modelfile.qwen3.5-aux"
@@ -148,7 +145,7 @@ if [[ -d "$OMP_DIR" ]]; then
     echo "omp: installed models.yml into $OMP_DIR (providers: ollama, ollama-nothink)"
   fi
   CFG="$OMP_DIR/config.yml"
-  REQUIRED=("default: ollama/ornith-coder-q5")
+  REQUIRED=("default: ollama/qwen3.6-coder")
   if [[ $WITH_AUX -eq 1 ]]; then
     REQUIRED+=("tiny: ollama-nothink/qwen3.5-aux:latest")
   fi
@@ -168,4 +165,4 @@ fi
 echo
 ollama list
 echo
-echo "done. test: ollama run ornith-coder-q5 'Reply with exactly: OK'"
+echo "done. test: ollama run qwen3.6-coder 'Reply with exactly: OK'"

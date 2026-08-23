@@ -20,27 +20,26 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 
 | 모델 | 베이스 | 크기 | 용도 |
 |---|---|---|---|
-| `ornith-coder-q5` | `hf.co/ornith-ai/Ornith-1.5-35B-A3B-GGUF:Q5_K_M` (Qwen3.5-MoE 아키텍처, 35B, 활성 3B, 5bit) | 26GB | **주력**. 코딩/에이전트. 아래 "Ornith-1.5 검증" 참고 |
-| `qwen3.6-coder` | `qwen3.6:35b-a3b-nvfp4` (MoE 35B, 활성 3B, 4bit) | 23GB | 이전 주력. 셀렉터에서 교체 가능. 토큰 속도는 더 빠름(MLX 경로) |
+| `qwen3.6-coder` | `qwen3.6:35b-a3b-nvfp4` (MoE 35B, 활성 3B, 4bit) | 23GB | **주력**. 코딩/에이전트. 창 131072 / 출력 8192 |
 | `qwen3.8-coder` | `qwen3.8:27b-nvfp4` (dense 27B, 4bit) | 18GB | 무거운 추론. prefill 느림 |
 | `qwen3.5-aux` | `qwen3.5:4b-nvfp4` (dense 4B, 4bit) | 4GB | 보조 작업(제목/메모리/분류). 코더와 동시 상주 |
 
-### Ornith-1.5 검증 (2026-08-23, 64GB, 단일 로드, 65K ctx, thinking on, temp 0.6)
+### 컨텍스트 레시피 (2026-08-23, fast-api-standard 장기 세션 실측)
 
-실행 테스트로 채점하는 코딩 과제 4개(LRU+TTL 캐시, 구간 병합 버그픽스, nginx 로그 파서, debounce)를 세 모델에 1회씩 돌렸다.
+실제 통합 과제(외부 API 1건: 마이그레이션·시드·`.http`·계약 픽스처 4개 산출, `make verify` 게이트)를 같은 브리핑·같은 하네스로 돌려 창 크기를 정했다. 모델당 1회.
 
-| | qwen3.6-coder (nvfp4) | ornith Q4_K_M | ornith Q5_K_M |
-|---|---|---|---|
-| 로드 직후 | 23GB | 23GB | 26GB |
-| 생성 속도 | 65 tok/s | 49 tok/s | 42 tok/s |
-| 정답률 | 3/4 | 3/4 | 3/4 |
-| 4과제 합산 시간 | 766s | 314s | 359s |
+| | qwen 64K | qwen 66K | qwen 128K | qwen 256K |
+|---|---|---|---|---|
+| 압축 | — | 1회 | **0회** | 0회 |
+| 결과 | 88%에서 7턴 만에 정지 | 컬럼 3개 발명, 게이트 실패 | **4/4, 게이트 통과** | 4/4 (창의 27%만 사용) |
+| 시간 | — | — | 10분 | 18분 |
 
-- 정확도는 동률. debounce(leading+trailing+cancel)는 셋 다 다른 로직 버그로 실패.
-- Ornith의 실익은 **추론 토큰 절약**: 버그픽스 과제에서 qwen은 19K 토큰을 생각했고 ornith는 257 토큰으로 끝냈다. 토큰당 속도가 GGUF라 25~35% 느린데도 응답 시간은 2~5배 짧다 — 에이전트 턴 시간이 그대로 줄어든다.
-- 토큰 속도 차이는 모델이 아니라 포맷(nvfp4=MLX 경로 / GGUF=llama.cpp 경로). 공식 Ollama 태그는 Q4_K_M뿐이라 Q5는 HF GGUF에서 받는다.
-- Q4 vs Q5는 n=1이라 변별 불가. 메모리 여유가 있어 Q5를 채택했다. 48GB에서는 로드 26GB + 창이 차면 ~36GB로 `iogpu.wired_limit_mb=40960` 안에 든다.
-- 과제 4개 1회라 통계적 확신은 낮다. 자체 보고 벤치마크(Qwen3.6-35B 대비 전 항목 우위)만큼의 압도는 관찰되지 않았다.
+- 과제의 토큰 수요는 58K~128K. 64K/66K는 담지 못하고, 128K부터는 모든 실행이 압축 0회였다. 레시피의 임무는 "수요를 압축 없이 담기".
+- 256K는 추가 이득이 없다. 메모리는 동일(23GB)하고 시간만 1.8배.
+- 출력 예약은 모델마다 다르다. qwen은 8K로 충분했다.
+- 그래서 `num_ctx 131072 / num_predict 8192`, omp `contextWindow 131072 / maxTokens 8192`.
+
+**Ornith-1.5-35B-A3B는 채택하지 않았다.** 단발 코딩 과제(`bench/`)에서는 qwen과 정답률 동률(3/4)에 추론 토큰이 훨씬 짧아 유망해 보였지만, 장기 세션에서 66K로는 압축 5회 끝에 산출물 0/4, 128K는 4/4이되 40분(qwen의 3.5~4배), 256K 재실행은 0/4로 분산이 컸고 출력 예약 33K가 필요했다. 단발 벤치는 필요조건일 뿐 에이전트 적합성은 보장하지 않는다 — 이 교훈이 `bench-model` 스킬에 적혀 있다.
 
 ### 선정 근거 (M4 Pro 실측)
 
@@ -64,8 +63,8 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 | `temperature` | 0.6 | 일반 대화용 기본값은 1.0 |
 | `top_p` / `top_k` / `min_p` | 0.95 / 20 / 0 | |
 | `presence_penalty` | 0 | 코딩 권장. Ollama 기본 매니페스트는 1.5 |
-| `num_ctx` | 65536 (3.6) / 32768 (3.8) / 8192 (aux) | Ollama 기본 4096은 에이전트용으로 불가. 64GB에서 코더 두 개 + 보조가 동시 상주 가능한 조합 |
-| `num_predict` | 32768 | Qwen 권장 출력 길이. **thinking 토큰을 포함**하므로 작게 주면 답변이 잘린다 |
+| `num_ctx` | 131072 (3.6) / 32768 (3.8) / 8192 (aux) | Ollama 기본 4096은 에이전트용으로 불가. 3.6은 아래 "컨텍스트 레시피" 실측으로 정했다 |
+| `num_predict` | 8192 (3.6) / 32768 (3.8) | **thinking 토큰을 포함**한다. 3.6은 장기 세션에서 8K로 충분했고, 창의 절반(32K)을 예약하면 입력 상한이 32.7K로 줄어 긴 턴이 거부된다 |
 
 ## Thinking 제어
 
@@ -101,14 +100,14 @@ Qwen3.6/3.8은 기본 thinking ON. 실측(qwen3.6 nvfp4, 단순 코딩 질문):
 
 ```bash
 git clone https://github.com/leechoonguk/local-llm.git && cd local-llm
-./ollama/install.sh              # ornith-coder-q5 + qwen3.6-coder
+./ollama/install.sh              # qwen3.6-coder 만
 ./ollama/install.sh --with-27b   # qwen3.8-coder 까지
 ```
 
 `install.sh`가 하는 일(재실행 안전):
 
 1. **호스트 검사** — arm64 macOS가 아니면 즉시 중단한다(MLX 태그는 Apple Silicon 전용. 안 막으면 수십 GB를 내려받고 나서 실패한다). RAM으로 두 가지를 정한다: `OLLAMA_MAX_LOADED_MODELS`(64GB 이상 2, 그 아래 1)와 **보조 모델 설치 여부**. 슬롯이 하나면 보조 호출마다 코더가 왕복 5~10s 스왑하므로 손해다 — 그런 호스트에는 아예 설치하지 않고 `tiny`를 비워 둔다(이미 가리키고 있으면 경고한다). 워크로드를 아는 경우 `OLLAMA_MAX_LOADED_MODELS=2 ./ollama/install.sh`로 덮을 수 있다.
-2. **GPU wired 한도** — macOS는 GPU가 고정할 수 있는 메모리를 RAM의 ~75%로 막는다(48GB→~36GB, 64GB→~48GB). 35B-A3B를 64K ctx로 올리면 Q4_K_M 33GB, Q5_K_M ~36GB, Q6_K ~40GB라 48GB 호스트는 한도를 넘는다. RAM별로 `iogpu.wired_limit_mb`를 정해(48GB→40960, 64GB→57344, 96GB+→RAM−12GB) `sudo sysctl -w`로 즉시 적용하고 `/etc/sysctl.conf`에 기록해 재부팅 후에도 유지한다. 48GB 미만은 35B가 어차피 안 들어가므로 건드리지 않는다. sudo를 거부하면 수동 명령만 안내하고 계속 진행한다.
+2. **GPU wired 한도** — macOS는 GPU가 고정할 수 있는 메모리를 RAM의 ~75%로 막는다(48GB→~36GB, 64GB→~48GB). 35B-A3B nvfp4는 로드 23GB에 창이 차면 +~10GB라 48GB 호스트는 기본 한도에 닿는다. RAM별로 `iogpu.wired_limit_mb`를 정해(48GB→40960, 64GB→57344, 96GB+→RAM−12GB) `sudo sysctl -w`로 즉시 적용하고 `/etc/sysctl.conf`에 기록해 재부팅 후에도 유지한다. 48GB 미만은 35B가 어차피 안 들어가므로 건드리지 않는다. sudo를 거부하면 수동 명령만 안내하고 계속 진행한다.
 3. `ollama`가 없으면 `brew install ollama`
 4. `com.ollama.serve.plist.template`의 `__HOME__`·ollama 경로·`__MAX_LOADED_MODELS__`를 채워 `~/Library/LaunchAgents/com.ollama.serve.plist` 생성 후 LaunchAgent 등록 (기존 것은 교체)
 5. `ollama pull` → `ollama create`로 파생 모델 생성 (가중치 공유, 디스크 추가 없음)
@@ -139,14 +138,14 @@ launchctl bootout gui/$(id -u)/com.ollama.serve        # 중지
 
 macOS 기본 GPU wired 한도는 ~36GB(RAM의 75%)다. `install.sh`가 `iogpu.wired_limit_mb=40960`(OS 몫 8GB)으로 올려 영구화하므로, 그 뒤 상한은 ~40GB.
 
-| 35B-A3B 양자화 | 디스크 | 64K ctx 로드 | 48GB(한도 40GB) |
+| 35B-A3B 양자화 | 디스크 | 창 포화 시 | 48GB(한도 40GB) |
 |---|---|---|---|
 | Q4_K_M / nvfp4 | 22GB | ~33GB | 여유 |
 | Q5_K_M | 25GB | ~36GB | 가능 |
 | Q6_K | 29GB | ~40GB | 빠듯 — 다른 앱 여유 거의 없음. 불안하면 `num_ctx 32768`(~35GB) |
 | Q8_0 | 38GB | ~49GB | 불가 |
 
-- `qwen3.6-coder` 단독 사용 (64K ctx ≈ 37GB). 27B와 동시 상주는 불가(스왑됨).
+- `qwen3.6-coder` 단독 사용 (131K ctx: 로드 23GB, 창이 차면 ~33GB 추정). 27B와 동시 상주는 불가(스왑됨).
 - 보조 4B는 `install.sh`가 **설치하지 않는다** — 슬롯이 1이라 호출마다 코더가 왕복 5~10s 스왑하기 때문이다. `modelRoles.tiny`는 비워 두거나 클라우드 소형 모델로 둔다.
 - mxfp8(38GB)은 컨텍스트를 줄여도 부적합.
 - 그 외 절차는 동일.
@@ -159,7 +158,7 @@ omp 설정도 이 저장소가 관리한다. `install.sh`가 `omp/models.yml`을
 
 ```yaml
 modelRoles:
-  default: ollama/ornith-coder-q5          # 코딩 본체 (35B, 창 65536)
+  default: ollama/qwen3.6-coder            # 코딩 본체 (35B, 창 131072)
   tiny: ollama-nothink/qwen3.5-aux:latest  # 제목·메모리·분류 (4B, thinking off)
 ```
 
@@ -212,7 +211,7 @@ providers:
         reasoning_effort: none       # ollama가 유일하게 듣는 값
     models:
       - id: qwen3.6-coder:latest     # 압축 요약 - 이미 로드된 슬롯, 추가 메모리 0
-        contextWindow: 65536
+        contextWindow: 131072
         maxTokens: 4096
       - id: qwen3.5-aux:latest       # 제목/메모리/분류
         contextWindow: 8192
@@ -279,9 +278,9 @@ Hermes 시스템 프롬프트는 약 23K 토큰이라 세션 첫 턴은 콜드 p
   11,651 토큰 프리필에 31.9s(≈430 tok/s)를 쓰고 정상 응답했다. 끊는 쪽은 클라이언트이고,
   다음 요청을 **보내기 전에** 끊으므로 서버 로그에 흔적이 없다. `--mode json`으로 받아도
   `exit 0`에 오류 이벤트가 없다(리포팅 공백).
-  - 중단 지점(qwen3.6-coder): `maxTokens` 미지정 시 **35,676 토큰**. `num_ctx 65536 −
-    num_predict 32768 ≈ 32.7K`가 입력 상한이라는 계산과 맞는다. `modelOverrides.maxTokens:
-    8192`을 넣으면 **37,081**까지 올라간다 — 그래서 그 값은 넣어 두었다.
+  - 중단 지점(당시 qwen3.6-coder, `num_ctx 65536 / num_predict 32768`): `maxTokens` 미지정 시
+    **35,676 토큰**. `65536 − 32768 ≈ 32.7K`가 입력 상한이라는 계산과 맞는다. `modelOverrides.maxTokens:
+    8192`을 넣으면 **37,081**까지 올라간다. 지금은 Modelfile 자체가 `131072 / 8192`라 이 상한이 ~123K다.
   - 효과 없음: `providers.streamFirstEventTimeoutSeconds: 600`, 컴팩션 전략 교체
     (`snapcompact` ↔ `context-full`), `keepRecentTokens`/`thresholdPercent` 축소,
     `--thinking off`, `api: openai-completions` 경로(`ollama-nothink`).
@@ -297,7 +296,6 @@ Hermes 시스템 프롬프트는 약 23K 토큰이라 세션 첫 턴은 콜드 p
 ```
 ollama/
   install.sh                       # 전체 설치 (멱등: 서버 + 모델 + omp 설정)
-  Modelfile.ornith-coder-q5
   Modelfile.qwen3.6-coder
   Modelfile.qwen3.5-aux
   Modelfile.qwen3.8-coder

@@ -10,30 +10,20 @@ providers:
     auth: none
     discovery:
       type: ollama
-    # 창을 손으로 박는다. discovery는 `/api/show`의 `num_ctx`를 정확히 읽지만,
-    # 라이브 캐시는 재해석마다 문서화된 폴백(128000)으로 되돌아간다 - 실행 중인
-    # 세션에서 `22% / 28200 토큰`이 기록됐고, 28200/0.22 = 128k다. 그 숫자를 믿으면
-    # omp가 65536을 넘겨 컨텍스트를 채우고 프로바이더 오류로 떨어진다.
+    # 창은 손으로 박는다 - discovery 캐시가 재해석마다 128000 폴백으로 되돌아가
+    # Modelfile num_ctx와 어긋난 적이 있다(세션 기록 `22% / 28200` = 128k).
     modelOverrides:
       qwen3.6-coder:latest:
-        contextWindow: 65536
-        # 출력 예약이 창의 절반을 먹는다. Modelfile이 `num_predict 32768`을
-        # `num_ctx 65536`에 걸어두므로, 프롬프트가 32.7K를 넘는 순간 ollama가
-        # 요청을 거부한다 - 실측: 도구를 쓰는 긴 턴이 35,676 토큰에서
-        # `Request was aborted`로 죽었고, 22K/25K/30K/32K까지는 정상이었다.
-        # 에이전트 턴은 8K 이상을 한 번에 생성하지 않으니 나머지를 컨텍스트로
-        # 돌린다.
+        # 131072 / 8192 - Modelfile과 같은 값. 근거는 Modelfile.qwen3.6-coder 주석
+        # (장기 세션 실측: 64K는 수요 58K~128K를 못 담아 7턴에 멈추고 66K는 압축 5회로
+        # 지시를 잃었다. 128K부터 압축 0회. 256K는 이득 없이 시간만 1.8배).
+        contextWindow: 131072
+        # 출력 예약. qwen은 8K로 충분했다(모델마다 다르다 - Ornith는 33K가 필요했다).
+        # Modelfile num_predict와 같은 값이어야 한다.
         maxTokens: 8192
         compactionModel: ollama-nothink/qwen3.6-coder:latest
       qwen3.8-coder:latest:
         contextWindow: 32768
-      # Ornith-1.5-35B-A3B Q5_K_M. qwen35moe와 같은 아키텍처라 창·예약·압축 경로를
-      # 그대로 쓴다. 실측(2026-08-23, 단일 로드): 정답률은 qwen3.6-coder와 동률,
-      # 추론 토큰이 훨씬 짧아 응답 시간 2~5배 단축. 토큰 속도는 GGUF라 ~35% 느리다.
-      ornith-coder-q5:latest:
-        contextWindow: 65536
-        maxTokens: 8192
-        compactionModel: ollama-nothink/ornith-coder-q5:latest
 
   # Every call here is a call that must not think: session titles, memory
   # queries, thinking classification (4B), and compaction summaries (the coder
@@ -48,10 +38,7 @@ providers:
         reasoning_effort: none
     models:
       - id: qwen3.6-coder:latest
-        contextWindow: 65536
-        maxTokens: 4096
-      - id: ornith-coder-q5:latest
-        contextWindow: 65536
+        contextWindow: 131072
         maxTokens: 4096
       - id: qwen3.5-aux:latest
         contextWindow: 8192
