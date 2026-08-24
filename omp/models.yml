@@ -88,19 +88,24 @@ providers:
       - id: "mlx-community--Qwen3.5-4B-4bit"
         contextWindow: 8192
         maxTokens: 1024
-      # Qwen3.8 dense 27B oQ6 (21.7GiB) - 무거운 추론용. 5bit 이 없어 oQ6 채택 (2026-08-24).
-      - id: "mlx-community--Qwen3.8-27B-oQ6:mtp"
+      # Qwen3.8 dense 27B(oQ6·nvfp4)은 s2 벤치에서 writes 0(무산출)으로 실패해 2026-08-25 제거했다.
+      # 실측 근거는 README "모델·서빙 매트릭스"·속도표에 기록으로 남긴다.
+      #
+      # 2026-08-25 벤치 로스터 — oMLX 가 HF 캐시 모델을 이름으로 자동 서빙(프로파일 없음, 샘플링은 oMLX 기본).
+      # 첫 패스 데이터 후 필요하면 model_settings.json 으로 모델 카드 샘플링을 박는다.
+      - id: "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2"   # instruct 코더(thinking 없음), Sonnet급 후보·이전 REST 승자
         contextWindow: 131072
         maxTokens: 8192
-      - id: "mlx-community--Qwen3.8-27B-oQ6:nothink"
+      - id: "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit"  # Gemma4 12B 코더 특화
         contextWindow: 131072
         maxTokens: 8192
-      # oQ6와 속도 비교용 4bit(nvfp4) 변형 (2026-08-24, bench-model 스킬 대신 임시 비교).
-      - id: "mlx-community--Qwen3.8-27B-nvfp4:mtp"
-        api: openai-completions # 3.6과 동일 이유: openai-responses 엔 extraBody 가 안 실린다(실측)
+      - id: "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit"              # Gemma4 12B QAT+OptiQ(PLE 양자화 회피)
         contextWindow: 131072
         maxTokens: 8192
-      - id: "mlx-community--Qwen3.8-27B-nvfp4:nothink"
+      - id: "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit"          # Gemma4 26B-A4B MoE(활성 4B) QAT+OptiQ
+        contextWindow: 131072
+        maxTokens: 8192
+      - id: "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit"    # Mistral Devstral, 에이전트 코딩·툴콜 특화
         contextWindow: 131072
         maxTokens: 8192
     modelOverrides:
@@ -114,14 +119,3 @@ providers:
         compat:
           extraBody:
             thinking_budget: 5120
-      "mlx-community--Qwen3.8-27B-oQ6:mtp":
-        compactionModel: "omlx/mlx-community--Qwen3.8-27B-oQ6:nothink"
-      "mlx-community--Qwen3.8-27B-nvfp4:mtp":
-        compactionModel: "omlx/mlx-community--Qwen3.8-27B-nvfp4:nothink"
-        # [INFERENCE] 3.6 budget(5120)을 그대로 안 씀: 3.8 dense는 실측 2.9~10.7 tok/s로
-        # 3.6보다 3.7배가량 느리다(README 속도표). 같은 토큰 budget이면 그만큼 벽시계 시간을
-        # 더 먹어 45분 상한 안에서 실제 작업(13개 산출물) 턴이 부족해진다. 미검증 추정치로
-        # 축소했다 - 실측 후 조정 필요.
-        compat:
-          extraBody:
-            thinking_budget: 2560

@@ -4,14 +4,15 @@
 #  - brew tap jundot/omlx 에서 oMLX 설치 (Qwen3.5/3.6 가속 커널 포함)
 #  - 모델 3개를 HF 캐시로 다운로드 (oMLX 는 ~/.cache/huggingface/hub 를 자동 발견한다)
 #  - 이 디렉터리의 model_settings.json / model_profiles.json 을 ~/.omlx/ 에 설치
+#  - GPU wired 한도(iogpu.wired_limit_mb)를 RAM 티어에 맞춰 부팅 지속으로 설정(sudo)
 #  - 서비스 잔재(brew services, 예전 LaunchAgent) 정리 후 GUI 앱 서버 재시작(omlx restart)
 #
 # 전역 ~/.omlx/settings.json 은 여기서 관리하지 않는다 - oMLX 가 자기 값(auth
 # secret_key 등)을 함께 저장하는 파일이라 커밋 대상이 아니다. 우리가 정하는 것은
 # 모델 단위 파일 2개뿐이다.
 #
-# 주의: 본체 다운로드가 23.1GiB 다. GPU wired 한도(iogpu.wired_limit_mb)는
-# sudo 가 필요하므로 여기서 만지지 않는다 - README "설치 / 재현" 참고.
+# 주의: 본체 다운로드가 23.1GiB 다. wired 한도 설정과 다운로드는 sudo·대용량이라
+# 사용자가 직접 실행한다.
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -24,10 +25,13 @@ HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 $HF download mlx-community/Qwen3.6-35B-A3B-5bit        # 코더 본체 23.1GiB
 $HF download mlx-community/Qwen3.6-35B-A3B-MTP-5bit    # MTP 드래프터 0.6GiB
 $HF download mlx-community/Qwen3.5-4B-4bit             # aux(tiny 역할) 2.3GiB
-$HF download mlx-community/Qwen3.8-27B-oQ6             # 무거운 추론용 dense 27B, 21.7GiB
-$HF download mlx-community/Qwen3.8-27B-MTP-8bit        # 3.8 MTP 드래프터 0.4GiB
-$HF download mlx-community/Qwen3.8-27B-nvfp4           # oQ6 속도 비교용 4bit, 15.0GiB
-$HF download mlx-community/Qwen3.8-27B-MTP-nvfp4       # 3.8 nvfp4 MTP 드래프터 0.25GiB
+# Qwen3.8 dense 27B(oQ6·nvfp4)은 s2 벤치 writes 0(무산출) 실패로 2026-08-25 제거 — 다운로드하지 않는다.
+# 2026-08-25 벤치 로스터(비-Qwen 포함). oMLX 가 HF 캐시 이름으로 자동 서빙, 프로파일 없음.
+$HF download mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2   # instruct 코더(thinking 없음), Sonnet급 후보
+$HF download mlx-community/gemma-4-12b-coder-fable5-composer2.5-4bit  # Gemma4 12B 코더 특화
+$HF download mlx-community/gemma-4-12B-it-qat-OptiQ-4bit              # Gemma4 12B QAT+OptiQ
+$HF download mlx-community/gemma-4-26B-A4B-it-qat-OptiQ-4bit          # Gemma4 26B-A4B MoE(활성 4B) QAT+OptiQ
+$HF download mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit    # Mistral Devstral, 에이전트 코딩·툴콜
 
 mkdir -p ~/.omlx
 cp model_settings.json ~/.omlx/model_settings.json
@@ -62,6 +66,41 @@ json.dump(d, open(p, 'w'), indent=2, ensure_ascii=False)
 print('oMLX port ->', d['server']['port'], '| auto_start_on_launch ->', d['server']['auto_start_on_launch'],
       '| memory_guard_tier ->', d['memory']['memory_guard_tier'], '| hot_cache_max_size ->', d['cache']['hot_cache_max_size'])
 PY
+
+# --- GPU wired 한도 (RAM 티어별, 부팅 지속) ----------------------------------------
+# macOS 는 GPU 가 고정(wired)할 수 있는 메모리를 RAM 의 ~75% 로 막는다(48GB→~36GB, 64GB→~48GB).
+# 코더(로드 23GB, 창이 차면 +~10GB)와 aux(4B ~5GB)가 이 한도를 넘으면 레이어가 CPU 로 내려가
+# 속도가 급락한다. RAM 티어에 맞춰 올린다 — 48·64GB 는 RAM-8GB(memory_guard_tier 'safe' 와 같은
+# 값이라 admin 배너도 안 뜬다), 96GB+ 는 RAM-12GB, 48GB 미만은 35B 가 어차피 안 들어가 기본값
+# 유지. macOS 는 부팅 시 /etc/sysctl.conf 를 읽으므로 거기에 idempotent 하게 써 재부팅에도 유지하고
+# 즉시 반영까지 한다. sudo 가 필요하고, 거부하면 수동 명령만 안내하고 계속 진행한다.
+RAM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
+if   (( RAM_GB >= 96 )); then WIRED_MB=$(( (RAM_GB - 12) * 1024 ))
+elif (( RAM_GB >= 48 )); then WIRED_MB=$(( (RAM_GB - 8) * 1024 ))   # 48GB→40960, 64GB→57344
+else WIRED_MB=0; fi
+SYSCTL_CONF=/etc/sysctl.conf
+if (( WIRED_MB > 0 )); then
+  CUR="$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
+  if [[ "$CUR" != "$WIRED_MB" ]] || ! grep -qxF "iogpu.wired_limit_mb=$WIRED_MB" "$SYSCTL_CONF" 2>/dev/null; then
+    echo "gpu: iogpu.wired_limit_mb $CUR -> $WIRED_MB (${RAM_GB}GB 호스트, sudo 필요)"
+    if sudo -n true 2>/dev/null || sudo -v; then
+      sudo sysctl -w "iogpu.wired_limit_mb=$WIRED_MB" >/dev/null              # 즉시 반영
+      sudo touch "$SYSCTL_CONF"                                               # 부팅 지속
+      if grep -q '^iogpu.wired_limit_mb=' "$SYSCTL_CONF"; then
+        sudo sed -i '' "s/^iogpu.wired_limit_mb=.*/iogpu.wired_limit_mb=$WIRED_MB/" "$SYSCTL_CONF"
+      else
+        echo "iogpu.wired_limit_mb=$WIRED_MB" | sudo tee -a "$SYSCTL_CONF" >/dev/null
+      fi
+      echo "gpu: 영구 적용 ($SYSCTL_CONF)"
+    else
+      echo "gpu: sudo 거부 - 한도를 올리지 못했다. 수동: sudo sysctl -w iogpu.wired_limit_mb=$WIRED_MB" >&2
+    fi
+  else
+    echo "gpu: iogpu.wired_limit_mb=$WIRED_MB (이미 적용됨)"
+  fi
+else
+  echo "gpu: ${RAM_GB}GB 호스트 - wired limit 기본값 유지(35B 미적재 티어)"
+fi
 
 # --- 서버 = GUI 앱 (DMG) -----------------------------------------------------------
 # 서버는 /Applications/oMLX.app 이 관리한다(메뉴바, `omlx start|stop|restart` 는 앱 제어 소켓을 두드린다).

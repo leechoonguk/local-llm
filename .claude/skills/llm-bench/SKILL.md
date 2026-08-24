@@ -35,17 +35,22 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 - 1단계(`bench-model`) 통과. 거기서 떨어진 모델은 여기서 한 시간을 쓸 자격이 없다.
 - `sandbox/` 준비: `sandbox/SANDBOX.md` 의 설치 절차(uv sync, npm install, `.env` 3개, decks build). `make db-init && make verify` 가 sandbox 에서 **git 없이** exit 0 이어야 한다 — 러너도 셀마다 이걸 baseline 으로 확인하고, 빨가면 `baseline not green` 으로 셀을 버린다.
 - 부모 저장소 기준 `sandbox/` 에 미커밋 변경이 없어야 한다(러너가 거부). 원복이 `git checkout -- sandbox && git clean -fdq sandbox` 라 변경이 있으면 지워진다. sandbox 안에 `.git` 이 있으면(예전 실행 잔재) 러너가 거부한다 — `rm -rf sandbox/.git`.
-- 모델 **단일 상주**. Ollama 는 러너가 `ollama stop` 한다. oMLX 는 `--restart-omlx` 로 셀 전에 서버를 재시작하거나, 사용자가 `~/.omlx` 로그 `total:` 이 모델 하나 크기인지 확인한다(CLAUDE.md 규칙 1).
+- **로컬 모델은 대상 모델만 상주해야 한다(러너가 보장·검증).** 세 겹이다:
+  1. **시작 격리** — `omlx/` 셀은 `omlx restart` 로 서버를 비우고, `ollama/` 셀은 다른 모델을 `ollama stop`. 이전 셀 잔재 제거.
+  2. **aux 역할 고정** — omp 의 `modelRoles.tiny/smol` 을 셀 동안 **실제 4B aux(`omlx/mlx-community--Qwen3.5-4B-4bit`)로 고정**한다(`--config` 오버레이 + `--smol`). 코더가 아니라 실사용 aux 로 고정하는 것 — 코더에 제목·메모리를 시키는 비현실적 구성이 아니라 실제 환경 그대로 잰다. **코더 설정(thinking·샘플링)은 불변**이고 `--model` 외 튜닝이 아니다.
+  3. **구성상 보장** — 위 두 겹으로, 셀 동안 로드될 수 있는 물리 모델은 {대상 코더, 그 `:mtp` 드래프터, 4B aux} 셋으로 한정된다(compaction 도 같은 계열 `:nothink`). 엉뚱한 코더가 상주할 수 없다. 검증이 아니라 **구성**이 보장한다 — 코더(23GB)+aux(4B)가 함께 들어가려면 `iogpu.wired_limit_mb`(RAM−8GB, `omlx/install.sh` 가 부팅 지속으로 설정)가 맞아야 한다.
+  4. **기록** — 러너가 상주를 실측해 행 `residency` 에 남긴다: oMLX `/health` 의 `loaded_count`·`current_model_memory`, Ollama `ollama ps`. `loaded_count` 가 예상(코더+드래프터+aux=1~3)을 벗어나면 `ok:false` 로 경고(재시작 실패·설정 누락 신호) → 재실행. 클라우드 모델은 `residency:null`.
 - thinking 조건을 **명시**한다. 3.6 은 `reasoning_effort` no-op → 무제한/`thinking_budget` 중 무엇인지, 3.8 은 값이 무엇인지 `omp/models.yml` 에서 확인해 결과 `.md` 조건 절에 적는다. 러너는 `--model` 외 플래그를 omp 에 주지 않는다 — 측정 대상은 "실제로 쓰는 설정"이다.
 
 ### 1. 실행
 ```bash
-node .claude/skills/llm-bench/runner.ts --dry-run                             # 세팅/채점/원복 점검(모델 없음)
+node .claude/skills/llm-bench/runner.ts --dry-run                             # 세팅/채점/원복 점검(모델 없음, 두 과제)
 node .claude/skills/llm-bench/runner.ts --model omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp --campaign omlx-3.6
-node .claude/skills/llm-bench/runner.ts --models a,b --campaign <name> --timeout 2700 [--restart-omlx]
-node .claude/skills/llm-bench/runner.ts --matrix                              # DEFAULT_MODELS
+node .claude/skills/llm-bench/runner.ts --models a,b --campaign <name> --timeout 2700
+node .claude/skills/llm-bench/runner.ts --matrix                              # DEFAULT_MODELS × 두 과제
 node .claude/skills/llm-bench/runner.ts --revert-only                         # 중단된 셀 뒤처리
 ```
+- **기본으로 두 과제(`integration` + `rest`)를 모두 돌린다** — `--task` 를 안 주면 둘 다. 한 과제만 재려면 `--task integration` 또는 `--task rest`. 모델당 두 셀이 같은 캠페인 `.json` 에 누적된다.
 - 셀당 45분 상한(실측 10~52분+). 상한 없이 매트릭스는 끝나지 않는다.
 - 셀 하나에 30~45분이므로 **백그라운드로 띄우고** 세션은 다른 일을 한다. 진행 중 sandbox 의 빨간 게이트는 측정 대상이다 — **고치지 않는다**(피험자의 작업 공간).
 - 피험자는 별도 OS 프로세스다. 서브에이전트로 돌리면 이 세션의 컨텍스트를 물려받고 모델 해석도 채점자 것이 된다.
@@ -59,7 +64,9 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 | `regressions` / `incomplete_failures` | FAIL 을 기존 도메인 파괴(회귀) vs 새 도메인 미완성으로 분리(휴리스틱, baseline 모델 목록 기준) |
 | `asserts_removed` | 테스트에서 지운 assert 수. 0 이어야 한다 — 커버리지 게이트는 이걸 못 본다 |
 | `omp_touched` | `sandbox/.omp`·Makefile 변경 수. 0 이어야 한다 — 훅을 고치면 게이트는 자명하게 초록 |
-| `writes`, `tools` | 세션 로그의 write/edit 수와 툴 종류별 횟수. write 0 이면 아무것도 안 한 것 |
+| `writes`, `tools` | 세션 로그의 write/edit 수와 툴 종류별 횟수 |
+| `no_work` | `writes===0` — 피험자가 아무것도 안 썼다. **게이트/산출물 수와 무관하게 실패다.** Mode A 는 부모 상태 잔여(바코드 삭제·테스트 되돌림) 때문에 `artifacts>0·gate 0` 으로 성공처럼 보일 수 있어 이 플래그로 가른다(실측: 3.8-oQ6) |
+| `residency` | 로컬 서빙 상주 상태. `single:true`(loaded_count 1)여야 유효 — `false`면 다른 모델이 같이 올라와 메모리 경합, 재실행. 클라우드 모델은 `null` |
 | `turns`, `toolCalls`, `loops`, `compactions`, `peak` | continuity 상태 |
 
 ### 3. 기록

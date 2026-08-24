@@ -82,6 +82,9 @@ const DEFAULT_MODELS = [
   "omlx/mlx-community--Qwen3.8-27B-nvfp4:mtp",
 ];
 
+/** aux(tiny/smol) 역할 고정 대상. 실사용 구성의 4B — 벤치도 이걸로 검증한다(omp/config.fragment.yml). */
+const AUX_MODEL = "omlx/mlx-community--Qwen3.5-4B-4bit";
+
 function sh(cmd: string, args: string[], cwd = SANDBOX, timeout = 900_000): { code: number; out: string } {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf-8", timeout });
   return { code: r.status ?? 1, out: `${r.stdout ?? ""}${r.stderr ?? ""}` };
@@ -167,14 +170,53 @@ function unloadOllama(): void {
   }
 }
 
-async function restartOmlx(): Promise<void> {
-  sh("brew", ["services", "restart", "jundot/omlx/omlx"], WORKSPACE, 120_000);
-  for (let i = 0; i < 60; i++) {
-    const r = sh("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", `${OMLX_URL}/v1/models`], WORKSPACE, 5_000);
-    if (r.out.trim() === "200") return;
-    await new Promise((res) => setTimeout(res, 2_000));
+/**
+ * oMLX 앱 서버가 준비됐는지 확인한다. **서버를 재시작하지 않는다** — `omlx start/restart` 는 brew services
+ * 또는 별도 headless 서버라 GUI 앱(oMLX.app)과 충돌하고 규칙 6 위반이며, 앱 서버는 CLI 로 재시작할 수 없다.
+ * 셀 간 모델 정리는 서버 재시작 대신 oMLX 자체 관리(메모리 가드 LRU 축출)에 맡기고, `residency()` 로 검증한다.
+ * (오MLX 는 단일 모델 언로드 API 를 노출하지 않는다 — 2026-08-25 실측: /unload·/eject 404.)
+ */
+function ensureServer(): void {
+  const code = sh("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", `${OMLX_URL}/v1/models`], WORKSPACE, 5_000).out.trim();
+  if (code !== "200") throw new Error(`oMLX 서버가 :9090 에 없다(http=${code}) — oMLX.app 메뉴바에서 Start 후 재실행`);
+  // 앱 관리 서버인지(부모가 oMLX.app) — brew/headless 서버면 측정 일관성이 깨지므로 경고.
+  const parent = sh("bash", ["-c", "p=$(pgrep -f omlx-server | head -1); [ -n \"$p\" ] && ps -o command= -p $(ps -o ppid= -p $p | tr -d ' ') 2>/dev/null"], WORKSPACE, 5_000).out;
+  if (parent && !/oMLX\.app/.test(parent)) console.error(`  !! oMLX 서버가 앱 관리가 아니다(부모: ${parent.trim().slice(0, 40)}) — 앱 메뉴바 서버로 검증할 것`);
+}
+
+/** omlx/ 접두사를 뗀 서버 모델 id (프로파일 포함): `omlx/mlx-…-5bit:mtp` → `mlx-…-5bit:mtp`. */
+const omlxId = (model: string): string => model.replace(/^omlx\//, "");
+
+function omlxHealth(): { loaded_count: number | null; current_model_memory: number | null; default_model: string | null } {
+  const out = sh("curl", ["-s", "--max-time", "5", `${OMLX_URL}/health`], WORKSPACE, 8_000).out;
+  try {
+    const h = JSON.parse(out) as { default_model?: string; engine_pool?: { loaded_count?: number; current_model_memory?: number } };
+    return { loaded_count: h.engine_pool?.loaded_count ?? null, current_model_memory: h.engine_pool?.current_model_memory ?? null, default_model: h.default_model ?? null };
+  } catch { return { loaded_count: null, current_model_memory: null, default_model: null }; }
+}
+
+/**
+ * 상주 기록/검증. 보장은 **구성상** 성립한다 — 셀마다 서버를 재시작(전체 언로드)하고, default=대상 코더,
+ * tiny/smol=4B aux 로 고정하며, compaction 은 같은 계열 :nothink 다. 그래서 로드될 수 있는 물리 모델은
+ * {대상 코더, 그 드래프터, 4B aux} 셋뿐이고 엉뚱한 코더는 못 뜬다. 여기서는 그 사실을 기록하고,
+ * 상주 수가 예상 범위(1~3)를 벗어나면 경고한다(재시작 실패·설정 누락의 신호). ok=false 면 재실행.
+ */
+function residency(model: string): Record<string, unknown> | null {
+  if (model.startsWith("omlx/")) {
+    const h = omlxHealth();
+    return {
+      server: "omlx", loaded_count: h.loaded_count, current_model_memory: h.current_model_memory,
+      coder: omlxId(model), aux: omlxId(AUX_MODEL), default_model: h.default_model,
+      ok: h.loaded_count === null ? null : h.loaded_count >= 1 && h.loaded_count <= 3,
+    };
   }
-  throw new Error("oMLX did not come back on :9090 within 120s");
+  if (model.startsWith("ollama/")) {
+    const coder = model.replace(/^ollama\//, "").replace(/:latest$/, "");
+    const lines = sh("ollama", ["ps"], WORKSPACE).out.trim().split("\n").slice(1).filter((l) => l.trim());
+    const loaded = lines.map((l) => l.trim().split(/\s+/)[0].replace(/:latest$/, ""));
+    return { server: "ollama", loaded_count: lines.length, loaded, coder, ps: lines, ok: loaded.includes(coder) && loaded.every((n) => n === coder || n === omlxId(AUX_MODEL)) };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------- 채점
@@ -279,11 +321,26 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     return row;
   }
 
-  if (model.startsWith("omlx/") && opts.restartOmlx) await restartOmlx();
+  // 로컬 모델: omlx 는 앱 서버 준비 확인(재시작 안 함 — oMLX 자체 LRU 축출 + residency 검증에 의존),
+  // ollama 는 다른 모델 stop. 대상만 상주하는지는 셀 종료 시 residency() 로 검사한다.
+  const local = model.startsWith("omlx/") || model.startsWith("ollama/");
+  if (model.startsWith("omlx/")) ensureServer();
   if (model.startsWith("ollama/")) unloadOllama();
 
+  // aux 역할 고정: tiny/smol 을 **실제 4B aux 모델**로 고정한다(코더가 아니다 — 실사용 구성으로 검증).
+  // 이렇게 하면 셀 동안 로드될 수 있는 물리 모델은 {대상 코더(--model), 그 :mtp 드래프터(같은 계열),
+  // 4B aux} 로 한정된다 — 깨끗한 재시작(위)과 합쳐 **구성상** 엉뚱한 코더가 상주할 수 없다.
+  // 코더 자체 설정(thinking·샘플링)은 불변. compaction 은 models.yml 에서 같은 계열 :nothink.
+  let overlayDir: string | null = null;
+  const extra: string[] = [];
+  if (local) {
+    overlayDir = mkdtempSync(join(tmpdir(), "llm-bench-cfg-"));
+    writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n`);
+    extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
+  }
+
   const started = Date.now();
-  const child = spawn("omp", ["-p", task.prompt(spec), "--model", model], { cwd: SANDBOX, stdio: "ignore", detached: true });
+  const child = spawn("omp", ["-p", task.prompt(spec), "--model", model, ...extra], { cwd: SANDBOX, stdio: "ignore", detached: true });
   let timedOut = false;
   const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };
   await new Promise<void>((resolveP) => {
@@ -296,13 +353,19 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   });
   const wall = Math.round((Date.now() - started) / 1000);
 
-  const ps = model.startsWith("ollama/") ? sh("ollama", ["ps"], WORKSPACE).out.trim().split("\n") : [];
+  const res = residency(model);
+  if (overlayDir) rmSync(overlayDir, { recursive: true, force: true });
+  if (res && res.ok === false) console.error(`  !! residency: loaded_count=${res.loaded_count} (예상 코더+4B aux) — 재시작/역할 고정 확인 후 재실행`);
   const row: Record<string, unknown> = {
     model, task: taskName, mode: task.mode, wall_s: wall, timed_out: timedOut,
-    ps: ps.length > 1 ? ps[ps.length - 1] : "",
+    residency: res,
     ...grade(task, models, snapshot),
     ...sessionMetrics(newestSessionAfter(started)),
   };
+  // writes 0 = 피험자가 아무것도 안 썼다. Mode A 는 부모 상태 잔여 산출물 때문에 artifacts>0·gate 0
+  // 으로 "성공처럼" 보일 수 있으니, 게이트와 무관하게 실패로 표시한다(no_work).
+  row.no_work = (row.writes ?? 0) === 0;
+  if (row.no_work) console.error(`  !! no_work: writes 0 — 피험자가 산출 없음(게이트/산출물 수와 무관하게 실패)`);
   rmSync(snapshot, { recursive: true, force: true });
   revert();
   console.log(`  -> ${row.artifacts}/${row.expected} artifacts, gate exit ${row.gate_exit} ` +

@@ -18,7 +18,7 @@ paths:
 - 본문은 H1 + 검사 가능한 문장. 사람에게만 유효한 문맥은 README 로.
 
 ## 훅 (`.claude/settings.json`)
-- `PreToolUse` `Bash` → `pre-bash.ts`(명령 위치에서 deny: brew services 로 Ollama/oMLX 기동, sudo, ollama pull, hf download, install.sh 실행). 문자열·heredoc 안의 같은 단어는 막지 않는다.
+- `PreToolUse` `Bash` → `pre-bash.ts`(명령 위치에서 deny: brew services 로 Ollama/oMLX 기동, sudo). 모델 다운로드(ollama pull·hf download·install.sh) deny 는 2026-08-25 제거(사용자 허용). 문자열·heredoc 안의 같은 단어는 막지 않는다.
 - `PreToolUse` `Edit|Write` → `pre-write.ts`(레이아웃: bench/ 플랫·파일명, hooks/ 는 .ts, rules/ 는 .md, sandbox/.omp 편집 금지).
 - `PostToolUse` `Edit|Write` → `post-edit.ts`(paths 매치 검사 실행 → 위반이면 exit 2 + stderr, 없으면 라이브 반영 알림).
 - 명령은 `node "$CLAUDE_PROJECT_DIR"/.claude/hooks/<file>.ts`, `timeout` 명시. `hooks/` 는 TypeScript 만(node 24+ 가 직접 실행, 의존성 없음). 블록 주석 안에 `*/` 가 들어가는 글롭(`pre-*/post-*`)을 쓰지 않는다 — 주석이 닫혀 파싱이 깨진다.

@@ -16,7 +16,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { type Check, type Issue, isMain, parseYaml, read, runCli } from "./lib/harness.ts";
+import { type Check, type Issue, isInstalled, isMain, parseYaml, read, runCli } from "./lib/harness.ts";
 import { modelfiles } from "./check-ollama-modelfile.ts";
 
 type Rec = Record<string, unknown>;
@@ -63,9 +63,9 @@ function checkOmp(root: string): Issue[] {
 // --- oMLX ------------------------------------------------------------------------
 function checkOmlx(root: string): Issue[] {
   const issues: Issue[] = [];
+  if (!isInstalled("omlx", "oMLX.app")) { notes.push("oMLX: 미설치(CLI·GUI 앱 모두 없음) — 건너뜀"); return issues; }
   const dir = join(homedir(), ".omlx");
-  if (!existsSync(dir)) { notes.push(`oMLX: ${dir} 없음 — 건너뜀(oMLX 미설치)`); return issues; }
-  if (!existsSync("/Applications/oMLX.app")) issues.push("oMLX: /Applications/oMLX.app 이 없다 — 서버는 GUI 앱이 관리한다(DMG: github.com/jundot/omlx/releases)");
+  if (!existsSync(dir)) { notes.push(`oMLX: ${dir} 없음 — 건너뜀(설정 미설치)`); return issues; }
   for (const f of ["model_settings.json", "model_profiles.json"]) {
     const src = jsonOf(read(root, `omlx/${f}`)), live = existsSync(join(dir, f)) ? jsonOf(readFileSync(join(dir, f), "utf-8")) : null;
     if (live === null) issues.push(`oMLX: ${dir}/${f} 이 없다 — cp omlx/${f} ${dir}/${f}`);
@@ -98,6 +98,7 @@ function checkOmlx(root: string): Issue[] {
 // --- Ollama ----------------------------------------------------------------------
 function checkOllama(root: string): Issue[] {
   const issues: Issue[] = [];
+  if (!isInstalled("ollama", "Ollama.app")) { notes.push("Ollama: 미설치(CLI·GUI 앱 모두 없음) — 건너뜀"); return issues; }
   const plist = join(homedir(), "Library", "LaunchAgents", "com.ollama.serve.plist");
   if (!existsSync(plist)) { notes.push("Ollama: LaunchAgent plist 없음 — 건너뜀(ollama/install.sh 미실행)"); return issues; }
   const p = readFileSync(plist, "utf-8");

@@ -36,6 +36,8 @@
 | [`2026-08-23.s2.ollama-manual.md`](2026-08-23.s2.ollama-manual.md) | 러너 이전 수동 8회. 3.6@auto 산포 극심, medium 고정으로 수렴. 3.8은 write 0 |
 | [`2026-08-24.s2.ollama-matrix.md`](2026-08-24.s2.ollama-matrix.md) | 무인 매트릭스 3모델×2과제, thinking medium → 3.6 integration 6/6 완주, qwen3-coder REST 12/13, 3.8 전부 타임아웃 |
 | [`2026-08-24.s2.omlx.md`](2026-08-24.s2.omlx.md) | oMLX 3.6 integration 6/6 16m40s(Ollama 19m 대비), REST 는 무제한 thinking 회귀 vs `thinking_budget` 회귀 0, 3.8 nvfp4 write 0 |
+| [`2026-08-24.s2.sonnet.md`](2026-08-24.s2.sonnet.md) | 러너 검증/상한. `claude-sonnet-4-6`(클라우드)로 sandbox rest 셀 완주 — 15/13, 게이트 초록, 회귀 0, 190 writes, 10분. 파이프라인 end-to-end 실증 |
+| [`2026-08-24.s2.qwen-recipe.md`](2026-08-24.s2.qwen-recipe.md) | 새 러너(단일 상주·aux 4B 고정)로 3.6:mtp(budget 5120) n=2 + oQ6:mtp n=1. 3.6 integration 2/2 게이트 초록, rest 1/2, 4런 전부 회귀 0(레시피 검증). oQ6 writes 0(배제) |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.

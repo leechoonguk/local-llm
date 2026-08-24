@@ -9,11 +9,22 @@
  *    훅 디스패처(post-edit.ts)가 import 해서 부르는 함수 호출. 어느 쪽이든 이슈는 문자열 배열이다.
  *  - 외부 의존성 없음. YAML 은 이 레포 파일이 쓰는 부분집합만 읽는 자체 파서로 처리한다.
  */
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export type Issue = string;
+
+/**
+ * 도구가 이 호스트에 설치돼 있나 — CLI(`which <cli>`) 또는 GUI(`/Applications/<app>`) 중 하나면 설치로 본다.
+ * ollama·oMLX 둘 다 CLI 모드와 GUI 앱 모드가 있어, plist·설정 디렉터리 유무 대신 이걸로 설치를 판정한다.
+ * 설치 안 된 도구의 라이브 검사는 이슈가 아니라 skip 이다.
+ */
+export function isInstalled(cli: string, app: string): boolean {
+  try { execFileSync("which", [cli], { stdio: ["ignore", "ignore", "ignore"] }); return true; } catch { /* CLI 없음 → GUI 확인 */ }
+  return existsSync(`/Applications/${app}`);
+}
 export type Check = { name: string; run: (root: string) => Issue[]; notes?: () => string[] };
 
 // --- 경로 ---------------------------------------------------------------------

@@ -6,7 +6,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 ## 환경 사실 (2026-08 기준)
 - 주 호스트: Mac mini M4 Pro 64GB (`hw.model Mac16,11`). 48GB 맥에서도 재현 가능해야 한다.
 - macOS GPU wired 한도 기본값은 RAM의 ~75%. 이걸 넘으면 Ollama가 레이어를 CPU로 내려 속도가 급락한다.
-  `install.sh`가 RAM별로 `iogpu.wired_limit_mb`를 올린다(48GB→40960, 64GB→57344). sudo가 필요하다.
+  `omlx/install.sh`가 RAM 티어별로 `iogpu.wired_limit_mb`를 올린다(48·64GB→RAM−8GB=40960/57344, 96GB+→RAM−12GB, 그 아래 유지) — 즉시 적용 + `/etc/sysctl.conf` 부팅 지속. sudo가 필요하다.
 - 35B-A3B(qwen35moe) 실측: 로드 직후 23GB(nvfp4), 창이 차면 +~10GB. 창 크기는 로드 메모리를 바꾸지 않는다(64K/128K/256K 모두 23GB).
 - nvfp4 태그는 Ollama의 MLX 경로(빠름, ~65 tok/s). HF GGUF(Q4/Q5)는 llama.cpp 경로(~42~49 tok/s). 모델 비교 시 포맷 차이를 속도 차이로 오해하지 말 것.
 - 모델 구성의 단일 진실은 `omp/models.yml` + `omp/config.fragment.yml`(omp 쪽), `omlx/model_settings.json` + `omlx/model_profiles.json`(oMLX 쪽). 라이브 사본은 각각 `~/.omp/agent/` 와 `~/.omlx/`.
@@ -15,7 +15,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 - oMLX 에서 MTP 를 죽이는 설정: 비중립 `repetition_penalty`/`presence_penalty`, `guided_grammar`. 프로파일 수정 시 중립값 유지.
 - oMLX thinking 분리에는 `reasoning_parser: qwen` 이 필수다(없으면 CoT 가 content 에 섞임). `--with-custom-kernel` 은 macOS 27 에서 brew 소스 빌드가 거부돼 실패한다(2026-08-24) — 표준 커널로 동작.
 - README "Thinking 제어"의 "low/medium/high는 Qwen에서 효과 없음"은 **Ollama 한정**이다. oMLX는 토크나이저 chat template을 그대로 태우고, Qwen3.8 템플릿은 `reasoning_effort`(유효값 `xhigh`/`medium`/`low`, `high`/`none` 아님)를 네이티브로 해석한다 — 실측 전 재차 확인할 것. 3.8은 `medium`을 서버쪽 기본값(`chat_template_kwargs`)으로 고정했다(2026-08-24). **3.6의 chat template에는 이 로직이 없다** — `reasoning_effort`를 보내도 조용히 무시된다(에러 없음). 3.6에서 thinking 길이를 줄이려면 `thinking_budget_enabled`/`thinking_budget_tokens`(생성 시점 프로세서, 템플릿 무관)를 쓸 것.
-- 3.8은 dense라 3.6(MoE, 활성 3B)보다 원천적으로 느리다 — 실측(2026-08-24, MTP on, 웜 디코드): 3.6 75~80 tok/s, 3.8 oQ6(6bit) 10.7 tok/s(~7.3배 느림), 3.8 nvfp4(4bit) 21.0 tok/s(~3.7배 느림, oQ6의 2배). nvfp4 쪽 수치는 2026-08-20 Ollama nvfp4 벤치(22~29 tok/s)와 같은 대역이라 oMLX 자체 결함이 아님을 교차 확인함. 둘 다 `omp/models.yml`·`omlx/model_settings.json`에 등록돼 있다 — 기본값은 아직 미정(oQ6=품질, nvfp4=속도).
+- 3.8은 dense라 3.6(MoE, 활성 3B)보다 원천적으로 느리다 — 실측(2026-08-24, MTP on, 웜 디코드): 3.6 75~80 tok/s, 3.8 oQ6(6bit) 10.7 tok/s(~7.3배 느림), 3.8 nvfp4(4bit) 21.0 tok/s(~3.7배 느림, oQ6의 2배). nvfp4 쪽 수치는 2026-08-20 Ollama nvfp4 벤치(22~29 tok/s)와 같은 대역이라 oMLX 자체 결함이 아님을 교차 확인함. **2026-08-25 제거**: s2 벤치(`bench/2026-08-24.s2.qwen-recipe.md`)에서 oQ6·nvfp4 둘 다 writes 0(무산출)로 실패해 캐시·`omp/models.yml`·`omlx/*.json`·`install.sh`에서 걷어냈다. 위 속도 실측치는 왜 뺐는지의 근거로 남긴다.
 - oMLX `memory_guard_tier` 는 `balanced` 대신 `safe` 로 강제한다(`omlx/install.sh`). `balanced`(RAM−6GB 정적 상한)가 이 레포의 `iogpu.wired_limit_mb` 티어보다 커서(64GB: 58GB > 56GB, 48GB: 42GB > 40GB) admin 대시보드가 계속 sysctl을 올리라는 배너를 띄운다 — 실사용 상한은 metal_cap이 커널 캡을 이미 접어 넣어 안전했지만(소스 확인), 커널 캡을 더 올리는 대신 oMLX 목표를 낮추는 쪽이 이식성 있다. `safe`(RAM−8GB)는 이 레포의 두 RAM 티어 모두에서 정확히 wired_limit_mb 값과 같아진다.
 - Ornith-1.5는 2026-08-23 검증 후 제외했다: 단발 벤치는 동률이었지만 장기 세션에서 느리고(3.5~4배) 분산이 컸다. 다시 제안하지 말 것.
 
@@ -26,7 +26,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 4. **Modelfile 파라미터**: `num_ctx`는 Modelfile로만 관리한다(`/v1` API는 요청에 실을 수 없음). omp `contextWindow`/`maxTokens`는 Modelfile `num_ctx`/`num_predict`와 같은 값이어야 한다(입력 상한 = num_ctx − num_predict). 샘플링은 모델 카드 권장값을 따르고 출처를 주석에 남긴다.
 5. **models.yml 의 두 provider는 합치지 않는다.** `ollama`(openai-responses, thinking on)와 `ollama-nothink`(openai-completions + `reasoning_effort: none`)는 omp 스키마 제약 때문에 나뉜 것이다. 사유는 파일 상단 주석 참고.
 6. **`brew services` 로 Ollama/oMLX 를 띄우지 않는다.** Ollama 는 레포 LaunchAgent(`com.ollama.serve`), oMLX 는 GUI 앱만 쓰고, 둘 다 자동 시작·자동 재시작(RunAtLoad/KeepAlive, 로그인 항목, oMLX `auto_start_on_launch`)은 꺼 둔다 — `make check-autostart`. 기동은 `launchctl kickstart -k`.
-7. **큰 다운로드(>10GB)와 sudo는 사용자가 직접.** pull 명령을 제시하고 기다린다. `install.sh` 실행도 sudo 프롬프트가 뜨므로 사용자에게 맡긴다.
+7. **sudo는 사용자가 직접.** sudo가 필요한 단계(예: `iogpu.wired_limit_mb`, `install.sh`의 sysctl)는 명령을 제시하고 기다린다. **모델 다운로드(`hf download`/`ollama pull`)는 에이전트가 직접 해도 된다**(2026-08-25 사용자 허용, `pre-bash` deny 제거). `install.sh` 전체 실행은 sudo를 포함하므로 여전히 사용자 몫이다.
 8. **커밋/푸시는 요청 시에만.** 커밋 메시지는 영어, 본문에 실측 근거를 한 줄 남긴다.
 9. **주석·README는 한국어**, 코드 식별자와 커밋 메시지는 영어. 기존 파일의 말투("~한다" 체)를 따른다.
 10. 실측으로 얻은 숫자(메모리, tok/s, 중단 토큰 수)는 README의 해당 표에 날짜와 함께 기록한다. 추정치는 "추정"이라고 쓴다.

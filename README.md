@@ -38,7 +38,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 | 코더 | `mlx-community/Qwen3.6-35B-A3B-5bit` (23.1GiB, HF 캐시로 다운로드) |
 | MTP 드래프터 | `mlx-community/Qwen3.6-35B-A3B-MTP-5bit` (0.6GiB, `qwen3_5_mtp` 타입) |
 | aux | `mlx-community/Qwen3.5-4B-4bit` (2.3GiB, thinking off) |
-| 무거운 추론 | `mlx-community/Qwen3.8-27B-oQ6` (21.7GiB, oMLX 네이티브 6bit 혼합정밀 — 3.8은 5bit 이 없어 oQ6 채택, 2026-08-24) + `Qwen3.8-27B-MTP-8bit` 드래프터 (0.4GiB). `:mtp`/`:nothink` 프로파일 동일 패턴, thinking effort 는 `medium` 고정(아래) |
+| ~~무거운 추론~~ | ~~`Qwen3.8-27B-oQ6`/`nvfp4`~~ — **2026-08-25 제거**(s2 벤치 writes 0 실패, `bench/2026-08-24.s2.qwen-recipe.md`). 아래 3.8 실측 절은 근거로 보존 |
 
 **3.8 thinking effort는 `medium`으로 고정한다 (2026-08-24).** 아래 "Thinking 제어" 절의
 "low/medium/high는 Qwen에서 효과 없음"은 **Ollama 한정 결론**이었다 — oMLX는 토크나이저의
@@ -115,7 +115,7 @@ seed로 다른 변수를 다 죽였는데 값이 바이트 단위로 같으면 �
 
 nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 연산/대역폭이 더 들어가는 게 dense 모델에서 그대로 드러난다(MoE인 3.6은 활성 파라미터가 3B뿐이라 이 효과가 훨씬 작다). 이 nvfp4 수치(21.0 tok/s)는 2026-08-20 Ollama 시절 벤치(22~29 tok/s, 같은 nvfp4)와도 같은 대역이라 oMLX 자체가 3.8을 유난히 느리게 만드는 건 아니라는 교차 확인이 된다 — **느림의 원인은 dense 27B 아키텍처 자체**(토큰당 27B 전부 활성, MoE 3.6은 3B)이고, oQ6는 거기에 양자화 비용까지 얹힌 것.
 
-`mlx-community--Qwen3.8-27B-nvfp4:mtp`/`:nothink`도 oQ6와 같은 패턴으로 등록해뒀다(`omp/models.yml`, `omlx/model_settings.json`) — 속도가 더 중요하면 oQ6 대신 이쪽을 무거운 추론용 기본으로 쓸 수 있다. 아직 결정은 안 함, 실사용 검증 전.
+`mlx-community--Qwen3.8-27B-nvfp4:mtp`/`:nothink`도 oQ6와 같은 패턴으로 등록했었으나, **2026-08-25 oQ6와 함께 제거**했다 — s2 벤치(`bench/2026-08-24.s2.qwen-recipe.md`)에서 dense 27B(oQ6·nvfp4)가 두 과제 모두 writes 0(무산출)으로 실패했다. 위 속도 실측치는 근거로 남긴다.
 | 프로파일 | `:mtp` = coder 레시피(131072/8192, temp 0.6/top_p 0.95/top_k 20/min_p 0) + MTP on + `thinking_budget` 5120(서버 기본값, 2026-08-24 REST 캠페인에서 무제한 대비 회귀 0 — `bench/2026-08-24.s2.omlx.md`; omp `extraBody` 와 같은 값) / `:nothink` = 동일 + thinking off(압축용) |
 | 설정 파일 | `omlx/model_settings.json`, `omlx/model_profiles.json` → `~/.omlx/` 로 설치 (`omlx/install.sh`). 전역 `~/.omlx/settings.json` 은 auth secret 이 있어 커밋하지 않는다 |
 | Ollama | `launchctl bootout` + `disable` (로그인 자동 시작 꺼짐). 복귀: `launchctl enable gui/$UID/com.ollama.serve && launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ollama.serve.plist && launchctl kickstart gui/$UID/com.ollama.serve` (템플릿이 RunAtLoad false 라 bootstrap 만으로는 뜨지 않는다) |
@@ -265,7 +265,7 @@ Qwen3.6/3.8은 기본 thinking ON. 실측(qwen3.6 nvfp4, 단순 코딩 질문):
 | `OLLAMA_KEEP_ALIVE` | 1h | 기본 5분이면 대화 사이에 모델이 내려가 매번 5~11초 재로드 |
 | `OLLAMA_NUM_PARALLEL` | 1 | 슬롯당 KV가 잡히므로 2→1로 64K ctx 기준 ~5GB 절약. 보조 요청은 thinking off라 직렬화돼도 0.4~1s |
 | `OLLAMA_MAX_LOADED_MODELS` | 2 (64GB+) / 1 (그 아래) | 코더 + 보조 모델 동시 상주. `install.sh`가 RAM을 보고 채운다 — 1이면 보조 호출마다 코더가 내려간다(왕복 5~10s). 27B는 여전히 쓸 때만 스왑 |
-| `iogpu.wired_limit_mb` (sysctl) | 48GB→40960, 64GB→57344, 96GB+→RAM−12GB, 그 아래 0(기본) | env가 아니라 macOS 커널 한도. 기본값(RAM의 ~75%)을 넘는 모델은 레이어가 CPU로 내려가 속도가 급락한다. `install.sh`가 RAM을 보고 즉시 적용 + `/etc/sysctl.conf`로 영구화(sudo). `OLLAMA_WIRED_LIMIT_MB`로 덮어쓸 수 있다 |
+| `iogpu.wired_limit_mb` (sysctl) | 48GB→40960, 64GB→57344, 96GB+→RAM−12GB, 그 아래 0(기본) | env가 아니라 macOS 커널 한도. 기본값(RAM의 ~75%)을 넘는 모델은 레이어가 CPU로 내려가 속도가 급락한다. `omlx/install.sh`(및 롤백용 `ollama/install.sh`)가 RAM 티어를 보고 즉시 적용 + `/etc/sysctl.conf`로 영구화(sudo, 거부 시 수동 명령 안내). |
 
 컨텍스트 길이는 env(`OLLAMA_CONTEXT_LENGTH`)가 아니라 Modelfile `num_ctx`로 관리한다. `/v1` OpenAI 호환 API는 `num_ctx`를 요청에 실을 수 없기 때문이다.
 
