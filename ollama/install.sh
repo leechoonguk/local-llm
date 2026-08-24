@@ -1,11 +1,18 @@
 #!/bin/bash
 # Ollama local LLM setup for Apple Silicon (Hermes Agent / oh-my-pi).
-# Idempotent: safe to re-run. Usage: ./ollama/install.sh [--with-27b]
+# Idempotent: safe to re-run. Usage: ./ollama/install.sh [--with-27b] [--with-qwen3-coder]
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 WITH_27B=0
-[[ "${1:-}" == "--with-27b" ]] && WITH_27B=1
+WITH_Q3C=0
+for arg in "$@"; do
+  case "$arg" in
+    --with-27b) WITH_27B=1 ;;
+    --with-qwen3-coder) WITH_Q3C=1 ;;   # 벤치 비교용 instruct 코더(REST 과제 12/13, bench/2026-08-24.s2.ollama-matrix.md)
+    *) echo "unknown option: $arg" >&2; exit 2 ;;
+  esac
+done
 
 # --- Host preconditions -----------------------------------------------------
 # MLX 태그(nvfp4/mxfp8)는 Apple Silicon에서만 동작한다. Intel 맥에서 이 스크립트를
@@ -90,6 +97,8 @@ fi
 pkill -f "ollama serve" 2>/dev/null || true
 sleep 1
 launchctl bootstrap "gui/$(id -u)" "$PLIST"
+# RunAtLoad/KeepAlive 가 꺼져 있어(자동 시작·재시작 금지) bootstrap 만으로는 뜨지 않는다 - 지금 한 번 명시적으로 띄운다.
+launchctl kickstart "gui/$(id -u)/$LABEL"
 for _ in $(seq 1 20); do
   curl -sf http://127.0.0.1:11434/api/version >/dev/null && break
   sleep 0.5
@@ -106,6 +115,10 @@ fi
 if [[ $WITH_27B -eq 1 ]]; then
   ollama pull qwen3.8:27b-nvfp4
   ollama create qwen3.8-coder -f "$HERE/Modelfile.qwen3.8-coder"
+fi
+if [[ $WITH_Q3C -eq 1 ]]; then
+  ollama pull qwen3-coder:30b
+  ollama create qwen3-coder -f "$HERE/Modelfile.qwen3-coder"
 fi
 
 # --- omp config -------------------------------------------------------------

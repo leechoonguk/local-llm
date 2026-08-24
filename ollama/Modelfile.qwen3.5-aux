@@ -1,6 +1,7 @@
 # qwen3.5-aux — Qwen3.5-4B NVFP4, 보조 작업 전용 (제목 생성, 메모리 질의, 사고강도 분류)
 # 창을 8K로 묶는다: 보조 작업은 짧고, KV를 코더(23GB)와 나눠 써야 한다.
 # thinking은 클라이언트가 요청마다 꺼야 한다 — Modelfile로는 끌 수 없다 (README 참고).
+# 샘플링 출처: Qwen3.5 모델 카드 thinking 모드 권장값(temp 0.6 / top_p 0.95 / top_k 20). thinking 은 클라이언트가 끄지만 값은 그대로 둔다.
 # Create: ollama create qwen3.5-aux -f ollama/Modelfile.qwen3.5-aux
 FROM qwen3.5:4b-nvfp4
 

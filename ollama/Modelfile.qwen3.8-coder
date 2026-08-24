@@ -1,10 +1,24 @@
 # qwen3.8-coder — Qwen3.8-27B dense NVFP4, for heavier reasoning (slower prefill ~90 tok/s on M4 Pro)
-# Same Qwen "precise coding" sampling. 32K context to allow co-residency with qwen3.6-coder on 64GB.
+# Same Qwen "precise coding" sampling as qwen3.6-coder — held identical on purpose so a
+# model-vs-model benchmark varies the model and nothing else.
+# 출처: Qwen 공식 thinking 모드 권장값(temp 0.6 / top_p 0.95 / top_k 20 / presence 0), Modelfile.qwen3.6-coder 와 동일.
 # Create: ollama create qwen3.8-coder -f ollama/Modelfile.qwen3.8-coder
 FROM qwen3.8:27b-nvfp4
 
-PARAMETER num_ctx 32768
-PARAMETER num_predict 32768
+# 창 131072 / 출력 8192 — coder 레시피(README "컨텍스트 레시피"), qwen3.6-coder와 동일.
+#  - 이전 값은 32768/32768이었고 co-residency(64GB에 3.6과 동시 상주)를 위해 고른 것이었다.
+#    그러나 fast-api-standard 통합 과제의 실측 수요가 58K~128K다(2026-08-23, Modelfile.qwen3.6-coder
+#    헤더). 32K는 과제가 창에 들어가지 않으므로, 그 창으로 잰 점수는 모델이 아니라 창을 잰 것이다.
+#  - num_predict가 num_ctx와 같으면 프롬프트 몫이 남지 않는다. 3.6에서 "창의 절반"조차 프롬프트
+#    32.7K 초과 시 거부를 일으켰다. 출력은 8192로 충분하다는 것도 같은 실측이다.
+#  - 메모리(2026-08-24 실측, ollama ps 로드 시점): 이 창에서 18GB. aux 4.2GB와 함께 22.2GB.
+#    48GB Mac의 Metal 기본 예산은 약 36GB(75%)이므로 코더 1개 + aux는 들어간다.
+#    들어가지 않는 것은 3.6(23GB)과 3.8(18GB)의 **동시 상주** 41GB다 — 이전 32K 설정이
+#    지키려던 것이 그 경우이고, 여기서는 포기한다. default는 코더 하나를 지목하고 압축은
+#    같은 슬롯(ollama-nothink/<동일 모델>)을 쓰므로 평상시 경로가 아니다. 세션 중
+#    모델 전환을 하면 48GB에서는 축출(eviction)이 일어난다.
+PARAMETER num_ctx 131072
+PARAMETER num_predict 8192
 PARAMETER temperature 0.6
 PARAMETER top_p 0.95
 PARAMETER top_k 20

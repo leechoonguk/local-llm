@@ -15,8 +15,9 @@
     <key>OLLAMA_NUM_PARALLEL</key><string>1</string>
     <key>OLLAMA_MAX_LOADED_MODELS</key><string>__MAX_LOADED_MODELS__</string>
   </dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
+  <!-- 자동 시작·자동 재시작 끔(check-autostart). 기동은 install.sh 의 kickstart 또는 launchctl kickstart -k. -->
+  <key>RunAtLoad</key><false/>
+  <key>KeepAlive</key><false/>
   <key>StandardOutPath</key><string>__HOME__/Library/Logs/ollama/ollama.log</string>
   <key>StandardErrorPath</key><string>__HOME__/Library/Logs/ollama/ollama.log</string>
 </dict>
