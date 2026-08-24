@@ -34,7 +34,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 
 | 항목 | 값 |
 |---|---|
-| 서버 | 레포 LaunchAgent `com.local-llm.omlx`(`omlx/install.sh` 가 설치, RunAtLoad/KeepAlive 꺼짐) — 기동 `launchctl kickstart -k gui/$(id -u)/com.local-llm.omlx`, 중지 `launchctl kill TERM …`, 로그 `~/Library/Logs/omlx/omlx.log`. brew services 는 KeepAlive 라 쓰지 않는다(`make check-autostart`), 포트 9090 (8000 은 FastAPI 등 개발 서버와 충돌해 이전, 2026-08-24) |
+| 서버 | GUI 앱 `/Applications/oMLX.app`(DMG, 2026-08-25) — 메뉴바 Start/Stop 또는 `omlx start|stop|restart`. brew services(KeepAlive)·LaunchAgent 는 쓰지 않는다(`make check-autostart`), 포트 9090 (8000 은 FastAPI 등 개발 서버와 충돌해 이전, 2026-08-24) |
 | 코더 | `mlx-community/Qwen3.6-35B-A3B-5bit` (23.1GiB, HF 캐시로 다운로드) |
 | MTP 드래프터 | `mlx-community/Qwen3.6-35B-A3B-MTP-5bit` (0.6GiB, `qwen3_5_mtp` 타입) |
 | aux | `mlx-community/Qwen3.5-4B-4bit` (2.3GiB, thinking off) |
@@ -513,10 +513,9 @@ sandbox/                           # 2단계 피험자 트리 — fast-api-stand
   skills/bench-model, llm-bench, add-model  # 1단계 단발 벤치 / 2단계 장기 세션 벤치(runner.ts, tasks/, reference/) / 모델 추가
 CLAUDE.md                          # Claude 작업 규칙과 환경 사실
 omlx/
-  install.sh                       # oMLX 설치 + 모델 다운로드 + 설정 동기화 (멱등)
+  install.sh                       # hf 모델 다운로드 + ~/.omlx 설정 동기화 + 서비스 잔재 정리 + 앱 서버 재시작 (멱등, 앱은 DMG 로 먼저)
   model_settings.json              # 모델별 설정(창/샘플링/MTP) → ~/.omlx/ 로 설치
   model_profiles.json              # :mtp / :nothink 프로파일 → ~/.omlx/ 로 설치
-  com.local-llm.omlx.plist.template # oMLX LaunchAgent (자동 시작·재시작 꺼짐) → LaunchAgents 에 설치
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치
   config.fragment.yml              # config.yml 에 병합할 조각 (덮어쓰지 않음)

@@ -3,13 +3,13 @@
  *
  * 규칙: .claude/rules/autostart.md
  *  레포 쪽(항상):
- *  - ollama/com.ollama.serve.plist.template, omlx/com.local-llm.omlx.plist.template: RunAtLoad·KeepAlive 가 false
+ *  - ollama/com.ollama.serve.plist.template: RunAtLoad·KeepAlive 가 false. oMLX 는 LaunchAgent 를 두지 않는다(GUI 앱이 서버 관리)
  *  - ollama/install.sh, omlx/install.sh: `brew services start|restart|run` 없음. omlx/install.sh 는
  *    settings.json 의 auto_start_on_launch 를 False 로 쓴다
  *  라이브 쪽(미설치는 skip):
  *  - `brew services list` 에서 ollama·omlx 가 started/scheduled 가 아니다
- *  - ~/Library/LaunchAgents 에 homebrew.mxcl.(ollama|omlx).plist 가 없고, com.ollama.serve / com.local-llm.omlx
- *    plist 는 RunAtLoad·KeepAlive 가 false 이거나 launchctl 에서 disabled 다
+ *  - ~/Library/LaunchAgents 에 homebrew.mxcl.(ollama|omlx).plist, 예전 com.local-llm.omlx.plist 가 없고,
+ *    com.ollama.serve.plist 는 RunAtLoad·KeepAlive 가 false 이거나 launchctl 에서 disabled 다
  *  - /Library/LaunchAgents, /Library/LaunchDaemons 에 ollama/omlx 항목이 없다
  *  - 로그인 항목(System Events)에 Ollama/oMLX 앱이 없다(권한이 없으면 skip)
  *  - ~/.omlx/settings.json server.auto_start_on_launch === false (키가 없으면 oMLX 기본값 true → 위반)
@@ -21,10 +21,7 @@ import { join } from "node:path";
 import { type Check, type Issue, isMain, read, runCli } from "./lib/harness.ts";
 
 export const notes: string[] = [];
-const AGENTS = [
-  { label: "com.ollama.serve", what: "Ollama" },
-  { label: "com.local-llm.omlx", what: "oMLX" },
-];
+const AGENTS = [{ label: "com.ollama.serve", what: "Ollama" }];
 
 export function run(root: string): Issue[] {
   notes.length = 0;
@@ -33,7 +30,8 @@ export function run(root: string): Issue[] {
 
 function checkRepo(root: string): Issue[] {
   const issues: Issue[] = [];
-  for (const rel of ["ollama/com.ollama.serve.plist.template", "omlx/com.local-llm.omlx.plist.template"]) {
+  if (read(root, "omlx/com.local-llm.omlx.plist.template") !== null) issues.push("omlx/com.local-llm.omlx.plist.template: oMLX 는 GUI 앱이 서버를 관리한다 — LaunchAgent 템플릿을 두지 않는다");
+  for (const rel of ["ollama/com.ollama.serve.plist.template"]) {
     const t = read(root, rel);
     if (t === null) { issues.push(`${rel} 가 없다`); continue; }
     for (const k of ["RunAtLoad", "KeepAlive"]) if (plistBool(t, k) !== false) issues.push(`${rel}: <key>${k}</key> 는 <false/> 여야 한다(자동 시작·재시작 금지)`);
@@ -66,6 +64,7 @@ function checkLive(): Issue[] {
   if (existsSync(la)) {
     for (const f of readdirSync(la)) {
       if (/^homebrew\.mxcl\.(ollama|omlx)\.plist$/.test(f)) issues.push(`${la}/${f} 가 있다 — brew services 서비스 잔재, 제거할 것`);
+      if (f === "com.local-llm.omlx.plist") issues.push(`${la}/${f} 가 있다 — 예전 레포 LaunchAgent 잔재(앱과 포트 충돌), launchctl bootout 후 제거할 것`);
     }
     let disabled = "";
     try { disabled = execFileSync("launchctl", ["print-disabled", `gui/${uid}`], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }); } catch { /* 읽기 실패 시 plist 값만 본다 */ }

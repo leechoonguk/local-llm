@@ -28,7 +28,7 @@ check-skills: ## .claude/skills/*/SKILL.md 프런트매터·CLAUDE.md 등재
 check-harness: ## 하네스 자기 검증 (규칙↔검사↔Makefile↔settings.json, 훅 스모크)
 	node .claude/hooks/check-harness.ts
 
-check-live-sync: ## 레포 설정 ↔ 라이브 시스템 (~/.omp/agent, ~/.omlx, Ollama LaunchAgent·모델). 미설치 시스템은 skip
+check-live-sync: ## 레포 설정 ↔ 라이브 시스템 (~/.omp/agent, ~/.omlx·oMLX.app, Ollama LaunchAgent·모델). 미설치 시스템은 skip
 	node .claude/hooks/check-live-sync.ts
 
 check-autostart: ## Ollama·oMLX 자동 시작/재시작이 둘 다 꺼져 있는지 (템플릿·install.sh·brew services·launchd·로그인 항목·oMLX 설정)

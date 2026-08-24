@@ -65,10 +65,11 @@ function checkOmlx(root: string): Issue[] {
   const issues: Issue[] = [];
   const dir = join(homedir(), ".omlx");
   if (!existsSync(dir)) { notes.push(`oMLX: ${dir} 없음 — 건너뜀(oMLX 미설치)`); return issues; }
+  if (!existsSync("/Applications/oMLX.app")) issues.push("oMLX: /Applications/oMLX.app 이 없다 — 서버는 GUI 앱이 관리한다(DMG: github.com/jundot/omlx/releases)");
   for (const f of ["model_settings.json", "model_profiles.json"]) {
     const src = jsonOf(read(root, `omlx/${f}`)), live = existsSync(join(dir, f)) ? jsonOf(readFileSync(join(dir, f), "utf-8")) : null;
     if (live === null) issues.push(`oMLX: ${dir}/${f} 이 없다 — cp omlx/${f} ${dir}/${f}`);
-    else if (canon(src) !== canon(live)) issues.push(`oMLX: ${dir}/${f} 이 omlx/${f} 과 다르다 — cp omlx/${f} ${dir}/${f} 후 launchctl kickstart -k gui/$(id -u)/com.local-llm.omlx`);
+    else if (canon(src) !== canon(live)) issues.push(`oMLX: ${dir}/${f} 이 omlx/${f} 과 다르다 — cp omlx/${f} ${dir}/${f} 후 omlx restart (메뉴바 앱)`);
   }
   const settings = existsSync(join(dir, "settings.json")) ? jsonOf(readFileSync(join(dir, "settings.json"), "utf-8")) : null;
   const install = read(root, "omlx/install.sh") ?? "";
@@ -103,8 +104,6 @@ function checkOllama(root: string): Issue[] {
   if (/__HOME__|__MAX_LOADED_MODELS__/.test(p)) issues.push(`Ollama: ${plist} 에 치환되지 않은 자리표시자가 있다 — ollama/install.sh 로 다시 설치`);
   if (!/OLLAMA_MAX_LOADED_MODELS/.test(p)) issues.push(`Ollama: ${plist} 에 OLLAMA_MAX_LOADED_MODELS 가 없다`);
 
-  const omlxPlist = join(homedir(), "Library", "LaunchAgents", "com.local-llm.omlx.plist");
-  if (existsSync(join(homedir(), ".omlx")) && !existsSync(omlxPlist)) issues.push(`oMLX: ${omlxPlist} 이 없다 — 사용자가 omlx/install.sh 를 실행해 brew 서비스를 레포 LaunchAgent 로 바꿀 것`);
   const mfs = modelfiles(root);
   const tags = api("/api/tags");
   if (tags === null) { notes.push("Ollama: 127.0.0.1:11434 응답 없음 — 모델 파라미터 비교 건너뜀(서버가 내려가 있음, oMLX 전환 후 정상)"); return issues; }

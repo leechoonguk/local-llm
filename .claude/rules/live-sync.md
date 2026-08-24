@@ -14,10 +14,10 @@ paths:
 |---|---|---|
 | `omp/models.yml` | `$(omp config path)/models.yml` (기본 `~/.omp/agent`) | `cp` — 바이트 동일. 다른 provider 가 있으면 `providers` 아래로 병합 |
 | `omp/config.fragment.yml` | 같은 곳 `config.yml` | `modelRoles.default/tiny`, `defaultThinkingLevel` 줄만 손으로 |
-| `omlx/model_settings.json`, `model_profiles.json` | `~/.omlx/` | `cp` 후 `launchctl kickstart -k gui/$(id -u)/com.local-llm.omlx`, `~/Library/Logs/omlx/omlx.log` 의 `total:` 로 단일 상주 확인 |
+| `omlx/model_settings.json`, `model_profiles.json` | `~/.omlx/` | `cp` 후 `omlx restart`(메뉴바 앱이 서버 관리), 로그 `total:` 로 단일 상주 확인 |
 | `omlx/install.sh` 의 settings 값 | `~/.omlx/settings.json` `server.port`, `memory.memory_guard_tier`, `cache.hot_cache_max_size` | `omlx/install.sh` 의 python 블록 |
 | `omlx/model_settings.json` 의 모델·드래프터 | `~/.cache/huggingface/hub/models--<name>` | 다운로드는 사용자가 직접(`omlx/install.sh`) |
-| `omlx/com.local-llm.omlx.plist.template` | `~/Library/LaunchAgents/com.local-llm.omlx.plist` | 사용자가 `omlx/install.sh` (brew 서비스는 내린다) |
+| (oMLX 서버) | `/Applications/oMLX.app` | 사용자가 DMG 설치. brew 서비스·예전 LaunchAgent 는 `omlx/install.sh` 가 걷어낸다 |
 | `ollama/com.ollama.serve.plist.template` | `~/Library/LaunchAgents/com.ollama.serve.plist` (자리표시자 치환됨) | 사용자가 `ollama/install.sh` |
 | `ollama/Modelfile.<name>` | `ollama show <name>` 의 parameters | `ollama create <name> -f ollama/Modelfile.<name>` — 서버(127.0.0.1:11434)가 떠 있을 때만 비교, 내려가 있으면 skip |
 

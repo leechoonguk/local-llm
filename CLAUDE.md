@@ -10,7 +10,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 - 35B-A3B(qwen35moe) 실측: 로드 직후 23GB(nvfp4), 창이 차면 +~10GB. 창 크기는 로드 메모리를 바꾸지 않는다(64K/128K/256K 모두 23GB).
 - nvfp4 태그는 Ollama의 MLX 경로(빠름, ~65 tok/s). HF GGUF(Q4/Q5)는 llama.cpp 경로(~42~49 tok/s). 모델 비교 시 포맷 차이를 속도 차이로 오해하지 말 것.
 - 모델 구성의 단일 진실은 `omp/models.yml` + `omp/config.fragment.yml`(omp 쪽), `omlx/model_settings.json` + `omlx/model_profiles.json`(oMLX 쪽). 라이브 사본은 각각 `~/.omp/agent/` 와 `~/.omlx/`.
-- 2026-08-24 부로 서빙을 oMLX(brew `jundot/omlx`, 포트 9090)로 전환했다(사용자 결정, 장기 세션 검증 전). 서버는 레포 LaunchAgent `com.local-llm.omlx`(RunAtLoad/KeepAlive 꺼짐)를 `launchctl kickstart` 로 손으로 띄운다 — brew services 아님. Ollama LaunchAgent 는 `launchctl disable` 상태로 남아 있다 — 롤백 절차는 README "oMLX 전환" 표.
+- 2026-08-24 부로 서빙을 oMLX(brew `jundot/omlx`, 포트 9090)로 전환했다(사용자 결정, 장기 세션 검증 전). 서버는 GUI 앱(`/Applications/oMLX.app`, DMG)이 관리하고 `omlx start|stop|restart`(앱 셔틀 `~/.omlx/bin/omlx`)로 제어한다 — brew services·LaunchAgent 아님(2026-08-25). brew 포뮬러는 `hf` CLI 용. Ollama LaunchAgent 는 `launchctl disable` 상태로 남아 있다 — 롤백 절차는 README "oMLX 전환" 표.
 - 기본 코더: `omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp` (창 131072 / 출력 8192 — README "컨텍스트 레시피" 실측, MTP 드래프터 페어링). 보조: `omlx/mlx-community--Qwen3.5-4B-4bit` (thinking off).
 - oMLX 에서 MTP 를 죽이는 설정: 비중립 `repetition_penalty`/`presence_penalty`, `guided_grammar`. 프로파일 수정 시 중립값 유지.
 - oMLX thinking 분리에는 `reasoning_parser: qwen` 이 필수다(없으면 CoT 가 content 에 섞임). `--with-custom-kernel` 은 macOS 27 에서 brew 소스 빌드가 거부돼 실패한다(2026-08-24) — 표준 커널로 동작.
@@ -25,7 +25,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 3. **새 모델 추가는 `/add-model` 절차대로** 5곳을 한 번에 맞춘다: Modelfile, install.sh, models.yml, config.fragment.yml, README. 라이브 `~/.omp/agent/`도 동기화한다(`make check-live-sync` 가 어긋난 곳과 명령을 알려준다).
 4. **Modelfile 파라미터**: `num_ctx`는 Modelfile로만 관리한다(`/v1` API는 요청에 실을 수 없음). omp `contextWindow`/`maxTokens`는 Modelfile `num_ctx`/`num_predict`와 같은 값이어야 한다(입력 상한 = num_ctx − num_predict). 샘플링은 모델 카드 권장값을 따르고 출처를 주석에 남긴다.
 5. **models.yml 의 두 provider는 합치지 않는다.** `ollama`(openai-responses, thinking on)와 `ollama-nothink`(openai-completions + `reasoning_effort: none`)는 omp 스키마 제약 때문에 나뉜 것이다. 사유는 파일 상단 주석 참고.
-6. **`brew services` 로 Ollama/oMLX 를 띄우지 않는다.** 레포 LaunchAgent(`com.ollama.serve`, `com.local-llm.omlx`)만 쓰고, 둘 다 자동 시작·자동 재시작(RunAtLoad/KeepAlive, oMLX `auto_start_on_launch`)은 꺼 둔다 — `make check-autostart`. 기동은 `launchctl kickstart -k`.
+6. **`brew services` 로 Ollama/oMLX 를 띄우지 않는다.** Ollama 는 레포 LaunchAgent(`com.ollama.serve`), oMLX 는 GUI 앱만 쓰고, 둘 다 자동 시작·자동 재시작(RunAtLoad/KeepAlive, 로그인 항목, oMLX `auto_start_on_launch`)은 꺼 둔다 — `make check-autostart`. 기동은 `launchctl kickstart -k`.
 7. **큰 다운로드(>10GB)와 sudo는 사용자가 직접.** pull 명령을 제시하고 기다린다. `install.sh` 실행도 sudo 프롬프트가 뜨므로 사용자에게 맡긴다.
 8. **커밋/푸시는 요청 시에만.** 커밋 메시지는 영어, 본문에 실측 근거를 한 줄 남긴다.
 9. **주석·README는 한국어**, 코드 식별자와 커밋 메시지는 영어. 기존 파일의 말투("~한다" 체)를 따른다.
