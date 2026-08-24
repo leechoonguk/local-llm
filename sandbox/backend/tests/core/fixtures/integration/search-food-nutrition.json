@@ -1,0 +1,58 @@
+{
+  "why": "One measured page of the nutrition service. Every input travels in the query string, the window is caller-supplied (no hidden default), and the secret is the issued key.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 100,
+    "food_name": "김치"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE."
+      },
+      "body": {
+        "pageNo": 1,
+        "numOfRows": 100,
+        "items": [
+          {
+            "NUM": "1",
+            "FOOD_CD": "D000001",
+            "FOOD_NM_KR": "김치찌개",
+            "AMT_NUM6": "12.5",
+            "AMT_NUM3": "8.0",
+            "AMT_NUM4": "5.5",
+            "AMT_NUM13": "600"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/1471000/FoodNtrCpntDbInfo02/getFoodNtrCpntDbInq02",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1",
+      "numOfRows": "100",
+      "type": "json",
+      "FOOD_NM_KR": "김치"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "row_no": "1",
+        "food_code": "D000001",
+        "food_name": "김치찌개",
+        "protein_g": "8.0",
+        "fat_g": "5.5",
+        "carbohydrate_g": "12.5",
+        "sodium_mg": "600"
+      }
+    ],
+    "metadata": {}
+  }
+}

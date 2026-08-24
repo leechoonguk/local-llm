@@ -1,0 +1,11 @@
+id: audit-write-endpoint
+valid:
+  - |
+    @router.get("/")
+    async def list_audit(current_user: CurrentUserDep) -> list[AuditReadResponse]:
+        return []
+invalid:
+  - |
+    @router.post("/")
+    async def create_audit(current_user: CurrentUserDep) -> AuditReadResponse:
+        return AuditReadResponse()

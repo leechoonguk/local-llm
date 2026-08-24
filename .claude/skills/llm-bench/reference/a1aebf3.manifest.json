@@ -1,0 +1,13 @@
+{
+  "source": "fast-api-standard a1aebf3 — feat(integration): add the 바코드연계 품목정보 API (I2570)",
+  "added": [
+    "api/integration.search-barcode-item-info.http",
+    "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+    "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+    "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "modified": [
+    "backend/tests/core/test_integration_external_api.py",
+    "backend/tests/core/test_seed_api_actor.py"
+  ]
+}

@@ -1,0 +1,13 @@
+id: infra-ownership-missing
+valid:
+  - |
+    async def delete_batch(self, batch_id: UUID, current_user: User) -> None:
+        batch = await self.batch_repository.get(batch_id)
+        if batch.created_by == current_user.username:
+            await self.batch_repository.delete(batch)
+        raise ForbiddenError(batch_id)
+invalid:
+  - |
+    async def delete_batch(self, batch_id: UUID, current_user: User) -> None:
+        batch = await self.batch_repository.get(batch_id)
+        await self.batch_repository.delete(batch)

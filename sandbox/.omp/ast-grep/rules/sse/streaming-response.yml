@@ -1,0 +1,11 @@
+id: infra-sse-streaming-response
+language: python
+# A raw streaming response leaves the SSE framing to the caller: no event
+# delimiters, no reconnect id, no keep-alive. `EventSourceResponse` is the
+# protocol; `StreamingResponse` is only the transport.
+rule:
+  kind: call
+  pattern: StreamingResponse($$$ARGS)
+owns:
+  - "StreamingResponse"
+message: "SSE must use EventSourceResponse (fastapi.sse) — not raw StreamingResponse"

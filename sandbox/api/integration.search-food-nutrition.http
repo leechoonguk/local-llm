@@ -1,0 +1,211 @@
+### Integration · search-food-nutrition API — 외부 API 실행 (식품안전나라 FoodNtrCpntDbInfo02)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           CALLER 소스 REQUEST 필드 9개를 블록 하나씩 전부 호출한다 — 시드에 있는
+###           입력을 한 번도 보내보지 않으면 그 필드는 검증된 적이 없다.
+###           page_no/num_of_rows는 required CALLER다: 기본값이 없으므로 모든 실행
+###           블록이 창(window)을 명시한다 (59_replace_mfds_integration_field).
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(20_replace_mfds_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = bdbbe05a-4966-523b-83f8-fa28606f402c
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. food_name — 200 (CALLER 필드: 식품명, wire FOOD_NM_KR)
+# response_root=/body/items — 매핑이 유일한 응답 계약이다 (61_replace_mfds_integration_operation)
+#   → canonical_payload는 요청한 페이지 전체이고, 레코드마다 우리 키로 매핑된다:
+#     provider 컬럼 193개가 RESPONSE 필드 행 193개로 선언되어 있다 (62_replace_…_field)
+#   → 각 행의 wire_path는 페이지 원소 기준 상대 포인터다 (/FOOD_NM_KR, /AMT_NUM1 …)
+#   → 키는 와이어 이름이 아니라 시트의 설명에서 나온다: AMT_NUM1 → energy_kcal,
+#     AMT_NUM13 → sodium_mg. 단위가 접미사다 (kcal/g/mg/ug/pct)
+#   → 설명은 행마다 있다: `make db-query q="SELECT key, description FROM integration_field"`
+# 요청 파라미터 11개 중 필수는 service_key(SECRET) + page_no/num_of_rows(CALLER)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치",
+    "page_no": 1,
+    "num_of_rows": 100
+  }
+}
+
+### 3. research_ymd — 200 (CALLER 필드: 데이터생성일자, wire RESEARCH_YMD)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "research_ymd": "2017-12-31",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 4. maker_name — 200 (CALLER 필드: 업체명, wire MAKER_NM)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "maker_name": "씨제이제일제당",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 5. category_major_name — 200 (CALLER 필드: 식품대분류명, wire FOOD_CAT1_NM)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "category_major_name": "밥류",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 6. item_report_no — 200 (CALLER 필드: 품목제조보고번호, wire ITEM_REPORT_NO)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "item_report_no": "19760342001155",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 7. update_date — 200 (CALLER 필드: 데이터수정일자, wire UPDATE_DATE)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "update_date": "2025-01-23",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 8. item_class_name — 200 (CALLER 필드: 품목대표/상용제품, wire DB_CLASS_NM)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "item_class_name": "품목대표",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 9. page_no — 200 (CALLER 필드: 페이지 번호, wire pageNo — 창을 옮긴다)
+# 같은 num_of_rows=3으로 page_no만 바꾸면 다른 레코드가 온다:
+#   page 1 → 김밥_김치 … 만두_김치만두, page 2 → 김치국 … 김치전골
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치",
+    "page_no": 2,
+    "num_of_rows": 3
+  }
+}
+
+### 10. num_of_rows — 200 (CALLER 필드: 한 페이지 결과수, wire numOfRows — 창의 크기)
+# response_root=/body/items 이므로 배열 길이가 곧 num_of_rows다: 10을 요청하면 10건,
+# 각 원소는 193개 RESPONSE 행으로 매핑된 우리 키를 가진다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치",
+    "page_no": 1,
+    "num_of_rows": 10
+  }
+}
+
+### 11. 외부 API 실행 — 422 (paging 누락 — 기본값이 없다)
+# page_no/num_of_rows는 required CALLER이고 폴백이 없다: 필드의 값으로도,
+# provider 기본값으로도 대체되지 않는다 → integration_input_invalid.
+# 말하지 않은 창은 계약이 아니다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치"
+  }
+}
+
+### 12. 외부 API 실행 — 200 (범위를 벗어난 페이지 — 빈 페이지)
+# 측정: 마지막 페이지 이후 provider는 resultCode 00 + totalCount 유지 + items 키 생략.
+# 선언된 페이지에는 빈 상태가 있으므로 매핑할 원소가 없으면 빈 배열이다 — provider가
+# "행 없음"이라고 말한 것을 업스트림 실패로 뒤집지 않는다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치",
+    "page_no": 9999,
+    "num_of_rows": 3
+  }
+}
+
+### 13. 외부 API 실행 — 200 (CALLER 필터 7개 동시 — 조건이 겹쳐 레코드가 없다, 빈 페이지)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치",
+    "research_ymd": "2017-12-31",
+    "maker_name": "씨제이제일제당",
+    "category_major_name": "밥류",
+    "item_report_no": "19760342001155",
+    "update_date": "2025-01-23",
+    "item_class_name": "품목대표",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 14. 외부 API 실행 — 404 (없는 provider — operation 코드는 유효하다)
+POST {{base}}/integration/{{missingId}}/operations/search-food-nutrition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "food_name": "김치",
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}

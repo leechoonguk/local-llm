@@ -1,0 +1,6 @@
+# Local environment (do not commit)
+.env
+
+# Runtime harness state: per-session extension state (<session>.<owner>.json)
+# and the post-hook crash log (hook-crash.log)
+.omp/state/

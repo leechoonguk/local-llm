@@ -1,0 +1,12 @@
+# `expect: present` rule — `invalid:` holds the required shape (a match),
+# `valid:` holds code missing it.
+id: session-from-engine
+valid:
+  - |
+    async def cleanup(session: AsyncSession) -> int:
+        return 0
+invalid:
+  - |
+    async def cleanup() -> int:
+        async with AsyncSession(engine) as session:
+            return 0

@@ -1,0 +1,238 @@
+### Integration API — 외부 API 설정(4테이블)과 실행
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider + 시드 계정)
+### 순차 실행: 2번이 만든 임시 provider는 10번이, 6번이 만든 시크릿은 8번이 지운다.
+###           계정은 만들지 않는다 — 행위자 계정의 생성·삭제는 api/auth.http 하나가 담당한다.
+###           시드 provider({{seededProviderId}})는 이 파일이 절대 지우지 않는다.
+###           실행이 끝나면 DB는 실행 전과 같다 (make db-init 상태 유지).
+###           code에 {{$guid}}를 쓴다 — {{$timestamp}}는 초 단위라 같은 초에
+###           재실행하면 unique 충돌(409)이 난다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(20_replace_mfds_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = bdbbe05a-4966-523b-83f8-fa28606f402c
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+# 체이닝 변수는 요청 블록 밖에 둔다 — 바디 뒤에 두면 REST Client가 JSON에 붙여 보내 422가 된다
+@integrationId = {{createIntegration.response.body.id}}
+
+# 스키마 요약 (4 테이블)
+#   integration_provider — code / display_name / base_url / enabled
+#   integration_secret   — provider 소유 명명 시크릿. 읽기 응답은 value를 반환하지 않는다
+#   integration_operation— transport + response_root(없으면 레코드 1건, 있으면 그 페이지의 모든 원소)
+#   integration_field    — direction(REQUEST|RESPONSE)으로 요청/응답 필드를 통합
+#     REQUEST : key=호출자 입력명, wire_path=와이어명, value_source=CALLER|LITERAL|SECRET|CONTEXT
+#     RESPONSE: key=정규 결과 키, wire_path=JSON Pointer
+#     시크릿은 secret_name으로 참조하고 값은 integration_secret에만 존재한다
+
+### 1. 로그인 — 200 (공용 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. provider 생성 — 201 (임시 provider — 시크릿 1개 + 이를 참조하는 REQUEST 필드)
+# @name createIntegration
+POST {{base}}/integration/
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "code": "throwaway-{{$guid}}",
+  "display_name": "Throwaway Partner API",
+  "base_url": "https://partner.example.com",
+  "secrets": [
+    {
+      "name": "partner-api-key",
+      "value": "issued-key",
+      "description": "파트너 발급 인증키"
+    }
+  ],
+  "operations": [
+    {
+      "code": "lookup-item",
+      "method": "GET",
+      "path_template": "/v1/items/{item_id}",
+      "connect_timeout_ms": 1000,
+      "read_timeout_ms": 2000,
+      "max_retries": 1,
+      "retry_base_ms": 100,
+      "retry_max_ms": 500,
+      "idempotent": true,
+      "fields": [
+        {
+          "direction": "REQUEST",
+          "location": "PATH",
+          "key": "item_id",
+          "wire_path": "item_id",
+          "value_source": "CALLER",
+          "value_type": "STRING",
+          "required": true,
+          "description": "조회할 아이템 식별자"
+        },
+        {
+          "direction": "REQUEST",
+          "location": "HEADER",
+          "key": "api_key",
+          "wire_path": "x-api-key",
+          "value_source": "SECRET",
+          "secret_name": "partner-api-key",
+          "value_type": "STRING",
+          "required": true,
+          "sensitive": true,
+          "ordinal": 1,
+          "description": "파트너 인증키 (integration_secret에서 해석)"
+        },
+        {
+          "direction": "RESPONSE",
+          "location": "BODY",
+          "key": "item_name",
+          "wire_path": "/data/name",
+          "value_type": "STRING",
+          "required": true,
+          "description": "아이템 이름"
+        }
+      ]
+    },
+    {
+      "code": "list-items",
+      "method": "GET",
+      "path_template": "/v1/items",
+      "response_root": "/data/items",
+      "connect_timeout_ms": 1000,
+      "read_timeout_ms": 2000,
+      "max_retries": 1,
+      "retry_base_ms": 100,
+      "retry_max_ms": 500,
+      "idempotent": true,
+      "fields": [
+        {
+          "direction": "REQUEST",
+          "location": "HEADER",
+          "key": "api_key",
+          "wire_path": "x-api-key",
+          "value_source": "SECRET",
+          "secret_name": "partner-api-key",
+          "value_type": "STRING",
+          "required": true,
+          "sensitive": true,
+          "description": "파트너 인증키 (integration_secret에서 해석)"
+        },
+        {
+          "direction": "RESPONSE",
+          "location": "BODY",
+          "key": "item_name",
+          "wire_path": "/name",
+          "value_type": "STRING",
+          "required": true,
+          "description": "아이템 이름 — 포인터는 /data/items 원소 기준 상대 경로다"
+        },
+        {
+          "direction": "REQUEST",
+          "location": "PATH_QUERY",
+          "key": "product_name",
+          "wire_path": "PRDLST_NM",
+          "value_source": "CALLER",
+          "value_type": "STRING",
+          "required": false,
+          "ordinal": 1,
+          "description": "제품명 필터 — 쿼리스트링이 아니라 경로 세그먼트로 실린다"
+        },
+        {
+          "direction": "RESPONSE",
+          "location": "ENVELOPE",
+          "key": "result_code",
+          "wire_path": "/data/RESULT/CODE",
+          "value_type": "STRING",
+          "required": true,
+          "match_mode": "ONE_OF",
+          "expected_values": ["INFO-000", "INFO-200"],
+          "description": "봉투 판정 — 이 값이 아니면 응답을 거부한다 (HTTP 200이어도)"
+        },
+        {
+          "direction": "RESPONSE",
+          "location": "ENVELOPE",
+          "key": "total_count",
+          "wire_path": "/data/total_count",
+          "value_type": "STRING",
+          "required": false,
+          "ordinal": 1,
+          "description": "전체 건수 — 판정이 아니므로 metadata로 실린다"
+        }
+      ]
+    }
+  ]
+}
+
+
+### 3. provider 목록 — 200 (시드 provider와 2번이 만든 provider가 함께 보인다)
+GET {{base}}/integration/?offset=0&limit=100
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 4. provider 단건 조회 — 200 (secrets[]에 value가 없고, fields[]가 통합 필드다)
+GET {{base}}/integration/{{integrationId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 5. provider 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
+PUT {{base}}/integration/{{integrationId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "display_name": "Throwaway Partner API v2",
+  "enabled": true
+}
+
+### 6. 시크릿 등록 — 201 (value는 write-only — 응답에 포함되지 않는다)
+POST {{base}}/integration/{{integrationId}}/secrets
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "reporting-key",
+  "value": "second-key",
+  "description": "리포팅 전용 키"
+}
+
+### 7. 시크릿 목록 — 200 (name/description/enabled만 — value 없음, 페이지네이션 적용)
+GET {{base}}/integration/{{integrationId}}/secrets?offset=0&limit=100
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 8. 시크릿 삭제 — 200 (6번이 만든 미참조 시크릿)
+DELETE {{base}}/integration/{{integrationId}}/secrets/reporting-key
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 9. 시크릿 삭제 — 409 (2번 REQUEST 필드가 참조 중 — FK ON DELETE RESTRICT)
+DELETE {{base}}/integration/{{integrationId}}/secrets/partner-api-key
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 10. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
+DELETE {{base}}/integration/{{integrationId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 11. provider 단건 조회 — 404 (10번 삭제가 실제로 반영됐음을 증명한다)
+GET {{base}}/integration/{{integrationId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 12. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
+POST {{base}}/integration/
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "code": "invalid-{{$guid}}",
+  "display_name": "Invalid",
+  "base_url": "http://partner.example.com",
+  "operations": []
+}
+
+### 13. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+GET {{base}}/integration/?offset=0&limit=100
+
+### 14. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
+POST {{base}}/integration/{{seededProviderId}}/operations/missing-operation/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {}
+}

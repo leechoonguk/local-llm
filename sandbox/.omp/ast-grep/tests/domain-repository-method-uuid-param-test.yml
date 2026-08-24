@@ -1,0 +1,9 @@
+id: repository-method-uuid-param
+valid:
+  - |
+    async def get(self, batch_id: UUID) -> Batch | None:
+        return None
+invalid:
+  - |
+    async def get(self, batch_id: str) -> Batch | None:
+        return None

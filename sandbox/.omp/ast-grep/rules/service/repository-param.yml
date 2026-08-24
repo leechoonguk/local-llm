@@ -1,0 +1,8 @@
+id: repository-param
+language: python
+# With two injected repositories, `self.repository` no longer says which table a
+# line touches. The domain prefix keeps that visible where it is read.
+rule:
+  kind: class_definition
+  regex: "self\\.repository"
+message: "service internals must use domain-prefixed repository names (self.item_repository, self.user_repository) — a bare `self.repository` can't distinguish multiple injected repositories"

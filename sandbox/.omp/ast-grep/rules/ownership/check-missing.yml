@@ -1,0 +1,26 @@
+id: infra-ownership-missing
+language: python
+# Structural, not textual: a function whose parameter list carries current_user
+# must contain an ownership comparison or a ForbiddenError raise somewhere in its
+# body. `has ... stopBy: end` searches the whole subtree, so nesting (an if inside
+# a with inside a try) cannot hide the check the way an anchored regex could.
+rule:
+  kind: function_definition
+  all:
+    - has:
+        kind: parameters
+        has:
+          pattern: current_user
+          stopBy: end
+    - not:
+        has:
+          any:
+            - pattern: $A.created_by == $B
+            - pattern: $A == $B.created_by
+            - pattern: created_by == $B
+            - pattern: raise ForbiddenError($$$ARGS)
+          stopBy: end
+owns:
+  - "created_by\\s*=="
+  - "ForbiddenError"
+message: "service method takes current_user but has no ownership check (created_by == current_user)"

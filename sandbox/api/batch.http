@@ -1,0 +1,80 @@
+### Batch API — 5계층 CRUD 표준 도메인
+### 전제: backend 서버 실행 중 (cd backend && make dev) + 시드 계정 적용 (`make db-init`)
+### 순차 실행: 1번부터 아래로 그대로 실행한다. 2번이 만든 batch는 6번이 지운다.
+###           계정은 만들지 않는다 — 행위자 계정의 생성·삭제는 api/auth.http 하나가 담당하고,
+###           나머지 파일은 공용 계정으로 로그인만 한다(파일마다 계정을 만들면 같은 초에
+###           재실행할 때 username이 충돌해 1번 블록부터 409가 난다).
+###           실행이 끝나면 DB는 실행 전과 같다. id는 손으로 넣지 않는다 — 모두 응답에서 이어받는다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 체이닝 변수는 요청 블록 밖에 둔다 — 바디 뒤에 두면 REST Client가 JSON에 붙여 보내 422가 된다
+@batchId = {{createBatch.response.body.id}}
+
+### 1. 로그인 — 200 (공용 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. Batch 생성 — 201 (이후 블록이 쓰는 id를 만든다)
+# @name createBatch
+POST {{base}}/batch/
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "batch-{{$timestamp}}",
+  "description": "created by api/batch.http"
+}
+
+
+### 3. Batch 목록 — 200 (2번이 만든 항목이 포함된다)
+GET {{base}}/batch/?offset=0&limit=100
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 4. Batch 단건 조회 — 200 (version=1)
+GET {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 5. Batch 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
+PUT {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "batch-updated-{{$timestamp}}",
+  "description": "updated by api/batch.http"
+}
+
+### 6. Batch 삭제 — 200 ({"ok": true})
+DELETE {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 7. Batch 단건 조회 — 404 (6번 삭제가 실제로 반영됐음을 증명한다)
+GET {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 8. Batch 수정 — 404 (없는 리소스 수정)
+PUT {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "name": "ghost"
+}
+
+### 9. Batch 삭제 — 404 (없는 리소스 삭제)
+DELETE {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 10. Batch 생성 — 422 (필수 필드 name 누락)
+POST {{base}}/batch/
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "description": "missing name"
+}
+
+### 11. Batch 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+GET {{base}}/batch/?offset=0&limit=100

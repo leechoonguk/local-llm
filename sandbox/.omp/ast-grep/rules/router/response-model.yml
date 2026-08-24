@@ -1,0 +1,9 @@
+id: router-response-model
+language: python
+# Two declarations of the same shape drift apart: `response_model` wins at
+# runtime while the annotation is what a reader and the type checker believe.
+# The annotation alone drives FastAPI (SonarQube S8409).
+rule:
+  kind: decorated_definition
+  regex: "@router\\.(get|post|put|delete)\\([^)]*response_model"
+message: "response_model is redundant — the return type annotation drives FastAPI's response model (SonarQube S8409); remove response_model"

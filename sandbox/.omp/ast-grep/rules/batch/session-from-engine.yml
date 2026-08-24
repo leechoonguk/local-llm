@@ -1,0 +1,10 @@
+id: session-from-engine
+language: python
+expect: present
+# A job runs outside the request lifecycle, so there is no session to inject.
+# Opening one from the engine is what bounds the job's transaction; taking a
+# session from DI would tie the job to a request that does not exist.
+rule:
+  kind: with_statement
+  regex: "async with AsyncSession\\(engine\\) as session:"
+message: "batch job must create its session via async with AsyncSession(engine) as session: — never receive session from DI"

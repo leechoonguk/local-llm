@@ -1,0 +1,9 @@
+id: layering-repository-import
+valid:
+  - |
+    from app.dependencies.services import UserServiceDep
+invalid:
+  - |
+    from app.repositories.user import UserRepository
+  - |
+    from app.repositories import user

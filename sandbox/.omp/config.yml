@@ -1,0 +1,5 @@
+# Project-local OMP settings.
+# See `omp://settings.md` for the full catalog and precedence rules.
+
+bashInterceptor:
+  enabled: true

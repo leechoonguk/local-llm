@@ -1,0 +1,90 @@
+### User API — 계정 CRUD (username/email은 unique)
+### 전제: backend 서버 실행 중 (cd backend && make dev) + 시드 계정 적용 (`make db-init`)
+### 순차 실행: 1번이 공용 계정으로 로그인하고, 2번이 만든 대상 계정을 7번이 지운다.
+###           행위자 계정 자체의 생성·삭제는 api/auth.http 하나가 담당한다.
+###           실행이 끝나면 DB는 실행 전과 같다.
+###           username/email에 {{$guid}}를 쓴다 — {{$timestamp}}는 초 단위라 같은 초에
+###           재실행하면 unique 충돌(409)이 난다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 체이닝 변수는 요청 블록 밖에 둔다 — 바디 뒤에 두면 REST Client가 JSON에 붙여 보내 422가 된다
+@userId = {{createUser.response.body.id}}
+
+### 1. 로그인 — 200 (공용 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. User 생성 — 201 (CRUD 대상 계정 — 이후 블록이 쓰는 id를 만든다)
+# @name createUser
+POST {{base}}/user/
+Content-Type: application/json
+
+{
+  "username": "user-{{$guid}}",
+  "email": "user-{{$guid}}@example.com",
+  "password": "secret"
+}
+
+
+### 3. User 목록 — 200 (공용 계정과 2번 계정이 함께 보인다)
+GET {{base}}/user/?offset=0&limit=100
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 4. User 단건 조회 — 200 (hashed_password는 응답에 없다)
+GET {{base}}/user/{{userId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 5. User 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
+# @name updateUser
+PUT {{base}}/user/{{userId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "username": "user-updated-{{$guid}}"
+}
+
+### 6. User 생성 — 409 (5번이 바꾼 username을 그대로 재사용 — 삭제 전에 실행해야 한다)
+POST {{base}}/user/
+Content-Type: application/json
+
+{
+  "username": "{{updateUser.response.body.username}}",
+  "email": "duplicate-{{$guid}}@example.com",
+  "password": "secret"
+}
+
+### 7. User 삭제 — 200 ({"ok": true})
+DELETE {{base}}/user/{{userId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 8. User 단건 조회 — 404 (7번 삭제가 실제로 반영됐음을 증명한다)
+GET {{base}}/user/{{userId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 9. User 수정 — 404 (없는 리소스 수정)
+PUT {{base}}/user/{{userId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "username": "ghost"
+}
+
+### 10. User 삭제 — 404 (없는 리소스 삭제)
+DELETE {{base}}/user/{{userId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 11. User 생성 — 422 (필수 필드 password 누락 — email은 str이라 형식 검증이 없다)
+POST {{base}}/user/
+Content-Type: application/json
+
+{
+  "username": "invalid-{{$guid}}",
+  "email": "invalid-{{$guid}}@example.com"
+}
+
+### 12. User 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+GET {{base}}/user/?offset=0&limit=100

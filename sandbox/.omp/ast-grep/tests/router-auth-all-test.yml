@@ -1,0 +1,11 @@
+id: auth-all
+valid:
+  - |
+    @router.get("/")
+    async def list_batches(current_user: CurrentUserDep) -> list[BatchReadResponse]:
+        return []
+invalid:
+  - |
+    @router.get("/")
+    async def list_batches(batch_service: BatchServiceDep) -> list[BatchReadResponse]:
+        return []

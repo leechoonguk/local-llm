@@ -1,0 +1,12 @@
+id: infra-upload-no-size-guard
+valid:
+  - |
+    async def upload(file: UploadFile) -> None:
+        if file.size > MAX_SIZE:
+            raise ValidationError(file.filename)
+        if file.content_type not in ALLOWED:
+            raise ValidationError(file.filename)
+invalid:
+  - |
+    async def upload(file: UploadFile) -> None:
+        await store(file)

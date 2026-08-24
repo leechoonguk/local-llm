@@ -1,0 +1,10 @@
+id: current-user-router-only
+valid:
+  - |
+    @router.get("/")
+    async def list_batches(current_user: CurrentUserDep) -> list[BatchReadResponse]:
+        return []
+invalid:
+  - |
+    async def helper(current_user: CurrentUserDep) -> None:
+        return None

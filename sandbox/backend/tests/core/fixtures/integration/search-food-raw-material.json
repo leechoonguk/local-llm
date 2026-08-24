@@ -1,0 +1,76 @@
+{
+  "why": "One measured page of the 식품 원재료 코드 service (I2520): two filters on one path, and the query string stays empty because the provider ignores it.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3,
+    "raw_material_name": "김치",
+    "changed_from": "20240101"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I2520": {
+        "total_count": "86",
+        "row": [
+          {
+            "RAWMTRL_CD": "A5000122007714",
+            "RAWMTRL_LCLAS_NM": "식품원료(A코드)",
+            "RAWMTRL_MLSFC_NM": "미생물",
+            "RPRSNT_RAWMTRL_NM": "김치유산균배양액",
+            "RAWMTRL_NCKNM": "",
+            "ENG_NM": "",
+            "SCNM": "",
+            "REGN_CD": "00",
+            "REGN_CD_NM": "-",
+            "PRCSS_PROCS_CD": "77",
+            "PRCSS_PROCS_CD_NM": "배양",
+            "RAWMTRL_STATS_CD": "14",
+            "RAWMTRL_STATS_CD_NM": "액",
+            "VALD_BGN_DT": "20150603",
+            "VALD_END_DT": "20150605",
+            "USE_YN": "N",
+            "LAST_UPDT_DTM": "2016-01-11 21:00:00.0"
+          }
+        ],
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I2520/json/1/3/RPRSNT_RAWMTRL_NM=김치&CHNG_DT=20240101",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "raw_material_code": "A5000122007714",
+        "raw_material_large_class": "식품원료(A코드)",
+        "raw_material_medium_class": "미생물",
+        "representative_raw_material_name": "김치유산균배양액",
+        "raw_material_alias": "",
+        "english_name": "",
+        "scientific_name": "",
+        "region_code": "00",
+        "region_code_name": "-",
+        "process_code": "77",
+        "process_code_name": "배양",
+        "raw_material_status_code": "14",
+        "raw_material_status_code_name": "액",
+        "valid_start_date": "20150603",
+        "valid_end_date": "20150605",
+        "use_yn": "N",
+        "last_update_datetime": "2016-01-11 21:00:00.0"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "86"
+    }
+  }
+}

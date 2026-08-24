@@ -1,0 +1,23 @@
+# qwen3-coder — Qwen3-Coder-30B-A3B-Instruct (MoE, qwen3moe, 30.5B) Q4_K_M
+# Create: ollama create qwen3-coder -f ollama/Modelfile.qwen3-coder
+FROM qwen3-coder:30b
+
+# 창 131072 / 출력 8192 — coder 레시피(README "컨텍스트 레시피"), 형제들과 동일.
+# 베이스는 262144 를 지원하지만 fast-api-standard 통합 과제의 실측 수요가 58K~128K이고
+# (Modelfile.qwen3.6-coder 헤더), 256K 는 창의 27%만 쓰면서 시간만 1.8배였다.
+PARAMETER num_ctx 131072
+PARAMETER num_predict 8192
+
+# 샘플링은 **베이스가 싣고 온 값을 그대로 둔다** — 형제 두 모델(0.6 / 0.95)과 다르다.
+#  - 0.6/top_p 0.95 는 Qwen 의 *thinking 모드* "precise coding" 권장치다. 이 모델은
+#    thinking capability 자체가 없는 Instruct 라(ollama show: completion, tools) 그 레시피의
+#    전제가 성립하지 않는다.
+#  - 여기 값은 Qwen 이 Qwen3-Coder-30B-A3B 에 대해 공표한 권장치이고, 베이스 이미지가
+#    이미 그렇게 싣고 있다: temperature 0.7 / top_p 0.8 / top_k 20 / repeat_penalty 1.05.
+#    출처: Qwen3-Coder 모델 카드(ollama.com/SimonPu/Qwen3-Coder, HF Qwen/Qwen3-Coder-*).
+#  - 형제와 맞추겠다고 덮으면 "권장 설정이 아닌 모델"을 재게 된다. 모델 대 모델 비교에서
+#    통제해야 할 것은 창과 출력이지, 각 모델의 권장 샘플링이 아니다.
+PARAMETER temperature 0.7
+PARAMETER top_p 0.8
+PARAMETER top_k 20
+PARAMETER repeat_penalty 1.05

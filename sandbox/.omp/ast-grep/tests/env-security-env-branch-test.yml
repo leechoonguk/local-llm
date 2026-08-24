@@ -1,0 +1,9 @@
+id: env-branch-security
+valid:
+  - |
+    if settings.seed_api_actor:
+        seed()
+invalid:
+  - |
+    if settings.env == "production":
+        verify_token(token)

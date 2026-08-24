@@ -1,0 +1,15 @@
+id: batch-service-constructor
+language: python
+expect: present
+# A job has no request, therefore no dependency injection. Constructing the
+# service from the session it just opened is what keeps a job's transaction
+# boundary identical to a request's.
+rule:
+  kind: call
+  pattern: $SERVICE($SESSION)
+constraints:
+  SERVICE:
+    regex: "\\w+Service$"
+  SESSION:
+    regex: "^session$"
+message: "batch job must construct service via Service(session)"

@@ -1,0 +1,11 @@
+id: infra-asyncio-create-task
+language: python
+# A raw task is unowned: nothing awaits it, exceptions vanish into the event
+# loop, and a shutdown cancels it mid-write. BackgroundTasks ties the work to the
+# request that started it, so failures are logged and shutdown waits.
+rule:
+  kind: call
+  pattern: asyncio.create_task($$$ARGS)
+owns:
+  - "asyncio.create_task"
+message: "raw asyncio.create_task in routers — use BackgroundTasks"

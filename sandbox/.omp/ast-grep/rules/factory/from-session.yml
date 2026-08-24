@@ -1,0 +1,11 @@
+id: layering-from-session-factory
+language: python
+# A `from_session` factory builds its own dependency graph at the call site, so
+# two callers get two different graphs and neither is the one dependency
+# injection wired. Construction stays in app/dependencies/.
+rule:
+  any:
+    - kind: function_definition
+      regex: "^(async )?def from_session\\("
+    - pattern: $CLASS.from_session($$ARGS)
+message: "from_session factories are forbidden — construct services through app/dependencies/ (backend-domain.md)"

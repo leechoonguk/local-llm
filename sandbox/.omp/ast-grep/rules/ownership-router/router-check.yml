@@ -1,0 +1,10 @@
+id: ownership-router-check
+language: python
+# An ownership comparison in a router is a rule the service does not know it
+# has: a batch job, another service, or a second endpoint reaches the same data
+# without it. The check belongs where the data is loaded.
+rule:
+  any:
+    - pattern: $A.created_by == $B
+    - pattern: $A == $B.created_by
+message: "ownership checks belong in the service that loads the row, not in a router (backend-ownership.md)"

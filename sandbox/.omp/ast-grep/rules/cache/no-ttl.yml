@@ -1,0 +1,10 @@
+id: infra-cache-no-ttl
+language: python
+# A write without an expiry keeps a stale value until the next deploy: the row
+# it mirrors changes, the cache does not, and no invalidation path covers a key
+# nobody remembers writing.
+rule:
+  pattern: await $CLIENT.set($$$ARGS)
+  not:
+    regex: "\\bex\\s*="
+message: "cache writes must set a TTL (ex=...)"

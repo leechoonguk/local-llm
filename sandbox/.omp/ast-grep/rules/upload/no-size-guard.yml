@@ -1,0 +1,31 @@
+id: infra-upload-no-size-guard
+language: python
+# Structural: a handler that accepts an UploadFile parameter must reference both
+# a size bound and the content type somewhere in its body. `has ... stopBy: end`
+# walks the whole subtree, so a guard inside a nested block still counts.
+rule:
+  kind: function_definition
+  all:
+    - has:
+        kind: parameters
+        has:
+          pattern: UploadFile
+          stopBy: end
+    - not:
+        has:
+          any:
+            - pattern: MAX_SIZE
+            - pattern: $A.max_size
+            - pattern: $A.size
+          stopBy: end
+    - not:
+        has:
+          any:
+            - pattern: ALLOWED
+            - pattern: $A.content_type
+          stopBy: end
+owns:
+  - "max_size"
+  - "MAX_SIZE"
+  - "content_type"
+message: "UploadFile must have a size limit and content-type allowlist check"

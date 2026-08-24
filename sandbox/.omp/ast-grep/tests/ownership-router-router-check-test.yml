@@ -1,0 +1,10 @@
+id: ownership-router-check
+valid:
+  - |
+    @router.get("/{item_id}")
+    async def get_item(item_id: UUID, item_service: ItemServiceDep, current_user: CurrentUserDep) -> ItemReadResponse:
+        return to_read(await item_service.get_item(item_id, current_user))
+invalid:
+  - |
+    if item.created_by == current_user.username:
+        return item

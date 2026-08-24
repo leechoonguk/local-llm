@@ -1,0 +1,13 @@
+id: current-user-router-only
+language: python
+# Identity enters at the edge. A service that injects `CurrentUserDep` cannot be
+# called by a batch job or another service, and it hides that a caller's identity
+# reached that far down. Routers are decorated; nothing else is.
+rule:
+  kind: function_definition
+  regex: "current_user: CurrentUserDep"
+  not:
+    inside:
+      kind: decorated_definition
+      stopBy: end
+message: "current_user: CurrentUserDep must only be injected in router endpoints (decorated functions)"

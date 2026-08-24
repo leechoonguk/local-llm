@@ -1,0 +1,9 @@
+id: batch-job-async
+valid:
+  - |
+    async def cleanup_batches() -> int:
+        return 0
+invalid:
+  - |
+    def cleanup_batches() -> int:
+        return 0

@@ -1,0 +1,11 @@
+id: service-transaction-write-only
+valid:
+  - |
+    async def create_batch(self, data: BatchCreateRequest) -> Batch:
+        async with self.session.begin():
+            return await self.batch_repository.create(data)
+invalid:
+  - |
+    async def get_batch(self, batch_id: UUID) -> Batch:
+        async with self.session.begin():
+            return await self.batch_repository.get(batch_id)

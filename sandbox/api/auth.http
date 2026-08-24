@@ -1,0 +1,45 @@
+### Auth API — JWT 로그인과 현재 사용자
+### 전제: backend 서버 실행 중 (cd backend && make dev). 시드 계정(`make db-init`)은 쓰지 않는다
+### 순차 실행: 이 파일만 계정 생애주기를 갖는다 — 1번이 만들고, 2번이 로그인하고, 6번이 지운다.
+###           signup → login → delete 자체가 auth의 계약이므로 여기서만 검증한다.
+###           나머지 도메인 파일은 계정을 만들지 않고 시드 계정으로 로그인만 한다.
+###           실행이 끝나면 DB는 실행 전과 같다 (make db-init 상태 유지).
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 체이닝 변수는 요청 블록 밖에 둔다 — 바디 뒤에 두면 REST Client가 JSON에 붙여 보내 422가 된다
+@actorId = {{createActor.response.body.id}}
+
+### 1. 행위자 계정 생성 — 201 (username에 {{$guid}} — 같은 초에 재실행해도 충돌하지 않는다)
+# @name createActor
+POST {{base}}/user/
+Content-Type: application/json
+
+{
+  "username": "auth-actor-{{$guid}}",
+  "email": "auth-actor-{{$guid}}@example.com",
+  "password": "secret"
+}
+
+
+### 2. 로그인 — 200 (1번이 만든 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username={{createActor.response.body.username}}&password=secret
+
+### 3. 로그인 — 401 (비밀번호 불일치)
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username={{createActor.response.body.username}}&password=wrong
+
+### 4. 내 정보 — 200 (토큰의 주체가 1번 계정임을 확인한다)
+GET {{base}}/auth/me
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 5. 내 정보 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+GET {{base}}/auth/me
+
+### 6. 행위자 계정 삭제 — 200 (마지막 블록 — 이후에는 토큰이 필요한 요청이 없다)
+DELETE {{base}}/user/{{actorId}}
+Authorization: Bearer {{login.response.body.access_token}}

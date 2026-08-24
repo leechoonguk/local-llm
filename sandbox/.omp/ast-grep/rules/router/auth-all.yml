@@ -1,0 +1,17 @@
+id: auth-all
+language: python
+# Authentication is the default, not an addition. An endpoint that forgets
+# `CurrentUserDep` is publicly readable, and nothing in the code says whether
+# that was intended — so the three public paths are named here, and only those.
+rule:
+  kind: decorated_definition
+  regex: "@router\\.(get|post|put|delete)\\("
+  not:
+    any:
+      - regex: "current_user: CurrentUserDep"
+      - regex: "async def login\\("
+      - regex: "async def create_user\\("
+      - all:
+          - regex: "@router\\.get\\(\"\"\\)"
+          - regex: "async def health\\("
+message: "all endpoints must require authentication (current_user: CurrentUserDep) — only POST /auth/login, POST /user/, and GET /health are public"

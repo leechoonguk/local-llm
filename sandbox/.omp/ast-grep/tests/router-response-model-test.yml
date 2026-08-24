@@ -1,0 +1,11 @@
+id: router-response-model
+valid:
+  - |
+    @router.get("/")
+    async def list_batches(current_user: CurrentUserDep) -> list[BatchReadResponse]:
+        return []
+invalid:
+  - |
+    @router.get("/", response_model=list[BatchReadResponse])
+    async def list_batches(current_user: CurrentUserDep) -> list[BatchReadResponse]:
+        return []

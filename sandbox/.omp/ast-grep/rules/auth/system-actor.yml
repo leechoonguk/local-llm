@@ -1,0 +1,21 @@
+id: auth-system-actor
+language: python
+# `created_by="system"` is honest in a public endpoint — signup has no
+# authenticated caller — and a lie anywhere the caller is known: the audit trail
+# then attributes a user's write to the process. The rule is therefore scoped to
+# functions that *do* have current_user in scope.
+rule:
+  kind: function_definition
+  all:
+    - has:
+        kind: parameters
+        has:
+          pattern: current_user
+          stopBy: end
+    - has:
+        kind: keyword_argument
+        regex: "^(created_by|updated_by)=\"system\"$"
+        stopBy: end
+owns:
+  - "created_by=\"system\""
+message: "created_by/updated_by must be current_user.username when a caller is authenticated — \"system\" is only for public endpoints (backend-auth.md)"

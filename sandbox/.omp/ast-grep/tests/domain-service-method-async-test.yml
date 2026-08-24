@@ -1,0 +1,9 @@
+id: service-method-async
+valid:
+  - |
+    async def list_batches(self, offset: int = 0, limit: int = 100) -> list[Batch]:
+        return []
+invalid:
+  - |
+    def list_batches(self, offset: int = 0, limit: int = 100) -> list[Batch]:
+        return []

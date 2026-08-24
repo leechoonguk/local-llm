@@ -1,0 +1,12 @@
+id: env-branch-security
+language: python
+# `settings.env` describes where the code runs, not who is allowed to do what. A
+# security path that branches on it is a different program in every environment,
+# so the version that is tested is not the version that runs — and the weaker
+# branch is the one reachable in production by a misconfigured ENV.
+rule:
+  any:
+    - pattern: settings.env
+    - pattern: settings.env == $VALUE
+    - pattern: settings.env != $VALUE
+message: "security and migration code must not branch on settings.env — decide from an explicit setting instead (environment.md)"

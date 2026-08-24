@@ -1,0 +1,58 @@
+{
+  "why": "One measured page of the 식품바코드 품목정보 코드 service (I2570): two filters on one path, and the query string stays empty because the provider ignores it.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3,
+    "product_name": "김치",
+    "barcode_no": "8801234567890"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I2570": {
+        "total_count": "1475",
+        "row": [
+          {
+            "PRDLST_REPORT_NO": "F2024000123456",
+            "PRDLST_NM": "냉동김치",
+            "PRDT_NM": "신선배 김치",
+            "CMPNY_NM": "(주)김치공방",
+            "BRCD_NO": "8801234567890",
+            "HRNK_PRDLST_NM": "발효식품",
+            "HTRK_PRDLST_NM": "식품",
+            "LAST_UPDT_DTM": "2024-01-15 09:30:00.0"
+          }
+        ],
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I2570/json/1/3/PRDT_NM=김치&BRCD_NO=8801234567890",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "report_no": "F2024000123456",
+        "report_item_name": "냉동김치",
+        "product_name": "신선배 김치",
+        "company_name": "(주)김치공방",
+        "barcode_no": "8801234567890",
+        "upper_product_classification_name": "발효식품",
+        "top_product_classification_name": "식품",
+        "last_update_datetime": "2024-01-15 09:30:00.0"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "1475"
+    }
+  }
+}

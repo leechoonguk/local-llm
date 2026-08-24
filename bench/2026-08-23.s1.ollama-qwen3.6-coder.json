@@ -1,0 +1,49 @@
+{
+ "model": "qwen3.6-coder:latest",
+ "think": true,
+ "ps": "qwen3.6-coder:latest    f7d34d823622    23 GB    100% GPU     65536      59 minutes from now",
+ "runs": [
+  {
+   "t1": {
+    "ok": true,
+    "wall": 125.0,
+    "think_tok": null,
+    "eval_tok": 8205,
+    "tok_s": 65.8,
+    "prompt_tok": 149,
+    "think_chars": 30774,
+    "err": ""
+   },
+   "t2": {
+    "ok": true,
+    "wall": 306.2,
+    "think_tok": null,
+    "eval_tok": 19042,
+    "tok_s": 62.3,
+    "prompt_tok": 175,
+    "think_chars": 51012,
+    "err": ""
+   },
+   "t3": {
+    "ok": true,
+    "wall": 95.3,
+    "think_tok": null,
+    "eval_tok": 6358,
+    "tok_s": 67.0,
+    "prompt_tok": 181,
+    "think_chars": 18000,
+    "err": ""
+   },
+   "t4": {
+    "ok": false,
+    "wall": 239.9,
+    "think_tok": null,
+    "eval_tok": 15300,
+    "tok_s": 63.9,
+    "prompt_tok": 135,
+    "think_chars": 61018,
+    "err": "debounce is not a function\n"
+   }
+  }
+ ]
+}

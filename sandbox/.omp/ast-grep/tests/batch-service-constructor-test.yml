@@ -1,0 +1,14 @@
+# `expect: present` rule — the runner treats *absence* of a match as the
+# violation, so here `invalid:` holds the code that MUST match (the required
+# shape) and `valid:` holds code that does not carry it.
+id: batch-service-constructor
+valid:
+  - |
+    async def cleanup() -> int:
+        service = BatchService()
+        return 0
+invalid:
+  - |
+    async def cleanup() -> int:
+        service = BatchService(session)
+        return 0

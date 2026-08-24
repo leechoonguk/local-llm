@@ -1,0 +1,77 @@
+{
+  "why": "One measured page of the 품목제조보고 service (I1250): the key and the window travel in the path, the filter is a trailing segment, and the envelope states the real outcome.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3,
+    "product_name": "김치"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I1250": {
+        "total_count": "3307",
+        "row": [
+          {
+            "LCNS_NO": "19550509001",
+            "BSSH_NM": "매일식품주식회사",
+            "PRDLST_REPORT_NO": "1955050900169",
+            "PRMS_DT": "20030825",
+            "PRDLST_NM": "진미순간장",
+            "PRDLST_DCNM": "혼합간장",
+            "PRODUCTION": "아니오",
+            "HIENG_LNTRT_DVS_NM": "해당없음",
+            "CHILD_CRTFC_YN": "",
+            "POG_DAYCNT": "제조일로부터 2년",
+            "LAST_UPDT_DTM": "20260701",
+            "INDUTY_CD_NM": "식품제조가공업",
+            "QLITY_MNTNC_TMLMT_DAYCNT": "",
+            "USAGE": "조리시 적절하게 첨가하여 이용한다",
+            "PRPOS": "",
+            "DISPOS": "진한 적갈색의 액상으로, 간장 특유의 향미가 있음",
+            "FRMLC_MTRQLT": "",
+            "ETQTY_XPORT_PRDLST_YN": "O"
+          }
+        ],
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I1250/json/1/3/PRDLST_NM=김치",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "license_no": "19550509001",
+        "business_name": "매일식품주식회사",
+        "item_report_no": "1955050900169",
+        "permit_date": "20030825",
+        "product_name": "진미순간장",
+        "product_type_name": "혼합간장",
+        "production_ended": "아니오",
+        "high_calorie_low_nutrition": "해당없음",
+        "child_favorite_certified_yn": "",
+        "shelf_life": "제조일로부터 2년",
+        "last_updated_date": "20260701",
+        "industry_name": "식품제조가공업",
+        "quality_maintenance_days": "",
+        "usage_method": "조리시 적절하게 첨가하여 이용한다",
+        "purpose": "",
+        "product_form": "진한 적갈색의 액상으로, 간장 특유의 향미가 있음",
+        "packaging_material": "",
+        "domestic_export_type": "O"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "3307"
+    }
+  }
+}

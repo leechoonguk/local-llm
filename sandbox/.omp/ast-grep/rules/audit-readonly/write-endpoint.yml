@@ -1,0 +1,9 @@
+id: audit-write-endpoint
+language: python
+# The audit trail answers "who changed this row". A write endpoint on that
+# surface lets the record of a change be changed, which makes every answer it
+# gives unfalsifiable.
+rule:
+  kind: decorated_definition
+  regex: "@router\\.(post|put|patch|delete)\\("
+message: "the audit router is read-only — created_by/updated_by are written by the domain services, never through this API (backend-audit-log.md)"

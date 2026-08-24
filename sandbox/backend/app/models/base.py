@@ -1,0 +1,37 @@
+# ============================================================
+# Imports
+# ============================================================
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
+
+
+# ============================================================
+# Classes
+# ============================================================
+
+class Base(DeclarativeBase):
+    pass
+
+
+class AuditMixin:
+    created_by: Mapped[str | None] = mapped_column(String(50), default=None)
+    updated_by: Mapped[str | None] = mapped_column(String(50), default=None)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+    version: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+
+    @declared_attr.directive
+    def __mapper_args__(cls) -> dict[str, Any]:
+        """Optimistic locking: a concurrent UPDATE on the same row raises StaleDataError.
+
+        SQLAlchemy adds `WHERE version = <loaded>` to every UPDATE and bumps the
+        counter on flush, so a lost update surfaces as a conflict instead of
+        silently overwriting the other transaction's work.
+        """
+        return {"version_id_col": cls.version}

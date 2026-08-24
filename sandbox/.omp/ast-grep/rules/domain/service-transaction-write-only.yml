@@ -1,0 +1,11 @@
+id: service-transaction-write-only
+language: python
+# A read inside `session.begin()` opens a write transaction for nothing: it takes
+# locks, holds a connection, and turns a concurrent read into a wait. The
+# boundary belongs to the three methods that actually change rows.
+rule:
+  kind: function_definition
+  regex: "async with self\\.session\\.begin\\(\\):"
+  not:
+    regex: "async def (create|update|delete)_"
+message: "session.begin() must only be used in create/update/delete service methods — never in read methods (get/list/find_stale)"

@@ -1,0 +1,11 @@
+id: model-id-standard
+language: python
+# Identifiers are compared, logged and joined across every domain, so one shape
+# everywhere: a UUID primary key generated in the application. A serial id leaks
+# row counts and cannot be minted before an insert.
+rule:
+  kind: assignment
+  pattern: "id: Mapped[$TYPE] = mapped_column($$$ARGS)"
+  not:
+    pattern: "id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)"
+message: "model id must be exactly: id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)"

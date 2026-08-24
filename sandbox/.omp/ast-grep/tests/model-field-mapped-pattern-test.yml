@@ -1,0 +1,9 @@
+id: model-field-mapped-pattern
+valid:
+  - |
+    class Batch(Base, AuditMixin):
+        name: Mapped[str] = mapped_column(String(255), nullable=False)
+invalid:
+  - |
+    class Batch(Base, AuditMixin):
+        name: str = Column(String(255), nullable=False)

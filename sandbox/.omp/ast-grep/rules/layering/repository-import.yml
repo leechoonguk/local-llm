@@ -1,0 +1,12 @@
+id: layering-repository-import
+language: python
+# A router that imports a repository can read and write rows without the service
+# that owns them: no ownership check, no conflict check, no audit columns. The
+# import is the only observable moment of the skip — once the name is in scope
+# the call looks like any other.
+rule:
+  any:
+    - pattern: from app.repositories.$MODULE import $$$NAMES
+    - pattern: from app.repositories import $$$NAMES
+    - pattern: import app.repositories.$MODULE
+message: "routers must not import repositories — call the service that owns them (backend-domain.md: no layer skipping)"

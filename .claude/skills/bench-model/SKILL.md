@@ -5,6 +5,8 @@ description: Ollama 코딩 모델 후보를 단일 로드로 실행 테스트 �
 
 # bench-model
 
+> **2026-08-24: `bench/run.py`·`report.py`·`tasks/`·`results/` 는 삭제됐다.** 수행 환경은 사용자가 새로 만든다(git 이력 `a060ea1` 에 구 하네스가 있다). 아래 절차의 스크립트 경로는 새 환경이 생기면 갱신한다. **결과 기록은 `bench/README.md` 의 표준(`<date>.<s1|s2>.<subject>.md` + 원본 `.json`, 고정 5절)을 따른다** — 이 부분은 지금도 유효하다. 여기를 통과한 모델은 `/llm-bench`(2단계, `sandbox/` 장기 세션)로 넘긴다.
+
 후보 모델을 `bench/run.py`로 검증하고 `bench/report.py`로 표를 만든다. 인자: 모델 이름(들). 없으면 사용자에게 묻지 말고 `ollama list`에서 `*-coder*` 중 results가 없는 것을 고른다.
 
 ## 절차

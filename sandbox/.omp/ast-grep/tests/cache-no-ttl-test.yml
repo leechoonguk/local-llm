@@ -1,0 +1,9 @@
+id: infra-cache-no-ttl
+valid:
+  - |
+    async def write(client, key, value) -> None:
+        await client.set(key, value, ex=60)
+invalid:
+  - |
+    async def write(client, key, value) -> None:
+        await client.set(key, value)

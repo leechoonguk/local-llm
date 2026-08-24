@@ -1,0 +1,14 @@
+id: inline-depends
+language: python
+# An inline `Depends(...)` repeats a wiring decision at every endpoint: the
+# provider, its scope and its type live in the signature instead of in
+# app/dependencies/. One alias per dependency means a change is made once, and a
+# reader sees which shared dependency an endpoint uses rather than how it is built.
+rule:
+  any:
+    - pattern: "Depends($$$)"
+    - pattern: "Query($$$)"
+    - pattern: "Path($$$)"
+    - pattern: "Body($$$)"
+    - pattern: "Header($$$)"
+message: "routers must not call Depends()/Query()/Path()/Body()/Header() inline — use Annotated aliases from app/dependencies/ (service: XxxServiceDep, offset: OffsetQuery, limit: LimitQuery)"

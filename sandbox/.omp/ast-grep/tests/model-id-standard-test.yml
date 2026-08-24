@@ -1,0 +1,9 @@
+id: model-id-standard
+valid:
+  - |
+    class Batch(Base, AuditMixin):
+        id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+invalid:
+  - |
+    class Batch(Base, AuditMixin):
+        id: Mapped[int] = mapped_column(Integer, primary_key=True)

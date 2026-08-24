@@ -1,0 +1,14 @@
+id: service-method-async
+language: python
+# One sync method in an async service blocks the event loop for every request in
+# the process, not just its own. Only dunder methods (`__init__`) may be sync,
+# since they do no I/O.
+rule:
+  kind: function_definition
+  regex: "^def \\w+\\("
+  not:
+    any:
+      - regex: "^async def \\w+\\("
+      - regex: "^def __init__\\("
+      - regex: "^def __\\w+__\\("
+message: "service method must be async (only dunder methods like __init__ may be sync)"

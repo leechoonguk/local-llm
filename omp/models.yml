@@ -23,12 +23,27 @@ providers:
         maxTokens: 8192
         compactionModel: ollama-nothink/qwen3.6-coder:latest
       qwen3.8-coder:latest:
-        contextWindow: 32768
+        # 3.6과 같은 coder 레시피. 이전 32768은 co-residency를 위한 값이었고, 통합 과제
+        # 수요(58K~128K)를 담지 못해 모델이 아니라 창을 재게 만들었다.
+        contextWindow: 131072
+        maxTokens: 8192
+        compactionModel: ollama-nothink/qwen3.8-coder:latest
+      qwen3-coder:latest:
+        # Qwen3-Coder-30B-A3B-Instruct. thinking capability 가 없어서 압축도 같은
+        # 슬롯의 nothink 경로를 쓸 이유가 없지만, 일관성을 위해 같은 형태로 둔다.
+        contextWindow: 131072
+        maxTokens: 8192
+        compactionModel: ollama-nothink/qwen3-coder:latest
 
   # Every call here is a call that must not think: session titles, memory
   # queries, thinking classification (4B), and compaction summaries (the coder
   # itself, same loaded slot - only the path differs, so summaries keep 35B
-  # quality). Ollama ignores every switch except `reasoning_effort: none`.
+  # quality). 예전 주석은 "Ollama ignores every switch except reasoning_effort:
+  # none" 이었으나 0.32.14 에서는 더 이상 사실이 아니다 - 실측(2026-08-24,
+  # qwen3.8-coder, 동일 프롬프트): none 5 토큰 / medium 949 / 미지정 1024 / high 2502.
+  # 강도는 이제 실제로 먹는다. 이 분리가 남아 있는 이유는 그것과 무관하다:
+  # extraBody 가 chat-completions 경로에만 적용되고 `api` 는 modelOverrides 로
+  # 덮을 수 없어서, thinking off 를 보장하려면 provider 를 따로 두는 수밖에 없다.
   ollama-nothink:
     baseUrl: http://127.0.0.1:11434/v1
     api: openai-completions
@@ -40,6 +55,73 @@ providers:
       - id: qwen3.6-coder:latest
         contextWindow: 131072
         maxTokens: 4096
+      # 4096 은 압축 요약 몫이다. 이 항목은 그 용도에 더해 "thinking 을 끈 코더"로도
+      # 직접 쓰이므로 출력은 코더와 같은 8192 로 둔다 - 시드 필드 마이그레이션 한 장이
+      # 3~4K 토큰이라 4096 이면 잘리고, 그러면 모델이 아니라 잘림을 재게 된다.
+      - id: qwen3.8-coder:latest
+        contextWindow: 131072
+        maxTokens: 8192
+      - id: qwen3-coder:latest
+        contextWindow: 131072
+        maxTokens: 8192
       - id: qwen3.5-aux:latest
         contextWindow: 8192
         maxTokens: 1024
+
+  # oMLX (MLX 네이티브 서버, 포트 8000, 2026-08-24 도입). Ollama 와 달리 thinking 이
+  # 서버쪽 per-model/프로파일 설정이라 provider 를 둘로 쪼갤 필요가 없다:
+  #  - :mtp      = coder 레시피 + MTP speculative decoding, thinking on (omlx/model_profiles.json)
+  #  - :nothink  = 같은 엔진 슬롯에서 thinking off - 압축 요약용
+  # 모델 id 는 oMLX 가 HF 캐시 항목(models--org--repo)을 route-safe 로 바꾼 "org--repo" 형식.
+  omlx:
+    baseUrl: http://127.0.0.1:9090/v1
+    api: openai-responses
+    auth: none
+    models:
+      - id: "mlx-community--Qwen3.6-35B-A3B-5bit:mtp"
+        api: openai-completions  # 실험: openai-responses 에선 compat.extraBody 가 안 실린다(실측, 2026-08-24)
+        contextWindow: 131072
+        maxTokens: 8192
+      - id: "mlx-community--Qwen3.6-35B-A3B-5bit:nothink"
+        contextWindow: 131072
+        maxTokens: 8192
+      - id: "mlx-community--Qwen3.5-4B-4bit"
+        contextWindow: 8192
+        maxTokens: 1024
+      # Qwen3.8 dense 27B oQ6 (21.7GiB) - 무거운 추론용. 5bit 이 없어 oQ6 채택 (2026-08-24).
+      - id: "mlx-community--Qwen3.8-27B-oQ6:mtp"
+        contextWindow: 131072
+        maxTokens: 8192
+      - id: "mlx-community--Qwen3.8-27B-oQ6:nothink"
+        contextWindow: 131072
+        maxTokens: 8192
+      # oQ6와 속도 비교용 4bit(nvfp4) 변형 (2026-08-24, bench-model 스킬 대신 임시 비교).
+      - id: "mlx-community--Qwen3.8-27B-nvfp4:mtp"
+        api: openai-completions # 3.6과 동일 이유: openai-responses 엔 extraBody 가 안 실린다(실측)
+        contextWindow: 131072
+        maxTokens: 8192
+      - id: "mlx-community--Qwen3.8-27B-nvfp4:nothink"
+        contextWindow: 131072
+        maxTokens: 8192
+    modelOverrides:
+      "mlx-community--Qwen3.6-35B-A3B-5bit:mtp":
+        compactionModel: "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:nothink"
+        # 실측(2026-08-24): reasoning_effort는 3.6 template에서 완전 no-op(seed 고정
+        # A/B로 확인, low/high 완전 동일). thinking_budget만 실제로 먹는다(64→3000에서
+        # 토큰·시간이 비례 반응). 프로필 파일(model_profiles.json)에는 안 먹혀서
+        # (finish_reason=length로 8192까지 밀림, 5120에서 안 멈춤) extraBody로 요청마다
+        # 강제한다. maxTokens 8192 안에서 실제 답변에 여유(~3000)를 남기는 값.
+        compat:
+          extraBody:
+            thinking_budget: 5120
+      "mlx-community--Qwen3.8-27B-oQ6:mtp":
+        compactionModel: "omlx/mlx-community--Qwen3.8-27B-oQ6:nothink"
+      "mlx-community--Qwen3.8-27B-nvfp4:mtp":
+        compactionModel: "omlx/mlx-community--Qwen3.8-27B-nvfp4:nothink"
+        # [INFERENCE] 3.6 budget(5120)을 그대로 안 씀: 3.8 dense는 실측 2.9~10.7 tok/s로
+        # 3.6보다 3.7배가량 느리다(README 속도표). 같은 토큰 budget이면 그만큼 벽시계 시간을
+        # 더 먹어 45분 상한 안에서 실제 작업(13개 산출물) 턴이 부족해진다. 미검증 추정치로
+        # 축소했다 - 실측 후 조정 필요.
+        compat:
+          extraBody:
+            thinking_budget: 2560

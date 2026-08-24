@@ -1,0 +1,9 @@
+id: env-hardcoded-port
+language: python
+# A literal port pins code to one topology: a container remap, a second local
+# stack, or a CI runner then fails with a connection error nobody can trace to
+# the string that caused it.
+rule:
+  kind: string
+  regex: "localhost:(15432|16379|18000)"
+message: "hardcoded service port — use settings or Vite config, never literal ports in code"

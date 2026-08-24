@@ -1,0 +1,18 @@
+# `expect: present` rule — `invalid:` holds the required shape (a match),
+# `valid:` holds a client that never builds a timeout.
+id: integration-timeout-configured
+valid:
+  - |
+    async def execute(self, inputs: dict) -> object:
+        try:
+            return await self._client.request(method, url)
+        except httpx2.TimeoutException as exc:
+            raise IntegrationTimeoutError(self.provider, self.operation.code, "timed out") from exc
+invalid:
+  - |
+    async def execute(self, inputs: dict) -> object:
+        timeout = httpx2.Timeout(
+            self.operation.read_timeout_ms / 1000,
+            connect=self.operation.connect_timeout_ms / 1000,
+        )
+        return await self._client.request(method, url, timeout=timeout)

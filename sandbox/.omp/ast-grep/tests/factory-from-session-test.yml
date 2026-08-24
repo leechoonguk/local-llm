@@ -1,0 +1,12 @@
+id: layering-from-session-factory
+valid:
+  - |
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+invalid:
+  - |
+    @classmethod
+    def from_session(cls, session):
+        return cls(session)
+  - |
+    service = UserService.from_session(session)

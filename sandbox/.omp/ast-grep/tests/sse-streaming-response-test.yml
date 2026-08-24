@@ -1,0 +1,9 @@
+id: infra-sse-streaming-response
+valid:
+  - |
+    async def stream() -> EventSourceResponse:
+        return EventSourceResponse(events())
+invalid:
+  - |
+    async def stream() -> StreamingResponse:
+        return StreamingResponse(events(), media_type="text/event-stream")

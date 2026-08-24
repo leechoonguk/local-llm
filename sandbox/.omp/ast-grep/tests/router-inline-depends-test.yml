@@ -1,0 +1,21 @@
+id: inline-depends
+valid:
+  - |
+    async def list_batches(offset: OffsetQuery = 0, limit: LimitQuery = 50) -> list[Batch]:
+        return []
+invalid:
+  - |
+    async def list_batches(offset: int = Query(0, ge=0)) -> list[Batch]:
+        return []
+  - |
+    async def get_batch(service: BatchService = Depends(get_batch_service)) -> Batch:
+        return None
+  - |
+    async def get_batch(batch_id: UUID = Path(...)) -> Batch:
+        return None
+  - |
+    async def create_batch(data: dict = Body(...)) -> Batch:
+        return None
+  - |
+    async def create_batch(x_api_key: str = Header(...)) -> Batch:
+        return None

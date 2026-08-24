@@ -1,0 +1,8 @@
+{
+  "name": "decks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "make build"
+  }
+}

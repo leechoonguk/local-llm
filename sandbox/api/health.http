@@ -1,0 +1,11 @@
+### Health API — readiness (공개, 인증 불필요)
+### 전제: backend 서버 실행 중 (cd backend && make dev)
+### 순차 실행: 상태를 바꾸지 않으므로 몇 번이든 반복 실행 가능
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# /health는 버전 프리픽스 밖이라 origin으로 직접 부른다. 요청 라인에는
+# {{$dotenv ...}}를 쓸 수 없다 — 공백에서 타깃이 끊긴다 (측정: 블록이 파싱 누락)
+@origin = {{$dotenv API_ORIGIN}}
+
+### 1. Readiness — 200 (DB 연결 정상, 실패 시 503)
+# /health는 버전 프리픽스 밖에 있다 (backend-app-setup.md)
+GET {{origin}}/health

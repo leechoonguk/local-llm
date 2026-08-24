@@ -1,0 +1,9 @@
+id: infra-asyncio-create-task
+valid:
+  - |
+    async def start(background_tasks: BackgroundTasks) -> None:
+        background_tasks.add_task(send_email, "to@example.com")
+invalid:
+  - |
+    async def start() -> None:
+        asyncio.create_task(send_email("to@example.com"))

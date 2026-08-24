@@ -1,0 +1,13 @@
+id: integration-timeout-configured
+language: python
+expect: present
+# The regex this replaces (`timeout\s*=|httpx2.Timeout`) was satisfied by
+# `except httpx2.TimeoutException` — an unrelated identifier kept the assertion
+# green while the client had no timeout at all (measured). A pattern matches the
+# construction itself, so only a real per-operation timeout counts.
+rule:
+  kind: call
+  pattern: httpx2.Timeout($$$ARGS)
+owns:
+  - "httpx2.Timeout"
+message: "the outbound client must build a per-operation httpx2.Timeout(...) — without it a hung provider hangs the request"

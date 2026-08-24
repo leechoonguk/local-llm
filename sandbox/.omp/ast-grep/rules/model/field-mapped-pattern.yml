@@ -1,0 +1,10 @@
+id: model-field-mapped-pattern
+language: python
+# A plain annotation is invisible to SQLAlchemy: the attribute exists on the
+# class, no column exists in the table, and autogenerate produces an empty
+# migration. `Mapped[...] = mapped_column(...)` is what makes a field a column.
+rule:
+  pattern: "$NAME: $TYPE = $VALUE"
+  not:
+    pattern: "$NAME: Mapped[$FTYPE] = mapped_column($$$ARGS)"
+message: "model fields must use the Mapped[X] = mapped_column(...) pattern"

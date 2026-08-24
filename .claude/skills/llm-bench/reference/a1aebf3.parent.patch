@@ -1,0 +1,32 @@
+diff --git a/backend/tests/core/test_integration_external_api.py b/backend/tests/core/test_integration_external_api.py
+index 192bb87..112e2d9 100644
+--- a/backend/tests/core/test_integration_external_api.py
++++ b/backend/tests/core/test_integration_external_api.py
+@@ -618,7 +618,6 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
+         "search-food-item-report",
+         "search-product-classification",
+         "search-food-raw-material",
+-        "search-barcode-item-info",
+     }
+     for code, seed in seed_of.items():
+         request_file = api_dir / f"integration.{code}.http"
+diff --git a/backend/tests/core/test_seed_api_actor.py b/backend/tests/core/test_seed_api_actor.py
+index d6c4d5f..3536b1e 100644
+--- a/backend/tests/core/test_seed_api_actor.py
++++ b/backend/tests/core/test_seed_api_actor.py
+@@ -91,11 +91,10 @@ def test_http_files_send_the_seeded_credentials_verbatim() -> None:
+     assert [path.name for path in domain_files] == [
+         "batch.http",
+         "integration.http",
+-        "integration.search-barcode-item-info.http",
+-         "integration.search-food-item-report.http",
+-         "integration.search-food-nutrition.http",
+-         "integration.search-food-raw-material.http",
+-         "integration.search-product-classification.http",
++        "integration.search-food-item-report.http",
++        "integration.search-food-nutrition.http",
++        "integration.search-food-raw-material.http",
++        "integration.search-product-classification.http",
+         "user.http",
+     ]
+     for path in domain_files:

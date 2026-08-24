@@ -1,0 +1,9 @@
+id: auth-system-actor
+valid:
+  - |
+    async def create_user(data: UserCreateRequest, user_service: UserServiceDep) -> UserReadResponse:
+        return to_read(await user_service.create_user(data, created_by="system"))
+invalid:
+  - |
+    async def create_item(data: ItemCreateRequest, item_service: ItemServiceDep, current_user: CurrentUserDep) -> ItemReadResponse:
+        return to_read(await item_service.create_item(data, created_by="system"))
