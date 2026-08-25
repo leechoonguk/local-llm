@@ -187,12 +187,23 @@ function ensureServer(): void {
 /** omlx/ 접두사를 뗀 서버 모델 id (프로파일 포함): `omlx/mlx-…-5bit:mtp` → `mlx-…-5bit:mtp`. */
 const omlxId = (model: string): string => model.replace(/^omlx\//, "");
 
-function omlxHealth(): { loaded_count: number | null; current_model_memory: number | null; default_model: string | null } {
-  const out = sh("curl", ["-s", "--max-time", "5", `${OMLX_URL}/health`], WORKSPACE, 8_000).out;
+const OMLX_ADMIN = "http://127.0.0.1:9090/admin/api";
+
+/** oMLX 앱의 admin API 에서 지금 로드된(loaded:true) 모델 id 목록. skip_api_key_verification 로 루프백 무인증. */
+function omlxLoadedModels(): string[] {
+  const out = sh("curl", ["-s", "--max-time", "6", `${OMLX_ADMIN}/models`], WORKSPACE, 8_000).out;
   try {
-    const h = JSON.parse(out) as { default_model?: string; engine_pool?: { loaded_count?: number; current_model_memory?: number } };
-    return { loaded_count: h.engine_pool?.loaded_count ?? null, current_model_memory: h.engine_pool?.current_model_memory ?? null, default_model: h.default_model ?? null };
-  } catch { return { loaded_count: null, current_model_memory: null, default_model: null }; }
+    const d = JSON.parse(out) as { models?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>;
+    const models = Array.isArray(d) ? d : (d.models ?? []);
+    return models.filter((m) => m.loaded === true).map((m) => String(m.id));
+  } catch { return []; }
+}
+
+/** 로드된 모델을 전부 언로드해 클린 슬레이트를 만든다 — 셀 시작 전 호출(강제 단일 상주). 앱 서버 유지, brew 아님. */
+function omlxUnloadAll(): void {
+  for (const id of omlxLoadedModels()) {
+    sh("curl", ["-s", "-o", "/dev/null", "--max-time", "30", "-X", "POST", `${OMLX_ADMIN}/models/${id}/unload`], WORKSPACE, 35_000);
+  }
 }
 
 /**
@@ -203,12 +214,13 @@ function omlxHealth(): { loaded_count: number | null; current_model_memory: numb
  */
 function residency(model: string): Record<string, unknown> | null {
   if (model.startsWith("omlx/")) {
-    const h = omlxHealth();
-    return {
-      server: "omlx", loaded_count: h.loaded_count, current_model_memory: h.current_model_memory,
-      coder: omlxId(model), aux: omlxId(AUX_MODEL), default_model: h.default_model,
-      ok: h.loaded_count === null ? null : h.loaded_count >= 1 && h.loaded_count <= 3,
-    };
+    // admin API 의 권위 있는 loaded 상태로 검증 — 개수만이 아니라 정체까지.
+    const loaded = omlxLoadedModels();
+    const coder = omlxId(model).split(":")[0];        // 프로파일 접미사 제거 → 물리 모델 id
+    const aux = omlxId(AUX_MODEL).split(":")[0];
+    // 예상 로드: 대상 코더, 그 드래프터(...-MTP-...), 4B aux 뿐. 그 밖의 코더가 있으면 이전 셀 잔재 = 오염.
+    const unexpected = loaded.filter((m) => m !== coder && m !== aux && !/MTP/.test(m));
+    return { server: "omlx", loaded_models: loaded, coder, aux, ok: loaded.includes(coder) && unexpected.length === 0 };
   }
   if (model.startsWith("ollama/")) {
     const coder = model.replace(/^ollama\//, "").replace(/:latest$/, "");
@@ -324,7 +336,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   // 로컬 모델: omlx 는 앱 서버 준비 확인(재시작 안 함 — oMLX 자체 LRU 축출 + residency 검증에 의존),
   // ollama 는 다른 모델 stop. 대상만 상주하는지는 셀 종료 시 residency() 로 검사한다.
   const local = model.startsWith("omlx/") || model.startsWith("ollama/");
-  if (model.startsWith("omlx/")) ensureServer();
+  if (model.startsWith("omlx/")) { ensureServer(); omlxUnloadAll(); } // 앱 서버 확인 + 로드된 모델 전부 언로드(강제 클린 슬레이트)
   if (model.startsWith("ollama/")) unloadOllama();
 
   // aux 역할 고정: tiny/smol 을 **실제 4B aux 모델**로 고정한다(코더가 아니다 — 실사용 구성으로 검증).

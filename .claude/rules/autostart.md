@@ -12,7 +12,7 @@ paths:
 | 서버 | 관리 주체 | 기동 | 중지 |
 |---|---|---|---|
 | Ollama | LaunchAgent `~/Library/LaunchAgents/com.ollama.serve.plist` (← `ollama/com.ollama.serve.plist.template`, `RunAtLoad`/`KeepAlive` false) | `launchctl kickstart -k gui/$(id -u)/com.ollama.serve` | `launchctl kill TERM gui/$(id -u)/com.ollama.serve` |
-| oMLX | GUI 앱 `/Applications/oMLX.app`(메뉴바). LaunchAgent 없음 | 메뉴바 Start 또는 `omlx start` | 메뉴바 Stop 또는 `omlx stop` |
+| oMLX | GUI 앱 `/Applications/oMLX.app`(메뉴바). LaunchAgent 없음 | 앱 메뉴바 Start (※ `omlx start`=brew services=금지) | 앱 메뉴바 Stop |
 
 `ollama/install.sh` 는 bootstrap 뒤 `kickstart` 로 **그 자리에서 한 번** 띄운다. oMLX 앱의 로그인 시 실행·crash 자동 재시작 옵션은 앱 설정에서 끈다(검사는 로그인 항목과 `auto_start_on_launch` 로 본다).
 

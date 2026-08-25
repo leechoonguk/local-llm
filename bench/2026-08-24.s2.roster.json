@@ -1,0 +1,527 @@
+[
+ {
+  "at": "2026-08-24T23:52:29.781Z",
+  "model": "omlx/mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 1674,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2"
+   ],
+   "coder": "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 10,
+  "expected": 6,
+  "files": [
+   "D sandbox/api/integration.search-barcode-item-info.http",
+   " D sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " D sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " D sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/integration.item-report.http",
+   "?? sandbox/backend/alembic/versions/67_seed_item_report_integration_operation.py",
+   "?? sandbox/backend/alembic/versions/68_seed_item_report_integration_field.py",
+   "?? sandbox/backend/tests/core/fixtures/integration/item-report.json"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 3,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 3,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-24T23-52-52-389Z_01a03630-f1a5-7000-a571-2afb575e054c.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 26,
+  "tools": {
+   "read": 28,
+   "glob": 10,
+   "write": 18,
+   "edit": 8,
+   "bash": 45
+  },
+  "no_work": false
+ },
+ {
+  "at": "2026-08-25T00:20:53.151Z",
+  "model": "omlx/mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 2212,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2"
+   ],
+   "coder": "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 14,
+  "expected": 13,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/alembic/versions/74_add_notice_table.py",
+   "?? sandbox/backend/alembic/versions/75_update_notice_table_content_length.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py",
+   "?? sandbox/backend/tests/api/test_notice.py",
+   "?? sandbox/backend/tests/repositories/test_notice.py",
+   "?? sandbox/backend/tests/services/test_notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 1,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 1,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T00-21-15-857Z_01a0364a-efd1-7000-b4d0-d575ae81de9b.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 56,
+  "tools": {
+   "read": 58,
+   "glob": 12,
+   "bash": 57,
+   "write": 24,
+   "edit": 32
+  },
+  "no_work": false
+ },
+ {
+  "at": "2026-08-25T00:58:14.365Z",
+  "model": "omlx/mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 2700,
+  "timed_out": true,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit"
+   ],
+   "coder": "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 9,
+  "expected": 6,
+  "files": [
+   "D sandbox/api/integration.search-barcode-item-info.http",
+   " D sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " D sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " D sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/integration.barcode-item-info.http",
+   "?? sandbox/backend/alembic/versions/71_seed_barcode_item_info_integration_operation.py",
+   "?? sandbox/backend/tests/core/fixtures/integration/barcode-item-info.json"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 4,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 4,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T00-58-37-482Z_01a0366d-242a-7000-a552-ce86bab50961.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 50,
+  "tools": {
+   "read": 32,
+   "glob": 2,
+   "grep": 2,
+   "write": 40,
+   "edit": 10,
+   "bash": 25
+  },
+  "no_work": false
+ },
+ {
+  "at": "2026-08-25T01:43:44.069Z",
+  "model": "omlx/mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 2700,
+  "timed_out": true,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit"
+   ],
+   "coder": "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 7,
+  "expected": 13,
+  "files": [
+   "M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 5,
+  "regressions": 4,
+  "regression_detail": [
+   "FAIL: batch: missing get_batch_service in dependencies/services.py",
+   "FAIL: batch: missing BatchServiceDep Annotated DI in dependencies/services.py",
+   "FAIL: user: missing get_user_service in dependencies/services.py",
+   "FAIL: user: missing UserServiceDep Annotated DI in dependencies/services.py"
+  ],
+  "incomplete_failures": 1,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T01-44-06-727Z_01a03696-c947-7000-864d-fd87f3905141.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 173,
+  "tools": {
+   "read": 34,
+   "glob": 2,
+   "write": 143,
+   "edit": 30,
+   "bash": 42
+  },
+  "no_work": false
+ },
+ {
+  "at": "2026-08-25T02:29:13.209Z",
+  "model": "omlx/mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 505,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit"
+   ],
+   "coder": "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 6,
+  "expected": 6,
+  "files": [
+   "D sandbox/api/integration.search-barcode-item-info.http",
+   " D sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " D sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " D sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T02-29-35-711Z_01a036c0-6d5f-7000-8b56-cb572f828bca.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 0,
+  "tools": {
+   "read": 10,
+   "glob": 8
+  },
+  "no_work": true
+ },
+ {
+  "at": "2026-08-25T02:38:22.309Z",
+  "model": "omlx/mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 282,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit"
+   ],
+   "coder": "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 1,
+  "expected": 13,
+  "files": [
+   "?? sandbox/backend/app/models/notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 7,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 7,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T02-38-44-677Z_01a036c8-cdc5-7000-beb3-458778a6e0f7.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 4,
+  "tools": {
+   "read": 30,
+   "write": 2,
+   "edit": 2
+  },
+  "no_work": false
+ },
+ {
+  "at": "2026-08-25T02:43:32.905Z",
+  "model": "omlx/mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 187,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit"
+   ],
+   "coder": "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 6,
+  "expected": 6,
+  "files": [
+   "D sandbox/api/integration.search-barcode-item-info.http",
+   " D sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " D sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " D sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T02-43-55-323Z_01a036cd-8b3b-7000-8ae4-3191271caf8c.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 0,
+  "tools": {},
+  "no_work": true
+ },
+ {
+  "at": "2026-08-25T02:47:22.283Z",
+  "model": "omlx/mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 41,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit"
+   ],
+   "coder": "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 0,
+  "expected": 13,
+  "files": [],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T02-47-45-284Z_01a036d1-0d84-7000-b0bf-d89cb37d9b85.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 0,
+  "tools": {},
+  "no_work": true
+ },
+ {
+  "at": "2026-08-25T02:48:46.126Z",
+  "model": "omlx/mlx-community--gemma-4-12B-it-qat-OptiQ-4bit",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 1925,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit"
+   ],
+   "coder": "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 9,
+  "expected": 6,
+  "files": [
+   "D sandbox/api/integration.search-barcode-item-info.http",
+   " D sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " D sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " D sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/integration.i2570.http",
+   "?? sandbox/backend/alembic/versions/72_seed_i2570_integration_operation_and_fields.py",
+   "?? sandbox/backend/tests/core/fixtures/integration/i2570.json"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 8,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 8,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T02-49-08-181Z_01a036d2-5155-7000-aabe-7b804b8bfb25.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 28,
+  "tools": {
+   "read": 14,
+   "glob": 2,
+   "write": 28,
+   "bash": 7
+  },
+  "no_work": false
+ },
+ {
+  "at": "2026-08-25T03:21:19.310Z",
+  "model": "omlx/mlx-community--gemma-4-12B-it-qat-OptiQ-4bit",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 2364,
+  "timed_out": false,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Qwen3.5-4B-4bit",
+    "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit"
+   ],
+   "coder": "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 11,
+  "expected": 13,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/alembic/versions/20260825_notice_table.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py",
+   "?? sandbox/backend/tests/api/test_notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 3,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 3,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-25T03-21-42-462Z_01a036f0-233e-7000-b7c4-78a6b4c4d96d.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 60,
+  "tools": {
+   "read": 22,
+   "edit": 18,
+   "write": 42,
+   "bash": 2
+  },
+  "no_work": false
+ }
+]

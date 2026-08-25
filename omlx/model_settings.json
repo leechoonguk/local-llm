@@ -1,75 +1,25 @@
 {
-  "version": 1,
-  "models": {
-    "mlx-community--Qwen3.6-35B-A3B-5bit": {
-      "max_context_window": 131072,
-      "max_tokens": 8192,
-      "temperature": 0.6,
-      "top_p": 0.95,
-      "top_k": 20,
-      "min_p": 0.0,
-      "enable_thinking": true,
-      "vlm_mtp_enabled": true,
-      "vlm_mtp_draft_model": "mlx-community--Qwen3.6-35B-A3B-MTP-5bit",
-      "is_default": true,
-      "active_profile_name": "mtp",
-      "reasoning_parser": "qwen",
-      "thinking_budget": 5120
-    },
-    "mlx-community--Qwen3.5-4B-4bit": {
-      "max_context_window": 8192,
-      "max_tokens": 1024,
-      "enable_thinking": false
-    },
-    "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2": {
-      "max_context_window": 131072,
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "top_p": 0.8,
-      "top_k": 20,
-      "min_p": 0.0,
-      "enable_thinking": false,
-      "is_default": false
-    },
-    "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit": {
-      "max_context_window": 131072,
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "top_p": 0.9,
-      "top_k": 40,
-      "min_p": 0.0,
-      "enable_thinking": false,
-      "is_default": false
-    },
-    "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit": {
-      "max_context_window": 131072,
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "top_p": 0.9,
-      "top_k": 40,
-      "min_p": 0.0,
-      "enable_thinking": false,
-      "is_default": false
-    },
-    "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit": {
-      "max_context_window": 131072,
-      "max_tokens": 8192,
-      "temperature": 0.7,
-      "top_p": 0.9,
-      "top_k": 40,
-      "min_p": 0.0,
-      "enable_thinking": false,
-      "is_default": false
-    },
-    "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit": {
-      "max_context_window": 131072,
-      "max_tokens": 8192,
-      "temperature": 0.15,
-      "top_p": 0.95,
-      "top_k": 40,
-      "min_p": 0.0,
-      "enable_thinking": false,
-      "is_default": false
-    }
+ "version": 1,
+ "models": {
+  "mlx-community--Qwen3.6-35B-A3B-5bit": {
+   "max_context_window": 131072,
+   "max_tokens": 8192,
+   "temperature": 0.6,
+   "top_p": 0.95,
+   "top_k": 20,
+   "min_p": 0.0,
+   "enable_thinking": true,
+   "vlm_mtp_enabled": true,
+   "vlm_mtp_draft_model": "mlx-community--Qwen3.6-35B-A3B-MTP-5bit",
+   "is_default": true,
+   "active_profile_name": "mtp",
+   "reasoning_parser": "qwen",
+   "thinking_budget": 5120
+  },
+  "mlx-community--Qwen3.5-4B-4bit": {
+   "max_context_window": 8192,
+   "max_tokens": 1024,
+   "enable_thinking": false
   }
+ }
 }

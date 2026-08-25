@@ -88,26 +88,11 @@ providers:
       - id: "mlx-community--Qwen3.5-4B-4bit"
         contextWindow: 8192
         maxTokens: 1024
-      # Qwen3.8 dense 27B(oQ6·nvfp4)은 s2 벤치에서 writes 0(무산출)으로 실패해 2026-08-25 제거했다.
-      # 실측 근거는 README "모델·서빙 매트릭스"·속도표에 기록으로 남긴다.
-      #
-      # 2026-08-25 벤치 로스터 — oMLX 가 HF 캐시 모델을 이름으로 자동 서빙(프로파일 없음, 샘플링은 oMLX 기본).
-      # 첫 패스 데이터 후 필요하면 model_settings.json 으로 모델 카드 샘플링을 박는다.
-      - id: "mlx-community--Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2"   # instruct 코더(thinking 없음), Sonnet급 후보·이전 REST 승자
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "mlx-community--gemma-4-12b-coder-fable5-composer2.5-4bit"  # Gemma4 12B 코더 특화
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "mlx-community--gemma-4-12B-it-qat-OptiQ-4bit"              # Gemma4 12B QAT+OptiQ(PLE 양자화 회피)
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "mlx-community--gemma-4-26B-A4B-it-qat-OptiQ-4bit"          # Gemma4 26B-A4B MoE(활성 4B) QAT+OptiQ
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "mlx-community--Devstral-Small-2-24B-Instruct-2512-4bit"    # Mistral Devstral, 에이전트 코딩·툴콜 특화
-        contextWindow: 131072
-        maxTokens: 8192
+      # 2026-08-25 배제·캐시 삭제한 실험 모델들(bench/ 기록에 근거 유지):
+      #  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)
+      #  - GLM-4.7-Flash-4bit: integration 45분 타임아웃 FAIL(writes 26), 3.6 대비 느리고 미완주
+      #  - Qwen3.8 dense 27B(nvfp4·oQ6·표준4bit): 전부 writes 0(에이전트 루프에서 파일 미생성, 양자화 무관)
+      # 코더는 3.6:mtp 유지. 실험 재개 시 install.sh 로 재다운로드.
     modelOverrides:
       "mlx-community--Qwen3.6-35B-A3B-5bit:mtp":
         compactionModel: "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:nothink"

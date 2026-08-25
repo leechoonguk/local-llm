@@ -5,7 +5,7 @@
 #  - 모델 3개를 HF 캐시로 다운로드 (oMLX 는 ~/.cache/huggingface/hub 를 자동 발견한다)
 #  - 이 디렉터리의 model_settings.json / model_profiles.json 을 ~/.omlx/ 에 설치
 #  - GPU wired 한도(iogpu.wired_limit_mb)를 RAM 티어에 맞춰 부팅 지속으로 설정(sudo)
-#  - 서비스 잔재(brew services, 예전 LaunchAgent) 정리 후 GUI 앱 서버 재시작(omlx restart)
+#  - 서비스 잔재(brew services, 예전 LaunchAgent) 정리 후 앱만 실행(서버 기동은 사용자가 메뉴바 Start)
 #
 # 전역 ~/.omlx/settings.json 은 여기서 관리하지 않는다 - oMLX 가 자기 값(auth
 # secret_key 등)을 함께 저장하는 파일이라 커밋 대상이 아니다. 우리가 정하는 것은
@@ -25,13 +25,11 @@ HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 $HF download mlx-community/Qwen3.6-35B-A3B-5bit        # 코더 본체 23.1GiB
 $HF download mlx-community/Qwen3.6-35B-A3B-MTP-5bit    # MTP 드래프터 0.6GiB
 $HF download mlx-community/Qwen3.5-4B-4bit             # aux(tiny 역할) 2.3GiB
-# Qwen3.8 dense 27B(oQ6·nvfp4)은 s2 벤치 writes 0(무산출) 실패로 2026-08-25 제거 — 다운로드하지 않는다.
-# 2026-08-25 벤치 로스터(비-Qwen 포함). oMLX 가 HF 캐시 이름으로 자동 서빙, 프로파일 없음.
-$HF download mlx-community/Qwen3-Coder-30B-A3B-Instruct-4bit-dwq-v2   # instruct 코더(thinking 없음), Sonnet급 후보
-$HF download mlx-community/gemma-4-12b-coder-fable5-composer2.5-4bit  # Gemma4 12B 코더 특화
-$HF download mlx-community/gemma-4-12B-it-qat-OptiQ-4bit              # Gemma4 12B QAT+OptiQ
-$HF download mlx-community/gemma-4-26B-A4B-it-qat-OptiQ-4bit          # Gemma4 26B-A4B MoE(활성 4B) QAT+OptiQ
-$HF download mlx-community/Devstral-Small-2-24B-Instruct-2512-4bit    # Mistral Devstral, 에이전트 코딩·툴콜
+# 2026-08-25 배제·캐시 삭제한 실험 모델들은 다운로드하지 않는다(근거는 bench/ 기록):
+#  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)
+#  - GLM-4.7-Flash-4bit: integration 타임아웃 FAIL(3.6 대비 느림)
+#  - Qwen3.8 dense 27B(nvfp4·oQ6·표준4bit): 전부 writes 0(에이전트 루프에서 파일 미생성, 양자화 무관)
+# 재검증하려면 해당 $HF download 줄과 model_settings.json/model_profiles.json/models.yml 등록을 되살린다.
 
 mkdir -p ~/.omlx
 cp model_settings.json ~/.omlx/model_settings.json
@@ -59,9 +57,12 @@ import json, os
 p = os.path.expanduser('~/.omlx/settings.json')
 d = json.load(open(p)) if os.path.exists(p) else {}
 d.setdefault('server', {})['port'] = 9090
-d['server']['auto_start_on_launch'] = False   # 자동 시작 끔 - 서버는 메뉴바 앱/`omlx start` 로 손으로 띄운다
+d['server']['auto_start_on_launch'] = False   # 자동 시작 끔 - 서버는 앱 메뉴바 Start 로만 띄운다(omlx start=brew services=금지)
 d.setdefault('memory', {})['memory_guard_tier'] = 'safe'
 d.setdefault('cache', {})['hot_cache_max_size'] = '4GB'
+# 벤치 러너(skill://llm-bench)가 셀마다 admin API(/admin/api/models/<id>/unload)로 로드된 모델을 비워
+# 강제 단일 상주를 만든다. 루프백 무인증 admin 접근을 위해 skip_api_key_verification 을 켠다(127.0.0.1 전용).
+d.setdefault('auth', {})['skip_api_key_verification'] = True
 json.dump(d, open(p, 'w'), indent=2, ensure_ascii=False)
 print('oMLX port ->', d['server']['port'], '| auto_start_on_launch ->', d['server']['auto_start_on_launch'],
       '| memory_guard_tier ->', d['memory']['memory_guard_tier'], '| hot_cache_max_size ->', d['cache']['hot_cache_max_size'])
@@ -103,9 +104,10 @@ else
 fi
 
 # --- 서버 = GUI 앱 (DMG) -----------------------------------------------------------
-# 서버는 /Applications/oMLX.app 이 관리한다(메뉴바, `omlx start|stop|restart` 는 앱 제어 소켓을 두드린다).
-# brew 포뮬러는 여기서 hf CLI 용으로만 쓴다. brew services(homebrew.mxcl.omlx, KeepAlive)와 예전 레포
-# LaunchAgent(com.local-llm.omlx)는 앱과 포트 9090 을 두고 충돌하므로 잔재를 걷어낸다.
+# 서버는 /Applications/oMLX.app 이 관리한다(메뉴바 Start/Stop). **`omlx start|restart` 는 쓰지 않는다** —
+# 실측(2026-08-25)상 그건 brew services(homebrew.mxcl.omlx) 또는 별도 headless 서버라, 앱 서버와 포트
+# 9090 을 두고 충돌하고 규칙 6(자동 재시작) 위반이다(pre-bash 훅도 deny). brew 포뮬러는 hf CLI 용으로만 쓴다.
+# brew services(homebrew.mxcl.omlx, KeepAlive)와 예전 LaunchAgent(com.local-llm.omlx) 잔재는 걷어낸다.
 if brew services list 2>/dev/null | grep -qE '^omlx\s+(started|scheduled|error)'; then
   brew services stop jundot/omlx/omlx
 fi
@@ -116,10 +118,12 @@ if [[ ! -d /Applications/oMLX.app ]]; then
   echo "oMLX.app 이 없다 - https://github.com/jundot/omlx/releases 의 .dmg 를 /Applications 에 설치한 뒤 다시 실행할 것" >&2
   exit 1
 fi
-OMLX_CLI="$HOME/.omlx/bin/omlx"; [[ -x "$OMLX_CLI" ]] || OMLX_CLI="$(brew --prefix omlx)/bin/omlx"
-"$OMLX_CLI" restart --timeout 120 || "$OMLX_CLI" start --timeout 120
-for _ in $(seq 1 60); do
-  curl -sf http://127.0.0.1:9090/v1/models >/dev/null && break
-  sleep 1
+# 서버는 **앱 메뉴바 Start 로만** 띄운다. `omlx start|restart`(실측 2026-08-25: brew services
+# homebrew.mxcl.omlx 를 조작하거나 별도 headless 서버를 띄운다)는 규칙 6 위반이고 앱 서버와 포트
+# 9090 을 두고 충돌하므로 여기서 쓰지 않는다(pre-bash 훅도 deny). 앱만 실행해 두고 사용자가 Start.
+open -a oMLX 2>/dev/null || true
+echo "oMLX.app 을 열었다. **메뉴바 아이콘 > Start** 로 서버를 9090 에 올린 뒤 아래가 200 이 될 때까지 기다린다."
+for _ in $(seq 1 120); do
+  curl -sf http://127.0.0.1:9090/v1/models >/dev/null && { echo "oMLX 준비 완료 - http://127.0.0.1:9090/v1 (관리판 /admin, 서버는 앱이 관리)"; break; }
+  sleep 2
 done
-echo "oMLX 준비 완료 - http://127.0.0.1:9090/v1 (관리판: http://localhost:9090/admin, 서버는 메뉴바 앱이 관리)"
