@@ -108,20 +108,28 @@ Model → Schema → Repository → Service → Router chain but is validated by
 
 ## Domain Creation
 
-Each domain creates 5 files (one per layer) and wires 1 dependency file + main.py:
+Each domain creates 5 layer files, wires 2 files, and lands 4 more artifacts.
+The gate (`make verify`) checks every item below — missing any one fails:
 
-**Creates:**
+**Creates (5 layers):**
 
 - `models/<name>.py` — SQLAlchemy model with `AuditMixin` (`Base, AuditMixin`)
-- `schemas/<name>.py` — 6 Pydantic classes: `XBase`, `XCreate`, `XCreateInternal`, `XRead`, `XUpdate`, `XUpdateInternal`
+- `schemas/<name>.py` — 6 Pydantic classes: `XBase`, `XCreateRequest`, `XCreateInternal`, `XReadResponse`, `XUpdateRequest`, `XUpdateInternal`
 - `repositories/<name>.py` — async CRUD repository with 7 methods: `get`, `list`, `find_stale`, `create`, `update`, `delete`, `__init__`
-- `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError`
-- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
+- `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError` (and `ConflictError` when the model declares uniqueness — see `services/user.py`)
+- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}` (list pagination uses the shared `OffsetQuery`/`LimitQuery` defaults — see rule://backend-router-params)
 
-**Wires:**
+**Wires (2):**
 
 - `dependencies/services.py` — `Annotated[T, Depends(factory)]` for all domain services (receive `SessionDep` directly)
 - `main.py` — `app.include_router(name.router)` call
+
+**Also lands (4) — checked by the gate, easy to forget:**
+
+- `backend/alembic/versions/` — one revision via `make migrate-gen m="add <name> table"` (never hand-write the file), and `alembic/env.py` imports the new model
+- `backend/tests/conftest.py` — imports the new model (`from app.models.<name> import <Name>`) so `Base.metadata.create_all()` builds its table
+- `api/<name>.http` — request file per rule://backend-api-http (unique-constraint domains follow `api/user.http`: `{{$guid}}` + a `409` section)
+- `backend/tests/{api,repositories,services}/test_<name>.py` — per rule://backend-testing
 
 ## Domain Naming
 
@@ -134,7 +142,7 @@ Each domain creates 5 files (one per layer) and wires 1 dependency file + main.p
   no hyphens/underscores/capitals. The model filename is the single source of
   truth: schemas/repositories/services/routers must use the same `<name>.py`
   (machine-checked by `check-backend-domain.ts`)
-- Class names capitalized: `Item`, `Batch`, `Todo`, `ItemService`
+- Class names capitalized: `Item`, `Batch`, `Todo`, `BatchService`
 
 ## Model (`app/models/<name>.py`)
 
@@ -144,7 +152,7 @@ Each domain creates 5 files (one per layer) and wires 1 dependency file + main.p
 import uuid
 from uuid import uuid4
 
-from sqlalchemy import Uuid
+from sqlalchemy import String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditMixin, Base
@@ -154,9 +162,13 @@ class Batch(Base, AuditMixin):
     __tablename__ = "batch"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(index=True)
+    name: Mapped[str] = mapped_column(String(120), index=True)
     description: Mapped[str | None] = mapped_column(default=None)
 ```
+
+(The real file additionally carries the 62-char `# ==== … ====` section banners
+required by rule://code-layout — copy the actual `models/batch.py`, not just
+this excerpt.)
 
 Rules (all machine-checked by `check-backend-domain.ts`):
 
@@ -236,7 +248,7 @@ class NameService:
         self.name_repository = NameRepository(session)
         # Multiple repositories/services use domain prefixes:
         #   self.user_repository = UserRepository(session)
-        #   self.audit_service = AuditService(session)
+        #   self.user_service = UserService(session)
 
     async def get_name(self, name_id: UUID) -> Name:
         o = await self.name_repository.get(name_id)
@@ -276,10 +288,10 @@ Rules:
 
 | Endpoint | Method | Status | Returns |
 |---|---|---|---|
-| `POST /` | create | 201 | `NameRead` |
-| `GET /` | list | 200 | `list[NameRead]` |
-| `GET /{<name>_id}` | get | 200/404 | `NameRead` |
-| `PUT /{<name>_id}` | update | 200/404 | `NameRead` |
+| `POST /` | create | 201 | `NameReadResponse` |
+| `GET /` | list | 200 | `list[NameReadResponse]` |
+| `GET /{<name>_id}` | get | 200/404 | `NameReadResponse` |
+| `PUT /{<name>_id}` | update | 200/404 | `NameReadResponse` |
 | `DELETE /{<name>_id}` | delete | 200/404 | `{"ok": True}` |
 
 Rules:
@@ -298,9 +310,9 @@ core.SessionDep → <Name>ServiceDep → Router
 
 ```python
 # dependencies/services.py
-def get_item_service(session: SessionDep) -> ItemService:
-    return ItemService(session)
-ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
+def get_batch_service(session: SessionDep) -> BatchService:
+    return BatchService(session)
+BatchServiceDep = Annotated[BatchService, Depends(get_batch_service)]
 ```
 
 - `Annotated[T, Depends(factory)]` — never `Depends()` inline
@@ -313,7 +325,10 @@ ItemServiceDep = Annotated[ItemService, Depends(get_item_service)]
   so the real `get_session()` runs — no dependency override
 - `settings.env = "test"` to disable scheduler
 - One test file per domain: `tests/api/test_<name>.py`
-- Tests cover: create, list, get, update, delete + not-found cases
+- Coverage standard lives in rule://backend-testing: 10 named API cases
+  (+422/+401) plus separate `tests/repositories/` and `tests/services/` files.
+  The gate matches **test function names** (e.g. a 404 case must contain
+  `not_found` in its name)
 
 ## Validation (Post-Hook)
 

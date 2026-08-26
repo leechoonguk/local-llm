@@ -39,10 +39,8 @@ backend/tests/
 ├── batch/                   # batch job tests
 │   └── test_<module>.py     # mirrors app/batch/<module>.py (e.g. test_items.py)
 ├── repositories/            # repository unit tests — one file per source module
-│   ├── test_item.py  test_todo.py  test_task.py
 │   └── test_batch.py  test_user.py
 ├── services/                # service unit tests — one file per source module
-│   ├── test_item.py  test_todo.py  test_task.py
 │   └── test_batch.py  test_user.py
 └── core/                    # core unit tests
     ├── test_exceptions.py   # domain exceptions + handler registration
@@ -77,6 +75,13 @@ Every CRUD domain test file follows the same pattern:
 10. **Unauthorized** — `GET /<domain>/` without a token → 401
 
 Fixtures: `client` (in-memory SQLite) + `auth_headers` (Bearer token).
+
+**Case detection matches test function names**, not behavior: the gate looks for
+`def test_create_…`, `def test_get_…` / `def test_get_…not_found`,
+`def test_update_…` / `def test_update_…not_found`, `def test_delete_…` /
+`def test_delete_…not_found`, and `def test_create_…422` (or a
+`status_code == 422` assertion). A 404 case named `test_get_missing_x` will not
+be counted — the name must contain `not_found`.
 
 **Specialized aggregate exception:** `integration` is a five-table configuration
 aggregate, not a simple resource. Its API, service, and core tests are governed
@@ -119,10 +124,7 @@ ConflictError on duplicates, AuthenticationError on bad credentials).
 
 | Service | Methods to cover |
 |---|---|
-| `ItemService` | get, list, find_stale, create, update, delete |
-| `TodoService` | get, list, create, update, delete |
-| `TaskService` | get, list, create, update, delete |
-| `BatchService` | get, list, create, update, delete |
+| `BatchService` | get, list, find_stale, create, update, delete |
 | `UserService` | get, get_by_username, authenticate, list, create, update, delete |
 
 Each method is tested for:
@@ -225,7 +227,7 @@ The hook detects missing tests structurally, beyond the coverage gate:
 
 | Check | Detects |
 |---|---|
-| Folder structure | `tests/api/`, `tests/batch/`, `tests/unit/` missing |
+| Folder structure | `tests/api/`, `tests/batch/`, `tests/repositories/`, `tests/services/`, `tests/core/` missing |
 | Model → api test file | a domain with no `tests/api/test_<name>.py` |
 | 10 standard API cases | an api test file missing create/list/get/update/delete (+404, +422, +401) |
 | Status assertions | an api test file with no `status_code == 201/401/404/422` assertion — the standard cases are matched by name, so a case whose assertion is gutted (401 quietly becoming 200) would otherwise still count |

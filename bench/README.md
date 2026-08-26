@@ -44,6 +44,7 @@
 | [`2026-08-25.s2.recipe-rest-cap60.md`](2026-08-25.s2.recipe-rest-cap60.md) | REST 상한 45→60분 n=2. 캡 미도달(32분)인데도 미완성 1로 실패 — REST 갭은 속도 아닌 능력 경계. 5120 REST 누적 n=4=2/4 초록, 실패는 항상 미완성 1(무회귀). 상한·레시피로 100% 불가 |
 | [`2026-08-26.s2.stuckreset-v2.md`](2026-08-26.s2.stuckreset-v2.md) | stuck-reset 확장(주기 12턴 컨텍스트 리셋+중립 nudge, 도메인 하드코딩 없음) REST n=2 = 1/2 초록·회귀 0, baseline 과 동률 — 표준 baking 보류. 단 리셋 4회(133→5 메시지) 맞고도 todo 기억으로 완주 — 릴레이 아키텍처 성립 실증 |
 | [`2026-08-26.s2.stuckreset-v3.md`](2026-08-26.s2.stuckreset-v3.md) | v3(일반화 3레버: end-gate turn_end 재구동+자카드 thrash+정체 리셋) REST n=3 = **2/3 초록·회귀 0** — baseline(1/2)·v2(1/2) 대비 우세 추세(확인 패스 1셀은 중단, 미확정). END-GATE 평시 침묵·red 종료시만(마이크로테스트 실증). 후속은 체계화판 `ext/continuity.ts` 캠페인 |
+| [`2026-08-26.s2.continuity.md`](2026-08-26.s2.continuity.md) | 체계화판 continuity 검증 + **하네스 결함 2건 실측·수정**(red-clear 무력화 버그, 마이그레이션 룰 미발화 구멍→migrate-gen 블록, thrashing 10→2). 옛 baseline 은 새 스택 비교기준으로 무효 판정, 정량 비교는 n 한계로 종료 — continuity 는 회귀 0의 메커니즘 검증된 옵트인으로 유지(baking 보류) |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.

@@ -106,7 +106,7 @@ Rules:
 ## API Interaction
 
 - Frontend proxies `/api/*` to backend `http://localhost:18000`
-- Example: `GET /api/items` → backend `GET /items` (on port 8000)
+- Example: `GET /api/items` → backend `GET /items` (on port 18000)
 - Response: `res.json() as Promise<Type>` for typed responses
 - Error: catch branch sets error state
 

@@ -268,6 +268,9 @@ create → list → get → update → [conflict] → delete → [not-found] →
   `UniqueConstraint`) additionally declares a `409` case, placed before the
   delete: the duplicate is part of that domain's contract, and reproducing it
   needs the created row alive.
+- **Unique-domain exemplar** — `api/user.http` demonstrates the `{{$guid}}` +
+  `409` pattern. `api/batch.http` has no uniqueness and therefore no `409`
+  section — do not copy it as the template for a unique domain.
 
 ## External API Coverage (integration)
 
@@ -305,7 +308,7 @@ that could never answer.
 - Seed a `path_template` placeholder that no `PATH` field fills
 - Number sections out of order, or omit the expected status from a title
 - Write a host into `@base` instead of `{{$dotenv API_ORIGIN}}/api/v1`, or point
-  `API_ORIGIN` at a port other than 8000, or give it a path
+  `API_ORIGIN` at a port other than 18000, or give it a path
 - Keep an `.http` file for a router that no longer exists
 - Leave a created row behind, or delete a seeded row
 - Create an actor account outside `api/auth.http` — one file owns that lifecycle

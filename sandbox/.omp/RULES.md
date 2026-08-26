@@ -8,3 +8,13 @@ Never commit or push unless the user explicitly asks.
 ## Harness Integrity
 
 When modifying the harness (`.omp/` files, hooks, rules, MCP/LSP config), always reference OMP official documentation (`omp://`) first. The harness is the backbone of your development workflow — changes here affect every session. Read `omp://` docs (settings, hooks, rules, tools, SDK) to understand current behavior before touching anything. Never guess how the harness works; verify against the official guide.
+
+## Workflow
+
+Before creating or editing files in an area, read that area's rulebook entries
+via `rule://<name>` — they are listed in the system prompt with their globs.
+Discovering requirements up front is faster than rediscovering them one verify
+failure at a time. When a verify failure names a rule area, read that rule
+before retrying.
+
+Before declaring work done, run `make verify` again and confirm it is green.

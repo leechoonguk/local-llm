@@ -14,6 +14,23 @@
  *      suppress it across every tool until the issues change or resolve.
  */
 
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+/** check-<x> 훅명 → rulebook 룰명. 이름이 1:1이 아닌 예외만 명시하고, 최종적으로
+ *  .omp/rules/<name>.md 실재를 확인해 없는 포인터는 내지 않는다(오귀속 방지). */
+const RULE_NAME_EXCEPTIONS: Record<string, string> = {
+  "backend-tests": "backend-testing",
+  "ast-rules": "omp-ast-rules",
+};
+function ruleForHook(hookName: string): string | null {
+  const base = hookName.replace(/^check-/, "");
+  const candidate = RULE_NAME_EXCEPTIONS[base] ?? base;
+  const path = join(process.cwd(), ".omp", "rules", `${candidate}.md`);
+  try { if (existsSync(path)) return candidate; } catch { /* cwd 밖 실행 등 — 포인터 생략 */ }
+  return null;
+}
+
 const MAX_ISSUE_LINES = 3;
 const CONTENT_PROTECT_THRESHOLD = 200;
 const MAX_REPEAT_PER_HOOK = 2;
@@ -60,10 +77,12 @@ export function buildSafeWarning(
   const truncated = issues.length > MAX_ISSUE_LINES
     ? `  ... (${issues.length - MAX_ISSUE_LINES} more — run make ${hookName})`
     : "";
+  const rule = ruleForHook(hookName);
   const summary = [
     `[${hookName}] ${issues.length} issue(s):`,
     ...visible.map((issue) => `  - ${issue}`),
     truncated,
+    ...(rule ? [`Rule: rule://${rule}`] : []),
     `Fix: ${hint}`,
   ].join("\n");
 

@@ -46,7 +46,7 @@ enforces it on the root, backend, frontend and decks Makefiles.
 ## Project Structure
 
 - `frontend/src/` — source files (`.tsx`, `.css`)
-- `frontend/vite.config.ts` — Vite config (port 15173, `/api` proxy → :8000)
+- `frontend/vite.config.ts` — Vite config (port 15173, `/api` proxy → :18000)
 - `frontend/tsconfig.json` — TypeScript config (ES2022, strict, `@/*` alias)
 - `frontend/package.json` — npm package config
 

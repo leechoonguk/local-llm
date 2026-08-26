@@ -38,17 +38,17 @@ style: |
     font-size: 0.85em;
   }
 ---
-<!-- sync: backend-api-http.md=215dc5192b1a97b4 -->
+<!-- sync: backend-api-http.md=fe30cf59789caf73 -->
 <!-- sync: backend-api-keys.md=240f10d0c15e7197 -->
 <!-- sync: backend-app-forbidden-tokens.md=377fbcb4af5aab0f -->
 <!-- sync: backend-app-setup.md=17d665e697444fd2 -->
 <!-- sync: backend-audit-log.md=8ff51ab42272c7b2 -->
 <!-- sync: backend-auth.md=02526a21c899cb02 -->
 <!-- sync: backend-background-tasks.md=f44f5777655cd583 -->
-<!-- sync: backend-batch.md=4b69b410bbc7867b -->
+<!-- sync: backend-batch.md=65c45b90acb2340f -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-core-config.md=dcd8e7bc6c1cbf9f -->
-<!-- sync: backend-domain.md=fe1b20440ecd01c0 -->
+<!-- sync: backend-domain.md=abfda67d89fa3906 -->
 <!-- sync: backend-exceptions.md=d36379949336814d -->
 <!-- sync: backend-file-upload.md=417dc0174bf98a36 -->
 <!-- sync: backend-identity-tokens.md=dc89bdba3680fdd8 -->
@@ -57,7 +57,7 @@ style: |
 <!-- sync: backend-makefile.md=26cc8434783021b3 -->
 <!-- sync: backend-middleware.md=f54d26f09ba562a2 -->
 <!-- sync: backend-migrations.md=9226922493976223 -->
-<!-- sync: backend-naming.md=53f3931f84d3ce7d -->
+<!-- sync: backend-naming.md=a9dc70a6e7e74b0c -->
 <!-- sync: backend-ownership.md=17fc26d59cbcf0ca -->
 <!-- sync: backend-rate-limit.md=5770db3d71475d11 -->
 <!-- sync: backend-redis-cache.md=86ce5ccbbe5436f0 -->
@@ -66,13 +66,13 @@ style: |
 <!-- sync: backend-service-boundary-tokens.md=4f04ef441d9c50a7 -->
 <!-- sync: backend-sse.md=69de863a0eaf5e50 -->
 <!-- sync: backend-table-design.md=4f4c1299879a5403 -->
-<!-- sync: backend-testing.md=ab868a16f347a365 -->
+<!-- sync: backend-testing.md=15f36f2ab96f65df -->
 <!-- sync: backend-transaction.md=4a614d04f599617d -->
 <!-- sync: code-layout.md=8c1eaf01a499e622 -->
 <!-- sync: decks-sync.md=e003ffe7cce93087 -->
 <!-- sync: environment.md=b828a0f49ad196d2 -->
-<!-- sync: frontend-code-conventions.md=cc68e285dd05954f -->
-<!-- sync: frontend-makefile.md=3e01039ce085fdaf -->
+<!-- sync: frontend-code-conventions.md=b372444a2ca6c4e1 -->
+<!-- sync: frontend-makefile.md=3c32695481893fee -->
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
 <!-- sync: omp-conventions.md=049f922b266c970b -->
 <!-- sync: omp-hook-crash-guard.md=3813240c3c5ba87d -->
@@ -119,7 +119,7 @@ style: |
 <!-- sync: check-frontend-code.ts=c71fc90a21fa925b -->
 <!-- sync: check-makefiles.ts=19353cedd93368ee -->
 <!-- sync: check-omp-hooks.ts=54b424361d4cb410 -->
-<!-- sync: check-omp-rules.ts=b372038336690fc7 -->
+<!-- sync: check-omp-rules.ts=6dd14a40e2392529 -->
 <!-- sync: check-omp-skills.ts=c868598102614928 -->
 <!-- sync: check-omp-types.ts=3171d2dbc573b359 -->
 <!-- sync: check-tooling.ts=8654675f63112a1f -->
@@ -138,7 +138,7 @@ style: |
 <!-- sync: lib/harness-env.d.ts=c41ee1561d50960b -->
 <!-- sync: lib/hook-dormancy.ts=764526765b1aba69 -->
 <!-- sync: lib/hook-metrics.ts=0e383f687f1c56da -->
-<!-- sync: lib/hook-safety-guard.ts=a320a12fa453c3a8 -->
+<!-- sync: lib/hook-safety-guard.ts=22db1dab20ce341a -->
 <!-- sync: lib/hook-visibility.ts=378b831827345c84 -->
 <!-- sync: ast-grep/rules/audit/=fa43ff9131409a46 -->
 <!-- sync: ast-grep/rules/audit-readonly/=4371bf3c9670540a -->

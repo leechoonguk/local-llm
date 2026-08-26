@@ -180,6 +180,48 @@ function checkOmpRulesSync(): string[] {
     );
   }
 
+  // Check 5: stale port literals. sandbox 포트는 전부 1-프리픽스(18000/15173/15432/16379…)다.
+  // fast-api-standard 원본 포트(8000 등)가 룰 본문에 남으면 훅과 문서가 어긋난다 —
+  // 실측: backend-api-http.md 가 "port other than 8000" 을 남겨 훅(:18000 강제)과 모순됐다.
+  const STALE_PORTS = /(?<!\d)(8000|5173|5432|6379|6006|4317)(?!\d)/;
+  for (const file of ruleFiles) {
+    // 컨테이너 간 DSN(`@postgres:5432` 등)은 도커 내부 포트라 정당 — 호스트쪽 포트만 감사한다.
+    const content = readFileSync(join(rulesDir, file), "utf-8")
+      .replace(/(?:@|\/\/)[a-z][a-z0-9_-]*:(?:8000|5173|5432|6379|6006|4317)\b/g, "@svc:INTERNAL");
+    const m = STALE_PORTS.exec(content);
+    if (m) {
+      issues.push(
+        `${file}: stale port ${m[1]} — sandbox ports are 1-prefixed (1${m[1]}); ` +
+          "update the rule text to match the harness",
+      );
+    }
+  }
+
+  // Check 6: ghost <Name>Service references. 룰이 예시로 든 서비스는 실제 도메인이어야 한다 —
+  // 실측: backend-testing.md 가 ItemService/TodoService/TaskService(존재하지 않는 도메인)를
+  // 표준 표에 실어 모델을 유령 구조로 안내했다. 플레이스홀더(Name/X)와 실재 도메인만 허용.
+  const modelsDir = join(cwd, "backend", "app", "models");
+  const domainAllow = new Set<string>(["name", "x", "xxx", "user", "integration"]);
+  try {
+    for (const f of readdirSync(modelsDir)) {
+      if (f.endsWith(".py") && f !== "__init__.py") domainAllow.add(f.slice(0, -3).toLowerCase());
+    }
+  } catch { /* models 디렉터리 없음 — 스킵 */ }
+  for (const file of ruleFiles) {
+    if (!file.startsWith("backend-")) continue;
+    const content = readFileSync(join(rulesDir, file), "utf-8");
+    const seen = new Set<string>();
+    for (const mm of content.matchAll(/\b([A-Z][A-Za-z0-9]*)Service\b/g)) {
+      const base = mm[1].toLowerCase();
+      if (domainAllow.has(base) || seen.has(base)) continue;
+      seen.add(base);
+      issues.push(
+        `${file}: ghost reference \`${mm[1]}Service\` — no backend/app/models/${base}.py; ` +
+          "examples must use real domains or the Name/X placeholder",
+      );
+    }
+  }
+
   return issues;
 }
 
