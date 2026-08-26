@@ -56,6 +56,7 @@ export default function continuity(pi: any) {
   const log = (s: string) => { if (logPath) { try { appendFileSync(logPath, `[continuity] ${s}\n`); } catch {} } };
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
+  let everRed = false, mutatedEver = false;
   let lastProgressAt = Date.now();
   let redSig: string | null = null;
   let redCmdTk: Set<string> | null = null;
@@ -101,13 +102,13 @@ export default function continuity(pi: any) {
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
         if (f) {
           if (!redSig) { redSince = Date.now(); redTurns = 0; }
-          redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
+          redSig = f; redCmdTk = cmdTk; everRed = true; log(`red: ${f.slice(0, 100)}`);
         } else if (!event.isError && !truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5) {
           log("green — red cleared (same-command success)");
           redSig = null; redCmdTk = null; redSince = 0; redTurns = 0;
         }
       }
-      if (!f && !event.isError && isMutating(event.toolName)) { stallTurns = 0; lastProgressAt = Date.now(); }
+      if (!f && !event.isError && isMutating(event.toolName)) { stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true; }
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
@@ -155,12 +156,20 @@ export default function continuity(pi: any) {
         beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`, "hygiene");
         return;
       }
-      // End-gate only while no reset is in flight.
+      // End-gate only while no reset is in flight. Two blind-finish shapes
+      // (both measured): finishing while the last verification was red, and
+      // finishing after mutations with no verification observed at all.
       const prose = !(e.toolResults && e.toolResults.length);
-      if (phase === "idle" && prose && redSig && endGateSends < END_GATE_MAX) {
-        endGateSends++;
-        pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
-        log(`END-GATE re-drive #${endGateSends}`);
+      if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
+        if (redSig) {
+          endGateSends++;
+          pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
+          log(`END-GATE re-drive #${endGateSends}`);
+        } else if (mutatedEver && !everRed) {
+          endGateSends++;
+          pi.sendUserMessage(`You are finishing, but files were changed and no verification run has been observed this session. Run the project's verification now and confirm it passes before finishing.`);
+          log(`END-GATE verify-unseen #${endGateSends}`);
+        }
       }
     } catch (e2) { log(`turn_end ERR ${String(e2)}`); }
   });

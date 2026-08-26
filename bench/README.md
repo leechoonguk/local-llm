@@ -49,6 +49,7 @@
 | [`2026-08-26.s2.fixed-harness-continuity.md`](2026-08-26.s2.fixed-harness-continuity.md) | 같은 하네스에 4신호 훅을 얹은 비교(유효 n=1) — **45m TO·writes 70**: 위생·유사도 리셋이 건강한 작업 중 churn 비용으로 작용. 훅을 "아플 때만 발동"(정체 이중트리거+end-gate) 슬림판으로 재설계해 `.omp/extensions/` 워크스페이스 내부화한 근거 |
 | [`2026-08-26.s2.parity-slim.md`](2026-08-26.s2.parity-slim.md) | 슬림 훅 패리티(유효 n=1) — 훅은 완벽 침묵했으나 **busy-loop 발견**(45m TO, writes 562, green 1회뿐): "성공 변이 지속"은 건강이 아니며 건강 = green 으로의 주기적 복귀. → red-age 트리거 + 2단계 리셋(save-then-clear, 체크포인트 먼저) 재설계의 근거 |
 | [`2026-08-26.s2.hygiene2p.md`](2026-08-26.s2.hygiene2p.md) | two-phase 지속형 컷 실증(유효 n=1) — 컷 후 ctx 유지·dt 2~4배 개선(70k대 12~119.7s→23k대 3.5~17s), 위생 컷 6.5s vs omp 컴팩션 48.5s. **턴수 sickness 는 구조적 결함**(빠른 턴 과발화 실측 2종→시간단독 전환, 엣지 12/12) + 컷·종료 상호작용 결함 3건 발견(green 후 컷·agent_end 재구동·파이프 가짜초록). 후속 v2 캠페인의 근거 |
+| [`2026-08-27.s2.hygiene2p-v2.md`](2026-08-27.s2.hygiene2p-v2.md) | 수정 반영판 REST n=2 — **훅 메커니즘 전 항목 정당 동작**(과발화 0·가짜초록 0·정당 sick 발화만·컷 지속) 그러나 **성적 0/2 near-miss**(45m TO×2) vs baseline 2/2. 셀 #2 회귀 2(기존 서비스 `session.begin()` 제거 — additive 가드 사각). continuity 는 옵트인 유지·baking 안 함 확정, 새 사각 2건(verify 미관측 종료·소규모 edit 회귀) 기록 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
@@ -80,3 +81,13 @@ README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속�
 - **Qwen3.8 dense 27B 재검증** — arca.live reasoning-levels 글 계기로 MLX 표준 4bit + `reasoning_effort=medium`(순정)으로 재측정. integration 9분간 **writes 0**(모델 산출 없음, 러너 부모상태 세팅만). 이전 Ollama GGUF 6회·MLX nvfp4·MLX oQ6 와 동일 → **3.8 의 writes 0 은 양자화·경로·reasoning_effort 무관한 에이전트 루프 문제**로 확정. dense 라 ~3.7배 느려 코더로도 부적합. 8bit/MTP 는 미검증(4bit 재현으로 배제 결정). GGUF(Unsloth Dynamic V3.0 developer-role)는 Ollama 필요라 이번 스택(oMLX MLX 전용)에서 미검증.
 
 **결과적으로 코더는 3.6:mtp @ budget 5120 로 확정. 모든 대안(로스터 5모델·GLM·3.8 4종)이 이 아래다.**
+
+## 종합 (2026-08-26~27 — continuity/two-phase 트랙)
+
+stuckreset v2·v3 → continuity 체계화 → 하네스 룰 감사 → slim/two-phase 진화(빌드 A~C → v2)까지 "세션 지속력 훅" 트랙의 종합.
+
+1. **최대 수확은 훅이 아니라 하네스 감사였다.** 룰 전달 구멍·내용 모순·체크리스트 부재를 고치자 **훅 없이 REST 2/2 초록**(39.5/41.2m) — 옛 "능력 천장 ~50%"의 상당 부분이 하네스 아티팩트.
+2. **continuity 훅의 메커니즘은 전부 실측 검증됐다**: 릴레이(리셋 생존·todo 기억), 지속형 컷(ctx 유지, dt 2~4배 개선), save-then-clear 체크포인트, 시간단독 sickness(과발화 해소, 엣지 12/12), truncated-clear 가드, 위생 컷(6.5s, omp 컴팩션 48.5s 대비 7배 저렴 + 구조화 체크포인트).
+3. **그러나 게이트 개선 증거는 없다(음성)**: 훅 셀 누적(4신호 fat 1, slim 1, two-phase C 1, v2 2) 전부 45m TO — 같은 하네스 baseline 2/2 와 대비. 컷이 버는 시간 ≤ 체크포인트·재구동·재수렴이 쓰는 시간. **continuity 는 옵트인으로 유지, 표준 baking 은 하지 않는다.**
+4. **REST 의 실질 병목은 "45분 캡 안의 100% 커버리지"** — 훅 유무와 무관하게 마지막 1%에서 반복 캡킬. near-miss(미완성 1)가 지배적 실패형이고 회귀는 대부분 0(예외: v2 셀 #2 의 소규모 edit 회귀 2 — additive 가드 사각).
+5. **남은 개선 후보(미적용)**: end-gate 의 "verify 관측 0 인 채 종료" 사각, additive 가드의 소규모 edit 사각, 러너 셀 경계 revert 가 미커밋 하네스 수정을 지우는 함정(운영 교훈: 하네스 수정은 커밋 후 캠페인).

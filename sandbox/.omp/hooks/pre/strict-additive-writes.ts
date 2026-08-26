@@ -60,7 +60,23 @@ export default function strictAdditiveWrites(pi: any) {
               "other code depends on. Keep the old line and add yours next to it.",
           };
         }
-        // (b) Egregious deletion: a large block mostly vanishes.
+        // (b) Unwrapping surviving code: deleting a context/try wrapper line
+        // while its body stays. Measured class: `async with self.session.begin():`
+        // removed from an existing service, silently dropping transaction
+        // management — a small edit invisible to the other rules.
+        const wrapper = (l: string) => /^(?:async\s+)?with\b.*:$/.test(l) || /^try\s*:$/.test(l);
+        const newSetW = new Set(meaningfulLines(newStr));
+        const droppedWrappers = meaningfulLines(oldStr).filter((l: string) => wrapper(l) && !newSetW.has(l));
+        const retainedOthers = meaningfulLines(oldStr).filter((l: string) => !wrapper(l) && newSetW.has(l)).length;
+        if (droppedWrappers.length > 0 && retainedOthers > 0) {
+          return {
+            block: true,
+            reason:
+              `this edit removes \`${String(droppedWrappers[0]).slice(0, 60)}\` while keeping the code it wraps — ` +
+              "an additive task must not strip existing context/transaction wrappers from surviving code.",
+          };
+        }
+        // (c) Egregious deletion: a large block mostly vanishes.
         const oldLines = meaningfulLines(oldStr);
         if (oldLines.length >= 8) {
           const newLines = meaningfulLines(newStr);
