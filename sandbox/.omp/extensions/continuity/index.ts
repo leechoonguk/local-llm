@@ -32,6 +32,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { type Predicate, type Verdict, allMet, evaluate, render } from "./acceptance.ts";
 import { type CallRecord, detect, readPaths, signature, touchedPaths } from "./detectors.ts";
+import { registerDiscipline } from "./discipline.ts";
 import { mechanicalSummary, readPreparation, renderGoalCard } from "./goalcard.ts";
 import { profileFor, usagePercent, usageTokens } from "./profile.ts";
 import type {
@@ -195,6 +196,11 @@ export default function continuity(pi: ExtensionHost): void {
   let unverifiedEdits = new Map<string, number>();
 
   pi.setLabel("Continuity");
+
+  // Bench-measured session discipline (shift-left nudge, sickness cuts,
+  // hygiene cuts, end/finish gates) — state independent of this file's own
+  // goal and loop machinery. Knobs: .omp/continuity.json (+CONTINUITY_PROFILE).
+  registerDiscipline(pi);
 
   on("session_start", (_event: unknown, ctx: HandlerContext) => {
     root = ctx.cwd ?? ".";
