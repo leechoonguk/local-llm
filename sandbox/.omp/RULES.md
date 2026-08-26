@@ -21,4 +21,7 @@ Keep the todo list stateful while debugging: after each verification run, record
 which check is failing and the next single step — it is the task's memory across
 context resets and compactions.
 
+An additive task must not wipe existing code: prefer targeted edits over
+full-file rewrites of existing files, and never truncate a file with `>`.
+
 Before declaring work done, run `make verify` again and confirm it is green.

@@ -90,6 +90,7 @@ post hook after every edit.
 | `omp-skills.md` | — | `check-omp-skills.ts` |
 | `decks-sync.md` | — | `check-decks-sync.ts` |
 | `RULES.md` (sticky) | `strict-no-subagents.ts` | — |
+| `RULES.md` (sticky) | `strict-additive-writes.ts` | — |
 | `backend-app-forbidden-tokens.md` (TTSR trigger) | — | `check-backend-exceptions.ts` + `check-environment.ts` |
 | `backend-service-boundary-tokens.md` (TTSR trigger) | — | `check-backend-transaction.ts` + `check-backend-sse.ts` + `check-backend-background-tasks.ts` + `check-backend-integration.ts` |
 | `backend-router-wiring-tokens.md` (TTSR trigger) | — | `check-backend-auth.ts` |
