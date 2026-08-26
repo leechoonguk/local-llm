@@ -43,7 +43,9 @@ const STALL_TURNS = 10;            // turns without a successful mutation
 const STALL_MS = 7 * 60_000;       // wall time without a successful mutation
 const RED_AGE_TURNS = 12;          // turns with a persisting red verification state
 const RED_AGE_MS = 12 * 60_000;    // wall time with a persisting red state
-const MAX_RESETS = 3;
+const MAX_RESETS = 3;              // sickness cuts (stall / red-age)
+const HYGIENE_BUDGET = 50_000;     // hypothesis lever: session-token growth per two-phase hygiene cut
+const MAX_HYGIENE = 3;             // hygiene cuts are counted separately from sickness cuts
 const KEEP_RECENT = 4;
 const END_GATE_MAX = 2;
 
@@ -57,12 +59,17 @@ export default function continuity(pi: any) {
   let redCmdTk: Set<string> | null = null;
   let redSince = 0, redTurns = 0;
   let phase: "idle" | "checkpoint" | "cutting" = "idle";
+  let cutKind: "sick" | "hygiene" = "sick";
+  let hygieneCuts = 0;
+  let lastTurnAt = Date.now();
+  let tokensAtCut = 0;
   let armed = false;
   let bootstrap: string | null = null;
 
-  log(`loaded two-phase. stall=${STALL_TURNS}t|${Math.round(STALL_MS / 60000)}m redAge=${RED_AGE_TURNS}t|${Math.round(RED_AGE_MS / 60000)}m maxResets=${MAX_RESETS} endGate=${END_GATE_MAX}`);
+  log(`loaded two-phase. stall=${STALL_TURNS}t|${Math.round(STALL_MS / 60000)}m redAge=${RED_AGE_TURNS}t|${Math.round(RED_AGE_MS / 60000)}m maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET/1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX}`);
 
-  function beginCheckpoint(reason: string) {
+  function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
+    cutKind = kind;
     phase = "checkpoint";
     bootstrap = `[continuity] Context was cleared because ${reason}. The system prompt is unchanged, `
       + `and the todo list holds the checkpoint you just wrote — read it and continue from there.\n`
@@ -94,11 +101,17 @@ export default function continuity(pi: any) {
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
-  pi.on("turn_end", (e: any, _ctx: any) => {
+  pi.on("turn_end", (e: any, ctx: any) => {
     try {
       stallTurns++;
       if (redSig) redTurns++;
       const now = Date.now();
+      // Instrumentation: per-turn wall interval and session token growth — the
+      // data that decides the "context growth slows late turns" hypothesis.
+      const used = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
+      log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);
+      lastTurnAt = now;
+      if (tokensAtCut === 0 && used > 0) tokensAtCut = used;
 
       if (phase === "checkpoint") {
         // The model has had one full turn to write its checkpoint — cut next.
@@ -119,6 +132,13 @@ export default function continuity(pi: any) {
           return;
         }
       }
+      // Hypothesis lever (two-phase hygiene): the old cut-first hygiene cost more than
+      // it saved; with save-then-clear the price dropped, so re-test whether trimming a
+      // grown context buys back late-turn speed.
+      if (phase === "idle" && hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET) {
+        beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`, "hygiene");
+        return;
+      }
       // End-gate only while no reset is in flight.
       const prose = !(e.toolResults && e.toolResults.length);
       if (phase === "idle" && prose && redSig && endGateSends < END_GATE_MAX) {
@@ -129,7 +149,7 @@ export default function continuity(pi: any) {
     } catch (e2) { log(`turn_end ERR ${String(e2)}`); }
   });
 
-  pi.on("context", (event: any, _ctx: any) => {
+  pi.on("context", (event: any, ctx: any) => {
     if (!armed) return undefined;
     armed = false;
     try {
@@ -139,11 +159,12 @@ export default function continuity(pi: any) {
       const bootMsg = { role: "user", content: bootstrap };
       const seen = new Set<any>();
       const kept = [...sys, bootMsg, ...recent].filter((m) => (seen.has(m) ? false : (seen.add(m), true)));
-      resets++;
+      if (cutKind === "hygiene") hygieneCuts++; else resets++;
+      tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
       phase = "idle";
       stallTurns = 0; lastProgressAt = Date.now();
       if (redSig) { redSince = Date.now(); redTurns = 0; }   // avoid immediate red-age re-fire
-      log(`RESET context ${msgs.length} -> ${kept.length} (cut #${resets}, after checkpoint)`);
+      log(`RESET context ${msgs.length} -> ${kept.length} (${cutKind} cut, sick#${resets} hyg#${hygieneCuts}, after checkpoint)`);
       return { messages: kept };
     } catch (e) { log(`context ERR ${String(e)}`); return undefined; }
   });
