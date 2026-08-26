@@ -148,7 +148,7 @@ style: |
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->
 <!-- sync: lib/backend-integration-configuration.ts=4aec5cc8f8f692db -->
-<!-- sync: lib/backend-migration-policy.ts=90dace7cca1f1150 -->
+<!-- sync: lib/backend-migration-policy.ts=72a6b943b42e769a -->
 <!-- sync: lib/backend-naming.ts=c1ae1ebf7e26e7c9 -->
 <!-- sync: lib/backend-orm-sync.ts=43d591cd8eb0e234 -->
 <!-- sync: lib/harness-env.d.ts=c41ee1561d50960b -->

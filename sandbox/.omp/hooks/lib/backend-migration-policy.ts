@@ -729,7 +729,7 @@ function checkMigrationLayout(filename: string, content: string): string[] {
   // A revision's filename slug is its history entry. Measured (optimal-set
   // cell #1): `make migrate-gen m=""` produced `75_.py` — an empty slug the
   // gate accepted.
-  if (!/^\d+_[a-z0-9][a-z0-9_]*\.py$/.test(filename)) {
+  if (!/^\d+_[a-z0-9](?:[a-z0-9_]*[a-z0-9])?\.py$/.test(filename)) {
     issues.push(
       `${filename}: filename needs a non-empty snake_case slug — \`NN_<what_it_does>.py\` ` +
         '(run `make migrate-gen m="<message>"` with a real message)',

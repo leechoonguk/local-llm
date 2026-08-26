@@ -22,7 +22,7 @@ migrate-down: ## Roll back the most recent migration (alembic downgrade -1)
 	.venv/bin/alembic downgrade -1
 
 migrate-gen: ## Generate a new migration from model changes (usage: make migrate-gen m="msg")
-	@test -n "$(m)" || { echo 'ERROR: non-empty m="<message>" is required - the message becomes the filename slug'; exit 1; }
+	@test -n "$(strip $(m))" || { echo 'ERROR: non-empty m="<message>" is required - the message becomes the filename slug'; exit 1; }
 	@next=$$(($(shell ls alembic/versions/[0-9]*_*.py 2>/dev/null | xargs -L1 basename 2>/dev/null | cut -d_ -f1 | sort -n | tail -1) + 1)); \
 		echo "==> new migration rev: $$next"; \
 		.venv/bin/alembic revision --autogenerate --rev-id $$next -m "$(m)"
