@@ -726,6 +726,16 @@ const METADATA_FIELDS = ["revision", "down_revision", "branch_labels", "depends_
 function checkMigrationLayout(filename: string, content: string): string[] {
   const issues: string[] = [];
 
+  // A revision's filename slug is its history entry. Measured (optimal-set
+  // cell #1): `make migrate-gen m=""` produced `75_.py` — an empty slug the
+  // gate accepted.
+  if (!/^\d+_[a-z0-9][a-z0-9_]*\.py$/.test(filename)) {
+    issues.push(
+      `${filename}: filename needs a non-empty snake_case slug — \`NN_<what_it_does>.py\` ` +
+        '(run `make migrate-gen m="<message>"` with a real message)',
+    );
+  }
+
   const docstring = /^"""([^\n]*)\n([\s\S]*?)"""/.exec(content);
   if (docstring === null) {
     issues.push(`${filename}: missing module docstring — the summary and Revision ID header`);
@@ -771,6 +781,19 @@ function checkMigrationLayout(filename: string, content: string): string[] {
       issues.push(
         `${filename}: \`downgrade()\` is a silent no-op — reverse the change, or ` +
           "`raise NotImplementedError(<reason>)` so a downgrade fails instead of lying",
+      );
+    }
+  }
+  if (upgrade !== null) {
+    const upgradeBody = upgrade[1]
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line !== "" && !line.startsWith("#"));
+    const upgradeInert = upgradeBody.length === 0 || upgradeBody.every((line) => line === "pass" || /^"""/.test(line));
+    if (upgradeInert) {
+      issues.push(
+        `${filename}: \`upgrade()\` is a no-op — an empty autogenerate means the schema ` +
+          "already matches; delete the revision instead of keeping an empty history entry",
       );
     }
   }

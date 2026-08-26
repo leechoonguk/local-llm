@@ -56,7 +56,7 @@ style: |
 <!-- sync: backend-integration.md=3fd57fcc535b4e66 -->
 <!-- sync: backend-makefile.md=26cc8434783021b3 -->
 <!-- sync: backend-middleware.md=f54d26f09ba562a2 -->
-<!-- sync: backend-migrations.md=9226922493976223 -->
+<!-- sync: backend-migrations.md=4341e5f3947d709a -->
 <!-- sync: backend-naming.md=a9dc70a6e7e74b0c -->
 <!-- sync: backend-ownership.md=17fc26d59cbcf0ca -->
 <!-- sync: backend-rate-limit.md=5770db3d71475d11 -->
@@ -134,7 +134,7 @@ style: |
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->
 <!-- sync: lib/backend-integration-configuration.ts=4aec5cc8f8f692db -->
-<!-- sync: lib/backend-migration-policy.ts=d883662d97809322 -->
+<!-- sync: lib/backend-migration-policy.ts=90dace7cca1f1150 -->
 <!-- sync: lib/backend-naming.ts=c1ae1ebf7e26e7c9 -->
 <!-- sync: lib/backend-orm-sync.ts=43d591cd8eb0e234 -->
 <!-- sync: lib/harness-env.d.ts=c41ee1561d50960b -->

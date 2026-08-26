@@ -56,6 +56,10 @@ make migrate-gen m="add <name> table"
 ```
 
 - Revision ID is auto-incremented (numeric).
+- `m` must be non-empty — the message becomes the filename slug; `make migrate-gen`
+  refuses an empty one, and `NN_.py`-style empty-slug files fail `make check-backend-migrations`.
+- A generated file whose `upgrade()` is only `pass` means nothing changed — delete
+  the revision; an empty upgrade fails the check too.
 - Message should be short, imperative: `"add todo table"`, not `"created the todo table for storing todos"`.
 - **Always inspect** the generated file in `alembic/versions/` before applying.
 
