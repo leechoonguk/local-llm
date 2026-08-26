@@ -350,6 +350,9 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n`);
     extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
   }
+  // 실험 옵트인: BENCH_HOOK=<확장 .ts 경로> 면 그 훅을 로드한다(예: stuck-reset). 미설정이면 기존 동작.
+  const benchHook = process.env.BENCH_HOOK;
+  if (benchHook) extra.push("--hook", benchHook);
 
   const started = Date.now();
   const child = spawn("omp", ["-p", task.prompt(spec), "--model", model, ...extra], { cwd: SANDBOX, stdio: "ignore", detached: true });
@@ -404,7 +407,8 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  // KST(UTC+9) 기준 날짜 — 파일명이 사용자 로컬 날짜와 맞게(본문 시각도 KST).
+  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
   const campaign = arg("--campaign") ?? (dryRun ? "dry-run" : (models[0] || "x").replace(/^[a-z]+\//, "").replace(/[^A-Za-z0-9.]+/g, "-").toLowerCase());
   const resultsPath = join(BENCH, `${today}.s2.${campaign}.json`);
   mkdirSync(BENCH, { recursive: true });

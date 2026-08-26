@@ -83,7 +83,7 @@ style: |
 <!-- sync: root-makefile.md=d8c2569156bd7693 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
-<!-- sync: strict-backend-migrations.ts=30df36cf60f42159 -->
+<!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=c044efc651be598a -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->

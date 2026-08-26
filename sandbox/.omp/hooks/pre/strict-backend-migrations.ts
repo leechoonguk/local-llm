@@ -43,7 +43,24 @@ export default function strictBackendMigrations(pi: ExtensionAPI): void {
     if (toolName !== "write" && toolName !== "edit") return;
 
     const path = String(event.input.path ?? "");
-    if (!isMigrationPath(path) || !isPushedMigration(path)) return;
+    if (!isMigrationPath(path)) return;
+
+    // Hand-creating a revision file skips `make migrate-gen`'s auto-numbering.
+    // Measured: a local model guessed occupied revision numbers (72/73) and thrashed
+    // through ten filename variants before landing on a free one — the migrations
+    // rule that says to use migrate-gen only fires on bash migration commands, which
+    // a direct write never triggers. Enforce the workflow here, at the write itself.
+    if (toolName === "write" && !existsSync(resolve(projectRoot, path))) {
+      return {
+        block: true,
+        reason:
+          "do not hand-create revision files — run `make migrate-gen m=\"<message>\"` " +
+          "(the revision id auto-increments past every existing file). Edit the " +
+          "generated revision afterwards if it needs adjusting.",
+      };
+    }
+
+    if (!isPushedMigration(path)) return;
 
     return {
       block: true,

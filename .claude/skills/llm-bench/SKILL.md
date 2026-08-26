@@ -75,6 +75,15 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 ### 4. 하네스 변경은 딱 한 경우
 **게이트가 통과했는데 필요한 사실이 거짓이었을 때**만 sandbox 하네스를 고친다(= 구멍 실측). 고친 뒤 위반을 주입해 발화를 확인한다. 임계값·루프 상수는 벤치 하나로 조정하지 않는다. sandbox 하네스 변경은 fast-api-standard 로 되돌려 보낼 후보이지 자동 동기화가 아니다.
 
+## 연속성 하네스 (ext/continuity.ts, 옵트인)
+
+로컬 코더의 **작업 지속력**을 위한 omp 확장. `BENCH_HOOK=<경로>` 로 러너에 옵트인하면 셀의 omp 에 `--hook` 으로 실린다(미설정이면 기존 동작). 원칙: **도메인 하드코딩·처방 금지** — 제네릭 신호만 관측하고, 무엇을 고칠지는 모델 자율. 지속 기억은 네이티브 todo(리셋 생존, 실측), 리셋 부트스트랩이 todo 갱신을 지시한다.
+
+- 관측(제네릭 4신호): verify red/green(bash 실패줄) · 유사 반복(자카드, 변이툴만 — read류 탐색 제외) · 정체(성공 변이 0 인 N턴) · 컨텍스트 비대(리셋 후 토큰 예산 초과 → 위생 리셋)
+- 행동: 리셋(context 재작성 → [시스템+중립 부트스트랩+최근 N]) · end-gate(red 인 채 프로즈 턴이면 turn_end 재구동, 상한 2 — agent_end 시점은 teardown 으로 무효, 실측)
+- 안전: 총 리셋 상한 · 같은 계열 신호 지속 시 GIVE UP(강제하지 않음) · 툴 정책 블록 제외
+- 실측 계보: stuck-reset v1(동일성 감지 무용) → v2(주기 리셋, baseline 동률) → v3(end-gate+유사도+정체, REST 개선 신호) → 체계화. 근거는 `bench/2026-08-26.s2.stuckreset-v*.md`.
+
 ## Mode A(integration 재현) 재추가
 
 무거운 integration 서브시스템이 계약 테스트와 강하게 결합돼(테스트가 시드 마이그레이션을 리플레이) sandbox 최소화 때 통째로 뺐다. 다시 하려면: fast-api-standard 에서 integration 관련 파일(models/routers/services/repositories/schemas/core integration, tests/core/test_integration*, fixtures, api/integration*.http, 훅 `check-backend-integration*`, 규칙, ast-grep integration, 시드 마이그레이션)을 sandbox 로 복원하고 포트만 치환한 뒤, `runner.ts` 의 `TASKS` 에 `integration` 셀을 되살린다. 부모 상태 복원(레퍼런스 산출물 삭제 + 역패치)은 `reference/a1aebf3.manifest.json` + `a1aebf3.parent.patch` 로 하고, 시드 마이그레이션이 다시 들어오면 마이그레이션 불변 규칙(`@{upstream}`) 때문에 임시 git 핀이 필요해진다 — 예전 러너 이력(git log)에 그 방식이 있다.

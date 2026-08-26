@@ -97,7 +97,7 @@ style: |
 <!-- sync: root-makefile.md=d8c2569156bd7693 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
-<!-- sync: strict-backend-migrations.ts=30df36cf60f42159 -->
+<!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=c044efc651be598a -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
@@ -333,7 +333,7 @@ flowchart LR
 |---|---|---|
 | `strict-command-routing.ts` | **cross-cutting** | 직접 도구 호출 차단 (make/bash/docker) — `make <target>` 사용 강제 |
 | `strict-backend-app-structure.ts` | backend | 문서화된 backend/ 구조 밖 write 차단 (app/ 신규 디렉토리, app 루트 스트레이 파일, 비표준 backend/ 위치) |
-| `strict-backend-migrations.ts` | backend | upstream에 존재하는 마이그레이션 파일 수정 차단 |
+| `strict-backend-migrations.ts` | backend | upstream에 존재하는 마이그레이션 파일 수정 차단 + 리비전 파일 손수 생성 차단 (`make migrate-gen`으로 번호 자동 증가) — `backend-migrations` TTSR은 `tool:bash`만 보므로 직접 write는 여기서 잡는다 |
 | `strict-no-subagents.ts` | **cross-cutting** | `task` 도구로 서브에이전트 생성 차단 (agent 타입 6종) |
 | `strict-verified-git.ts` | **cross-cutting** | `git commit`/`git push` 직전에 `make verify` 실행; 실패하면 차단. **커밋은 검증된 트리여야 한다** — unstaged/untracked가 남아 있으면 `make verify`가 읽은 트리 ≠ 커밋될 트리이므로 차단(`git add -A` 또는 `git stash -k` 안내). 미추적 새 모듈을 추적 파일들이 import하던 케이스가 실제로 있었다 |
 | `strict-tooling.ts` | **cross-cutting** | 파이썬/셸 스크립트 및 루트 `scripts|tools|bin|utils/` 생성 차단 — 스크립트성 코드는 `.omp/hooks/` TypeScript |
