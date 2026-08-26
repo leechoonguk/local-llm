@@ -24,7 +24,7 @@ from app.core.cache import RedisCache
 from app.core.exceptions import setup_exception_handler
 from app.core.logging import configure_logging
 from app.core.settings import settings
-from app.routers import auth, batch, health, integration, notice, user
+from app.routers import auth, batch, health, integration, user
 
 
 # ============================================================
@@ -230,7 +230,6 @@ app.include_router(health.router)
 api_router = APIRouter(prefix=API_V1_PREFIX)
 api_router.include_router(batch.router)
 api_router.include_router(integration.router)
-api_router.include_router(notice.router)
 api_router.include_router(user.router)
 api_router.include_router(auth.router)
 app.include_router(api_router)

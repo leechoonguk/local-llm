@@ -22,7 +22,7 @@ from app.models.integration import (  # noqa: F401 — register models on metada
     IntegrationOperation,
     IntegrationSecret,
 )
-from app.models.notice import Notice  # noqa: F401 — register model on metadata
+from app.models.user import User  # noqa: F401 — register model on metadata
 
 
 # Prevent scheduler from starting during tests
