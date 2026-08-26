@@ -31,6 +31,12 @@ export function deny(event: "PreToolUse", reason: string): never {
   process.exit(0);
 }
 
+/** 사용자 승인으로 올린다 — 금지가 아니라 "요청 시에만" 인 명령(공식 문서의 permissionDecision "ask"). */
+export function ask(event: "PreToolUse", reason: string): never {
+  process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, permissionDecision: "ask", permissionDecisionReason: reason } }));
+  process.exit(0);
+}
+
 export function addContext(event: "PostToolUse", text: string): never {
   process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: event, additionalContext: text } }));
   process.exit(0);

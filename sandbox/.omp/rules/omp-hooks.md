@@ -91,6 +91,7 @@ post hook after every edit.
 | `decks-sync.md` | — | `check-decks-sync.ts` |
 | `RULES.md` (sticky) | `strict-no-subagents.ts` | — |
 | `RULES.md` (sticky) | `strict-additive-writes.ts` | — |
+| `RULES.md` (sticky) | `strict-no-vcs-publish.ts` | — |
 | `backend-app-forbidden-tokens.md` (TTSR trigger) | — | `check-backend-exceptions.ts` + `check-environment.ts` |
 | `backend-service-boundary-tokens.md` (TTSR trigger) | — | `check-backend-transaction.ts` + `check-backend-sse.ts` + `check-backend-background-tasks.ts` + `check-backend-integration.ts` |
 | `backend-router-wiring-tokens.md` (TTSR trigger) | — | `check-backend-auth.ts` |
@@ -183,6 +184,7 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
 | +-- strict-backend-migrations.ts    # Backend: blocks edits only to upstream migration files
 | +-- strict-no-subagents.ts        # Cross-cutting: blocks task (subagent) creation
 | +-- strict-verified-git.ts        # Cross-cutting: runs make verify before Git commit/push
+| +-- strict-no-vcs-publish.ts      # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
 | +-- strict-additive-writes.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
 | +-- strict-backend-app-structure.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
 | +-- strict-tooling.ts            # Cross-cutting: blocks Python/shell tooling and root script dirs outside .omp/hooks/

@@ -27,7 +27,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 5. **models.yml 의 두 provider는 합치지 않는다.** `ollama`(openai-responses, thinking on)와 `ollama-nothink`(openai-completions + `reasoning_effort: none`)는 omp 스키마 제약 때문에 나뉜 것이다. 사유는 파일 상단 주석 참고.
 6. **`brew services` 로 Ollama/oMLX 를 띄우지 않는다.** Ollama 는 레포 LaunchAgent(`com.ollama.serve`), oMLX 는 GUI 앱만 쓰고, 둘 다 자동 시작·자동 재시작(RunAtLoad/KeepAlive, 로그인 항목, oMLX `auto_start_on_launch`)은 꺼 둔다 — `make check-autostart`. 기동은 `launchctl kickstart -k`.
 7. **sudo는 사용자가 직접.** sudo가 필요한 단계(예: `iogpu.wired_limit_mb`, `install.sh`의 sysctl)는 명령을 제시하고 기다린다. **모델 다운로드(`hf download`/`ollama pull`)는 에이전트가 직접 해도 된다**(2026-08-25 사용자 허용, `pre-bash` deny 제거). `install.sh` 전체 실행은 sudo를 포함하므로 여전히 사용자 몫이다.
-8. **커밋/푸시는 요청 시에만.** 커밋 메시지는 영어, 본문에 실측 근거를 한 줄 남긴다.
+8. **커밋/푸시는 요청 시에만.** `pre-bash` 훅이 `git commit`/`git push` 를 ask(사용자 승인)로 강제한다(2026-08-26). omp 쪽도 동일 — `sandbox/.omp/hooks/pre/` 가 피험자의 git commit/push 를 deny 한다. 커밋 메시지는 영어, 본문에 실측 근거를 한 줄 남긴다.
 9. **주석·README는 한국어**, 코드 식별자와 커밋 메시지는 영어. 기존 파일의 말투("~한다" 체)를 따른다.
 10. 실측으로 얻은 숫자(메모리, tok/s, 중단 토큰 수)는 README의 해당 표에 날짜와 함께 기록한다. 추정치는 "추정"이라고 쓴다.
 11. **표준은 `.claude/rules/`, 검증은 `make verify`.** 대상 파일(bench/, ollama/, omlx/, omp/, 문서, 스킬, 하네스)마다 규칙 파일이 있고 같은 이름의 검사(`.claude/hooks/check-<name>.ts`)가 그것을 기계로 확인한다. 편집하면 `PostToolUse` 훅이 해당 검사를 돌려 위반을 돌려주고, 규칙 6·7 의 금지 명령은 `PreToolUse` 훅이 deny 한다. 작업을 마쳤다고 보고하기 전과 커밋 전에 `make verify` 가 초록이어야 한다. 규칙·검사·Makefile 타깃은 한 이름으로 넷을 같이 추가한다(`.claude/rules/harness.md`).
