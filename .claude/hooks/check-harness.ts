@@ -118,16 +118,13 @@ function smoke(root: string): Issue[] {
     }
   };
   const deny = (r: { code: number; stdout: string }): boolean => r.code === 0 && /"permissionDecision"\s*:\s*"deny"/.test(r.stdout);
-  const askUp = (r: { code: number; stdout: string }): boolean => r.code === 0 && /"permissionDecision"\s*:\s*"ask"/.test(r.stdout);
   if (existsSync(join(root, ".claude/hooks/pre-bash.ts"))) {
     if (!deny(run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "brew services start ollama" } }))) out.push("스모크: pre-bash 가 'brew services start ollama' 를 deny 하지 않는다");
     if (!deny(run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "brew services restart jundot/omlx/omlx" } }))) out.push("스모크: pre-bash 가 'brew services restart jundot/omlx/omlx' 를 deny 하지 않는다");
-    if (!askUp(run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "git commit -m 'x'" } }))) out.push("스모크: pre-bash 가 'git commit' 을 ask 로 올리지 않는다(규칙 8)");
-    if (!askUp(run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "cd /tmp && git push origin main" } }))) out.push("스모크: pre-bash 가 'git push' 를 ask 로 올리지 않는다(규칙 8)");
     const ok = run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "ollama ps" } });
     if (ok.code !== 0 || /deny/.test(ok.stdout)) out.push("스모크: pre-bash 가 'ollama ps' 를 막는다");
-    const okGit = run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "git status --porcelain && git diff" } });
-    if (okGit.code !== 0 || /"(deny|ask)"/.test(okGit.stdout)) out.push("스모크: pre-bash 가 읽기용 git(status/diff)을 막는다");
+    const okGit = run("pre-bash.ts", { tool_name: "Bash", tool_input: { command: "git commit -m 'x' && git push" } });
+    if (okGit.code !== 0 || /"(deny|ask)"/.test(okGit.stdout)) out.push("스모크: pre-bash 가 git commit/push 를 막는다(ask 게이트는 2026-08-27 제거 — omp 하네스만 deny)");
   }
   if (existsSync(join(root, ".claude/hooks/pre-write.ts"))) {
     if (!deny(run("pre-write.ts", { tool_name: "Write", tool_input: { file_path: join(root, "bench/results/x.md"), content: "" } }))) out.push("스모크: pre-write 가 bench/results/ 를 deny 하지 않는다");
