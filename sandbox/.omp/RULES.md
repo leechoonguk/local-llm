@@ -23,5 +23,7 @@ context resets and compactions.
 
 An additive task must not wipe existing code: prefer targeted edits over
 full-file rewrites of existing files, and never truncate a file with `>`.
+Never replace an existing import line with yours — add it alongside; existing
+imports register models and behavior other code depends on.
 
 Before declaring work done, run `make verify` again and confirm it is green.

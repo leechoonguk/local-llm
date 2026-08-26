@@ -36,6 +36,48 @@ export default function strictAdditiveWrites(pi: any) {
       };
     }
 
+    if (toolName === "edit") {
+      // Field shape measured from the runtime: {path, old_string, new_string}
+      // or {path, edits: [{old_string, new_string}]}.
+      const pairs: Array<{ old_string?: unknown; new_string?: unknown }> =
+        Array.isArray((event.input as any).edits) ? (event.input as any).edits : [event.input as any];
+      for (const pr of pairs) {
+        const oldStr = String(pr.old_string ?? "");
+        const newStr = String(pr.new_string ?? "");
+        if (!oldStr) continue;
+        // (a) Replacing an existing import line — the measured env.py class:
+        // asked to ADD a model import, the model swapped the `User` line for
+        // `Notice`. A replaced import is wiped code; add alongside instead.
+        const oldImports = meaningfulLines(oldStr).filter((l: string) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l));
+        const dropped = oldImports.filter((l: string) => !newStr.includes(l));
+        const addsImport = /(^|\n)\s*(from\s+\S+\s+import\b|import\s+\S)/.test(newStr);
+        if (dropped.length > 0 && addsImport) {
+          return {
+            block: true,
+            reason:
+              `this edit replaces an existing import (\`${String(dropped[0]).slice(0, 60)}\`) with a new one — ` +
+              "an additive task adds its import alongside; existing imports register models/behavior " +
+              "other code depends on. Keep the old line and add yours next to it.",
+          };
+        }
+        // (b) Egregious deletion: a large block mostly vanishes.
+        const oldLines = meaningfulLines(oldStr);
+        if (oldLines.length >= 8) {
+          const newSet = new Set(meaningfulLines(newStr));
+          const retained = oldLines.filter((l: string) => newSet.has(l)).length / oldLines.length;
+          if (retained < 0.3) {
+            return {
+              block: true,
+              reason:
+                `this edit deletes ~${Math.round((1 - retained) * 100)}% of a ${oldLines.length}-line block — ` +
+                "an additive task must not wipe existing code; make a narrower edit that keeps unrelated lines.",
+            };
+          }
+        }
+      }
+      return;
+    }
+
     if (toolName !== "write") return;
     const path = String(event.input.path ?? "");
     if (!/\.(?:py|ts|tsx|js|mjs|yml|yaml|toml|json|http)$/.test(path)) return;
