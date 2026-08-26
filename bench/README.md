@@ -50,6 +50,8 @@
 | [`2026-08-26.s2.parity-slim.md`](2026-08-26.s2.parity-slim.md) | 슬림 훅 패리티(유효 n=1) — 훅은 완벽 침묵했으나 **busy-loop 발견**(45m TO, writes 562, green 1회뿐): "성공 변이 지속"은 건강이 아니며 건강 = green 으로의 주기적 복귀. → red-age 트리거 + 2단계 리셋(save-then-clear, 체크포인트 먼저) 재설계의 근거 |
 | [`2026-08-26.s2.hygiene2p.md`](2026-08-26.s2.hygiene2p.md) | two-phase 지속형 컷 실증(유효 n=1) — 컷 후 ctx 유지·dt 2~4배 개선(70k대 12~119.7s→23k대 3.5~17s), 위생 컷 6.5s vs omp 컴팩션 48.5s. **턴수 sickness 는 구조적 결함**(빠른 턴 과발화 실측 2종→시간단독 전환, 엣지 12/12) + 컷·종료 상호작용 결함 3건 발견(green 후 컷·agent_end 재구동·파이프 가짜초록). 후속 v2 캠페인의 근거 |
 | [`2026-08-27.s2.hygiene2p-v2.md`](2026-08-27.s2.hygiene2p-v2.md) | 수정 반영판 REST n=2 — **훅 메커니즘 전 항목 정당 동작**(과발화 0·가짜초록 0·정당 sick 발화만·컷 지속) 그러나 **성적 0/2 near-miss**(45m TO×2) vs baseline 2/2. 셀 #2 회귀 2(기존 서비스 `session.begin()` 제거 — additive 가드 사각). continuity 는 옵트인 유지·baking 안 함 확정, 새 사각 2건(verify 미관측 종료·소규모 edit 회귀) 기록 |
+| [`2026-08-27.s2.hygiene2p-v3.md`](2026-08-27.s2.hygiene2p-v3.md) | 사각 보강판(verify-unseen end-gate + unwrap 가드), 유효 n=1 + 조기 종료 — **END-GATE red 재구동 2회 최초 실전 발화**(green 복귀 2회로 연결), 회귀 0. 그래도 45m TO near-miss(훅 셀 누적 6/6 TO) — v2 결론 유지. v2 시그니처 재현 확정 시점에 셀 #2 조기 kill(조기 종료 정책 첫 적용) |
+| [`2026-08-27.s2.shiftleft-nohyg.md`](2026-08-27.s2.shiftleft-nohyg.md) | shift-left 넛지 + 위생컷 off, n=2 — **훅 셀 첫 게이트 초록**(38.5m 자체 종료, baseline보다 빠름): 넛지가 첫 verify 를 25분+→14분으로 당김. 위생컷 off 는 반증(ctx 101k·dt 308s, 컴팩션 미발화 — 컷 복원). 셀 #2 는 **스코프 가짜초록**(서브셋 green 을 게이트 green 으로 오인, 22분 조기 종료 미완성 1) — finish-gate 후보 도출 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
@@ -88,6 +90,6 @@ stuckreset v2·v3 → continuity 체계화 → 하네스 룰 감사 → slim/two
 
 1. **최대 수확은 훅이 아니라 하네스 감사였다.** 룰 전달 구멍·내용 모순·체크리스트 부재를 고치자 **훅 없이 REST 2/2 초록**(39.5/41.2m) — 옛 "능력 천장 ~50%"의 상당 부분이 하네스 아티팩트.
 2. **continuity 훅의 메커니즘은 전부 실측 검증됐다**: 릴레이(리셋 생존·todo 기억), 지속형 컷(ctx 유지, dt 2~4배 개선), save-then-clear 체크포인트, 시간단독 sickness(과발화 해소, 엣지 12/12), truncated-clear 가드, 위생 컷(6.5s, omp 컴팩션 48.5s 대비 7배 저렴 + 구조화 체크포인트).
-3. **그러나 게이트 개선 증거는 없다(음성)**: 훅 셀 누적(4신호 fat 1, slim 1, two-phase C 1, v2 2) 전부 45m TO — 같은 하네스 baseline 2/2 와 대비. 컷이 버는 시간 ≤ 체크포인트·재구동·재수렴이 쓰는 시간. **continuity 는 옵트인으로 유지, 표준 baking 은 하지 않는다.**
+3. **그러나 게이트 개선 증거는 없다(음성)**: 훅 셀 누적(4신호 fat 1, slim 1, two-phase C 1, v2 2, v3 1) 전부 45m TO — 같은 하네스 baseline 2/2 와 대비. 컷이 버는 시간 ≤ 체크포인트·재구동·재수렴이 쓰는 시간. **continuity 는 옵트인으로 유지, 표준 baking 은 하지 않는다.** 단 v3 에서 END-GATE red 재구동이 최초로 실전 발화(2회, green 복귀로 연결) — "아플 때 개입" 신호 자체는 값을 한다.
 4. **REST 의 실질 병목은 "45분 캡 안의 100% 커버리지"** — 훅 유무와 무관하게 마지막 1%에서 반복 캡킬. near-miss(미완성 1)가 지배적 실패형이고 회귀는 대부분 0(예외: v2 셀 #2 의 소규모 edit 회귀 2 — additive 가드 사각).
-5. **남은 개선 후보(미적용)**: end-gate 의 "verify 관측 0 인 채 종료" 사각, additive 가드의 소규모 edit 사각, 러너 셀 경계 revert 가 미커밋 하네스 수정을 지우는 함정(운영 교훈: 하네스 수정은 커밋 후 캠페인).
+5. **사각 2건은 v3 에서 보강 완료**(verify-unseen end-gate, unwrap 가드 — 합성 15/15+8/8 실증, 실전 발화는 각각 미발생/0회로 무해 확인). 운영 교훈: 러너 셀 경계 revert 가 미커밋 하네스 수정을 지운다 — 하네스 수정은 커밋 후 캠페인. 벤치 조기 종료 정책(예측 확정 시 kill) 도입, v3 에서 첫 적용.
