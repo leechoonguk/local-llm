@@ -26,4 +26,7 @@ full-file rewrites of existing files, and never truncate a file with `>`.
 Never replace an existing import line with yours — add it alongside; existing
 imports register models and behavior other code depends on.
 
+Run the verification after wiring each layer or file group, not only at the
+end — failures discovered early are cheaper than one pile at the finish.
+
 Before declaring work done, run `make verify` again and confirm it is green.

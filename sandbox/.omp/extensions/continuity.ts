@@ -26,6 +26,10 @@
  *  3) End-gate — a prose-only turn (finishing signal) while red re-drives the
  *     model once via sendUserMessage at turn_end (agent_end is a teardown
  *     race and never generates — measured). Cap END_GATE_MAX.
+ *  4) Shift-left nudge — one reminder when files have been changing for
+ *     VERIFY_NUDGE_MS with no verification observed. Measured: every
+ *     near-miss cell ran its first verification 25+ minutes in, piling
+ *     all failures into the finish.
  *
  * Reset is two-phase (save-then-clear, like hibernation):
  *  phase "checkpoint": with the context intact, ask the model to write the
@@ -46,8 +50,9 @@ import { appendFileSync } from "node:fs";
 const STALL_MS = 7 * 60_000;       // wall time without a successful mutation (time only — see header)
 const RED_AGE_MS = 12 * 60_000;    // wall time with a persisting red state (time only — see header)
 const MAX_RESETS = 6;              // sickness cuts — save-then-clear made cuts cheap (measured), so headroom over 3
-const HYGIENE_BUDGET = 50_000;     // hypothesis lever: session-token growth per two-phase hygiene cut
-const MAX_HYGIENE = 3;             // hygiene cuts are counted separately from sickness cuts
+const HYGIENE_BUDGET = 50_000;     // session-token growth per two-phase hygiene cut
+const MAX_HYGIENE = 0;             // ablation (2026-08-27): omp native compaction already trims at ~71k (measured, 48.5s); measuring whether our hygiene cuts were net cost — hook cells 6/6 TO vs hookless 2/2
+const VERIFY_NUDGE_MS = 10 * 60_000; // shift-left: minutes of mutations tolerated before the one verification reminder
 const KEEP_RECENT = 4;
 const END_GATE_MAX = 2;
 
@@ -57,6 +62,7 @@ export default function continuity(pi: any) {
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let everRed = false, mutatedEver = false;
+  let firstMutationAt = 0, verifyNudged = false;
   let lastProgressAt = Date.now();
   let redSig: string | null = null;
   let redCmdTk: Set<string> | null = null;
@@ -71,7 +77,7 @@ export default function continuity(pi: any) {
   let armed = false;
   let bootstrap: string | null = null;
 
-  log(`loaded two-phase. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET/1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX}`);
+  log(`loaded two-phase. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET/1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS/60000)}m`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -108,7 +114,7 @@ export default function continuity(pi: any) {
           redSig = null; redCmdTk = null; redSince = 0; redTurns = 0;
         }
       }
-      if (!f && !event.isError && isMutating(event.toolName)) { stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true; }
+      if (!f && !event.isError && isMutating(event.toolName)) { stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true; if (!firstMutationAt) firstMutationAt = Date.now(); }
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
@@ -148,6 +154,15 @@ export default function continuity(pi: any) {
           beginCheckpoint(`${Math.round((now - lastProgressAt) / 60000)} minutes (${stallTurns} turns) passed with no successful change`);
           return;
         }
+      }
+      // Shift-left verification nudge (once per session): failures found at
+      // minute 15 are fixed inside the cap; the same failures found at minute
+      // 30 pile into a near-miss (measured across every hook cell).
+      if (phase === "idle" && firstMutationAt > 0 && !everRed && !verifyNudged && now - firstMutationAt >= VERIFY_NUDGE_MS) {
+        verifyNudged = true;
+        pi.sendUserMessage(`Files have been changing for ~${Math.round(VERIFY_NUDGE_MS / 60000)} minutes with no verification run observed. Run the project's verification now — failures found early are cheaper than a pile at the end. Then continue working.`);
+        log("VERIFY-NUDGE sent");
+        return;
       }
       // Hypothesis lever (two-phase hygiene): the old cut-first hygiene cost more than
       // it saved; with save-then-clear the price dropped, so re-test whether trimming a
