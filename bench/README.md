@@ -48,6 +48,7 @@
 | [`2026-08-26.s2.fixed-harness-baseline.md`](2026-08-26.s2.fixed-harness-baseline.md) | 룰 감사 수정(전달 Workflow·완전 체크리스트·모순 통일·룰귀속·메타검사) 후 **훅 없이 REST n=2 = 2/2 초록·회귀 0**(39.5m/41.2m) — 옛 "능력 천장(~50%)"의 상당 부분이 하네스 아티팩트였음을 시사(하네스가 달라진 비교·n=2 한계 명시) |
 | [`2026-08-26.s2.fixed-harness-continuity.md`](2026-08-26.s2.fixed-harness-continuity.md) | 같은 하네스에 4신호 훅을 얹은 비교(유효 n=1) — **45m TO·writes 70**: 위생·유사도 리셋이 건강한 작업 중 churn 비용으로 작용. 훅을 "아플 때만 발동"(정체 이중트리거+end-gate) 슬림판으로 재설계해 `.omp/extensions/` 워크스페이스 내부화한 근거 |
 | [`2026-08-26.s2.parity-slim.md`](2026-08-26.s2.parity-slim.md) | 슬림 훅 패리티(유효 n=1) — 훅은 완벽 침묵했으나 **busy-loop 발견**(45m TO, writes 562, green 1회뿐): "성공 변이 지속"은 건강이 아니며 건강 = green 으로의 주기적 복귀. → red-age 트리거 + 2단계 리셋(save-then-clear, 체크포인트 먼저) 재설계의 근거 |
+| [`2026-08-26.s2.hygiene2p.md`](2026-08-26.s2.hygiene2p.md) | two-phase 지속형 컷 실증(유효 n=1) — 컷 후 ctx 유지·dt 2~4배 개선(70k대 12~119.7s→23k대 3.5~17s), 위생 컷 6.5s vs omp 컴팩션 48.5s. **턴수 sickness 는 구조적 결함**(빠른 턴 과발화 실측 2종→시간단독 전환, 엣지 12/12) + 컷·종료 상호작용 결함 3건 발견(green 후 컷·agent_end 재구동·파이프 가짜초록). 후속 v2 캠페인의 근거 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.

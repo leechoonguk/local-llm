@@ -14,11 +14,15 @@
  *    must be saved while the context still holds it, then cleared.
  *
  * Triggers (all sickness-only; healthy sessions pay zero):
- *  1) Stall — no successful mutation for STALL_TURNS turns OR STALL_MS wall
- *     time (long thinking/reading stretches with nothing landing).
- *  2) Red-age — a verification failure state persists for RED_AGE_TURNS turns
- *     OR RED_AGE_MS despite ongoing activity (the busy-loop: editing forever
- *     without returning to green). Healthy cells cycle red→green in minutes.
+ *  1) Stall — no successful mutation for STALL_MS wall time.
+ *  2) Red-age — a verification failure state persists for RED_AGE_MS wall time
+ *     despite ongoing activity (the busy-loop: editing forever without
+ *     returning to green).
+ *  Sickness is wall time only. Turn counts are not robust: they over-fire on
+ *  fast turns (measured — 12 sub-5s red turns in 1 minute during a healthy
+ *  verify-fix endgame; 10 sub-15s turns during a healthy read/plan stretch)
+ *  and under-fire on slow thinking turns (3 x 3-minute turns is 9 stalled
+ *  minutes but only 3 turns). Turn counters remain for logging.
  *  3) End-gate — a prose-only turn (finishing signal) while red re-drives the
  *     model once via sendUserMessage at turn_end (agent_end is a teardown
  *     race and never generates — measured). Cap END_GATE_MAX.
@@ -39,11 +43,9 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { appendFileSync } from "node:fs";
 
-const STALL_TURNS = 10;            // turns without a successful mutation
-const STALL_MS = 7 * 60_000;       // wall time without a successful mutation
-const RED_AGE_TURNS = 12;          // turns with a persisting red verification state
-const RED_AGE_MS = 12 * 60_000;    // wall time with a persisting red state
-const MAX_RESETS = 3;              // sickness cuts (stall / red-age)
+const STALL_MS = 7 * 60_000;       // wall time without a successful mutation (time only — see header)
+const RED_AGE_MS = 12 * 60_000;    // wall time with a persisting red state (time only — see header)
+const MAX_RESETS = 6;              // sickness cuts — save-then-clear made cuts cheap (measured), so headroom over 3
 const HYGIENE_BUDGET = 50_000;     // hypothesis lever: session-token growth per two-phase hygiene cut
 const MAX_HYGIENE = 3;             // hygiene cuts are counted separately from sickness cuts
 const KEEP_RECENT = 4;
@@ -68,7 +70,7 @@ export default function continuity(pi: any) {
   let armed = false;
   let bootstrap: string | null = null;
 
-  log(`loaded two-phase. stall=${STALL_TURNS}t|${Math.round(STALL_MS / 60000)}m redAge=${RED_AGE_TURNS}t|${Math.round(RED_AGE_MS / 60000)}m maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET/1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX}`);
+  log(`loaded two-phase. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET/1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX}`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -90,11 +92,17 @@ export default function continuity(pi: any) {
       if (event.isError && isPolicyBlock(content)) return;
       const f = failSig(content);
       if (/^bash/i.test(event.toolName)) {
-        const cmdTk = tokens(norm(str(event.input)).slice(0, 300));
+        const cmdStr = norm(str(event.input)).slice(0, 300);
+        const cmdTk = tokens(cmdStr);
+        // Truncated pipelines (| tail/head/grep/...) hide FAIL lines and fake a
+        // green run (measured: `make verify | tail -30` cleared red while the
+        // gate still failed). Partial output is evidence of failure, never of
+        // success — set red from it, but require an untruncated run to clear.
+        const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
         if (f) {
           if (!redSig) { redSince = Date.now(); redTurns = 0; }
           redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
-        } else if (!event.isError && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5) {
+        } else if (!event.isError && !truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5) {
           log("green — red cleared (same-command success)");
           redSig = null; redCmdTk = null; redSince = 0; redTurns = 0;
         }
@@ -116,21 +124,27 @@ export default function continuity(pi: any) {
       if (tokensAtCut === 0 && used > 0) tokensAtCut = used;
 
       if (phase === "checkpoint") {
-        // The model has had one full turn to write its checkpoint — cut next.
+        // The model has had one full turn to write its checkpoint. If the
+        // sickness resolved inside that turn (verification back to green, or a
+        // change just landed — measured: red cleared in the checkpoint window
+        // and the cut still fired after green), cancel instead of cutting.
+        if (cutKind === "sick" && redSig === null && now - lastProgressAt < STALL_MS) {
+          phase = "idle"; bootstrap = null;
+          log("CHECKPOINT canceled (recovered before the cut)");
+          return;
+        }
         phase = "cutting"; armed = true;
         return;
       }
       if (phase === "idle" && resets < MAX_RESETS) {
-        const stalled = stallTurns >= STALL_TURNS || now - lastProgressAt >= STALL_MS;
-        const redAged = redSig !== null && (redTurns >= RED_AGE_TURNS || (redSince && now - redSince >= RED_AGE_MS));
+        const stalled = now - lastProgressAt >= STALL_MS;
+        const redAged = redSig !== null && redSince > 0 && now - redSince >= RED_AGE_MS;
         if (redAged) {
           beginCheckpoint(`the verification has stayed failing for ${redTurns} turns / ${Math.round((now - redSince) / 60000)} minutes while edits kept landing`);
           return;
         }
         if (stalled) {
-          beginCheckpoint(stallTurns >= STALL_TURNS
-            ? `no successful change landed for ${STALL_TURNS} turns`
-            : `${Math.round((now - lastProgressAt) / 60000)} minutes passed with no successful change`);
+          beginCheckpoint(`${Math.round((now - lastProgressAt) / 60000)} minutes (${stallTurns} turns) passed with no successful change`);
           return;
         }
       }
@@ -179,7 +193,14 @@ export default function continuity(pi: any) {
     } catch (e) { log(`context ERR ${String(e)}`); return undefined; }
   });
 
-  pi.on("agent_end", (e: any) => log(`agent_end msgs=${(e.messages||[]).length} resets=${resets} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`));
+  pi.on("agent_end", (e: any) => {
+    log(`agent_end msgs=${(e.messages||[]).length} resets=${resets} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`);
+    // A finished session must not be re-driven by our own machinery: the
+    // injected bootstrap user message can reopen the loop after agent_end
+    // (measured — post-green turns kept running until the cap). Release the
+    // window and any in-flight cut; a deliberate revival sees the full session.
+    cutIndex = -1; cutBootstrap = null; phase = "idle"; armed = false; bootstrap = null;
+  });
 }
 
 // ---- helpers (details after the entry point — check-code-layout) ----
