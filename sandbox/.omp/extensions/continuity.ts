@@ -41,26 +41,6 @@ const MAX_RESETS = 3;
 const KEEP_RECENT = 4;
 const END_GATE_MAX = 2;
 
-const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
-const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));
-const tokens = (s: string) => new Set(s.toLowerCase().match(/[a-z0-9_]+/g) ?? []);
-function jaccard(a: Set<string>, b: Set<string>): number {
-  if (!a.size || !b.size) return 0;
-  let inter = 0; for (const t of a) if (b.has(t)) inter++;
-  return inter / (a.size + b.size - inter);
-}
-function failSig(content: string): string | null {
-  const fails = (content.match(/^\s*(FAIL|ERROR|FAILED|Traceback|AssertionError)[:\s].*$/gim) ?? []).map(norm).sort();
-  return fails.length ? fails.join(" | ") : null;
-}
-function isPolicyBlock(content: string): boolean {
-  return /\bBlocked\b|use the .*? tool instead|instead of (cat|head|tail|grep|ls|sed|awk)|not (allowed|permitted)|requires approval|use `?(read|edit|write|grep)`? (tool )?instead/i.test(content);
-}
-function isMutating(toolName: string): boolean {
-  return /^(write|edit|create|apply_patch|str_replace|bash|notebook)/i.test(toolName);
-}
-
 export default function continuity(pi: any) {
   const logPath = process.env.STUCK_RESET_LOG || "";
   const log = (s: string) => { if (logPath) { try { appendFileSync(logPath, `[continuity] ${s}\n`); } catch {} } };
@@ -134,4 +114,25 @@ export default function continuity(pi: any) {
   });
 
   pi.on("agent_end", (e: any) => log(`agent_end msgs=${(e.messages||[]).length} resets=${resets} endGate=${endGateSends} red=${redSig ? "YES" : "no"}`));
+}
+
+// ---- helpers (details after the entry point — check-code-layout) ----
+const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
+const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));
+const tokens = (s: string) => new Set(s.toLowerCase().match(/[a-z0-9_]+/g) ?? []);
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (!a.size || !b.size) return 0;
+  let inter = 0; for (const t of a) if (b.has(t)) inter++;
+  return inter / (a.size + b.size - inter);
+}
+function failSig(content: string): string | null {
+  const fails = (content.match(/^\s*(FAIL|ERROR|FAILED|Traceback|AssertionError)[:\s].*$/gim) ?? []).map(norm).sort();
+  return fails.length ? fails.join(" | ") : null;
+}
+function isPolicyBlock(content: string): boolean {
+  return /\bBlocked\b|use the .*? tool instead|instead of (cat|head|tail|grep|ls|sed|awk)|not (allowed|permitted)|requires approval|use `?(read|edit|write|grep)`? (tool )?instead/i.test(content);
+}
+function isMutating(toolName: string): boolean {
+  return /^(write|edit|create|apply_patch|str_replace|bash|notebook)/i.test(toolName);
 }
