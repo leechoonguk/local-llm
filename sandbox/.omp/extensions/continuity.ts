@@ -60,6 +60,8 @@ export default function continuity(pi: any) {
   let redSince = 0, redTurns = 0;
   let phase: "idle" | "checkpoint" | "cutting" = "idle";
   let cutKind: "sick" | "hygiene" = "sick";
+  let cutIndex = -1;                 // persistent window: drop messages before this index
+  let cutBootstrap: string | null = null;
   let hygieneCuts = 0;
   let lastTurnAt = Date.now();
   let tokensAtCut = 0;
@@ -150,21 +152,29 @@ export default function continuity(pi: any) {
   });
 
   pi.on("context", (event: any, ctx: any) => {
-    if (!armed) return undefined;
-    armed = false;
     try {
       const msgs = event.messages || [];
+      if (armed) {
+        // Measured: a one-shot rewrite lasts a single model call — the stored
+        // session returns in full on the next one (ctx 80k -> 22k -> 81k in the
+        // turn log). A cut must persist: remember the boundary and keep
+        // windowing every later call until a newer cut supersedes it.
+        armed = false;
+        cutIndex = Math.max(0, msgs.length - KEEP_RECENT);
+        cutBootstrap = bootstrap;
+        if (cutKind === "hygiene") hygieneCuts++; else resets++;
+        tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
+        phase = "idle";
+        stallTurns = 0; lastProgressAt = Date.now();
+        if (redSig) { redSince = Date.now(); redTurns = 0; }   // avoid immediate red-age re-fire
+        log(`RESET window @${cutIndex}/${msgs.length} (${cutKind} cut, sick#${resets} hyg#${hygieneCuts}, after checkpoint)`);
+      }
+      if (cutIndex < 0) return undefined;
+      if (cutIndex > msgs.length) { cutIndex = -1; return undefined; }  // session rewritten under us — drop the marker
       const sys = msgs.filter((m: any) => m.role === "system");
-      const recent = msgs.slice(-KEEP_RECENT);
-      const bootMsg = { role: "user", content: bootstrap };
+      const bootMsg = { role: "user", content: cutBootstrap };
       const seen = new Set<any>();
-      const kept = [...sys, bootMsg, ...recent].filter((m) => (seen.has(m) ? false : (seen.add(m), true)));
-      if (cutKind === "hygiene") hygieneCuts++; else resets++;
-      tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
-      phase = "idle";
-      stallTurns = 0; lastProgressAt = Date.now();
-      if (redSig) { redSince = Date.now(); redTurns = 0; }   // avoid immediate red-age re-fire
-      log(`RESET context ${msgs.length} -> ${kept.length} (${cutKind} cut, sick#${resets} hyg#${hygieneCuts}, after checkpoint)`);
+      const kept = [...sys, bootMsg, ...msgs.slice(cutIndex)].filter((m) => (seen.has(m) ? false : (seen.add(m), true)));
       return { messages: kept };
     } catch (e) { log(`context ERR ${String(e)}`); return undefined; }
   });
