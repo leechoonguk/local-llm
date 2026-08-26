@@ -63,9 +63,13 @@ export default function strictAdditiveWrites(pi: any) {
         // (b) Egregious deletion: a large block mostly vanishes.
         const oldLines = meaningfulLines(oldStr);
         if (oldLines.length >= 8) {
-          const newSet = new Set(meaningfulLines(newStr));
+          const newLines = meaningfulLines(newStr);
+          const newSet = new Set(newLines);
           const retained = oldLines.filter((l: string) => newSet.has(l)).length / oldLines.length;
-          if (retained < 0.3) {
+          // A wholesale MODIFICATION keeps the block's size (every line changed,
+          // e.g. a rename sweep) — that is not a deletion. Only a block that
+          // actually SHRINKS below half its size counts as a wipe.
+          if (retained < 0.3 && newLines.length < oldLines.length * 0.5) {
             return {
               block: true,
               reason:
