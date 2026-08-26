@@ -163,7 +163,7 @@ class Batch(Base, AuditMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     name: Mapped[str] = mapped_column(String(120), index=True)
-    description: Mapped[str | None] = mapped_column(default=None)
+    description: Mapped[str | None] = mapped_column(String(512), default=None)
 ```
 
 (The real file additionally carries the 62-char `# ==== … ====` section banners

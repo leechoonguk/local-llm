@@ -183,11 +183,21 @@ function checkOmpRulesSync(): string[] {
   // Check 5: stale port literals. sandbox 포트는 전부 1-프리픽스(18000/15173/15432/16379…)다.
   // fast-api-standard 원본 포트(8000 등)가 룰 본문에 남으면 훅과 문서가 어긋난다 —
   // 실측: backend-api-http.md 가 "port other than 8000" 을 남겨 훅(:18000 강제)과 모순됐다.
-  const STALE_PORTS = /(?<!\d)(8000|5173|5432|6379|6006|4317)(?!\d)/;
+  // Stale-port set is derived from docker-compose port mappings ("1XXXX:XXXX"):
+  // every internal port whose host side is its 1-prefixed twin is a legacy port
+  // that must not appear host-side in rule text. Falls back to the known set.
+  let stalePortList = ["8000", "5173", "5432", "6379", "6006", "4317"];
+  try {
+    const compose = readFileSync(join(cwd, "docker-compose.yml"), "utf-8");
+    const derived = [...compose.matchAll(/"1(\d{3,4}):(\d{3,4})"/g)]
+      .filter((mm) => mm[1] === mm[2]).map((mm) => mm[2]);
+    if (derived.length) stalePortList = [...new Set([...stalePortList, ...derived])];
+  } catch { /* compose 없음 — 정적 목록 유지 */ }
+  const STALE_PORTS = new RegExp(`(?<!\\d)(${stalePortList.join("|")})(?!\\d)`);
   for (const file of ruleFiles) {
     // 컨테이너 간 DSN(`@postgres:5432` 등)은 도커 내부 포트라 정당 — 호스트쪽 포트만 감사한다.
     const content = readFileSync(join(rulesDir, file), "utf-8")
-      .replace(/(?:@|\/\/)[a-z][a-z0-9_-]*:(?:8000|5173|5432|6379|6006|4317)\b/g, "@svc:INTERNAL");
+      .replace(new RegExp(`(?:@|//)[a-z][a-z0-9_-]*:(?:${stalePortList.join("|")})\\b`, "g"), "@svc:INTERNAL");
     const m = STALE_PORTS.exec(content);
     if (m) {
       issues.push(
@@ -201,7 +211,7 @@ function checkOmpRulesSync(): string[] {
   // 실측: backend-testing.md 가 ItemService/TodoService/TaskService(존재하지 않는 도메인)를
   // 표준 표에 실어 모델을 유령 구조로 안내했다. 플레이스홀더(Name/X)와 실재 도메인만 허용.
   const modelsDir = join(cwd, "backend", "app", "models");
-  const domainAllow = new Set<string>(["name", "x", "xxx", "user", "integration"]);
+  const domainAllow = new Set<string>(["name", "x", "xxx", "user", "integration", "example", "sample", "demo", "foo"]);
   try {
     for (const f of readdirSync(modelsDir)) {
       if (f.endsWith(".py") && f !== "__init__.py") domainAllow.add(f.slice(0, -3).toLowerCase());
@@ -218,6 +228,49 @@ function checkOmpRulesSync(): string[] {
       issues.push(
         `${file}: ghost reference \`${mm[1]}Service\` — no backend/app/models/${base}.py; ` +
           "examples must use real domains or the Name/X placeholder",
+      );
+    }
+  }
+
+  // Check 7: reference-snippet drift. When a rule declares "`<path>` is the reference"
+  // and prints a code fence, every meaningful fence line must exist in that file —
+  // measured: backend-domain.md printed a models/batch.py snippet without String(120)
+  // and the layout banners, so copying the "reference" failed two hooks.
+  for (const file of ruleFiles) {
+    const content = readFileSync(join(rulesDir, file), "utf-8");
+    const refRe = /`([\w./-]+\.(?:py|ts|tsx|js|mjs|md|yml|yaml|toml|json|http))`[^\n]{0,40}\breference\b[\s\S]{0,200}?```[a-z]*\n([\s\S]*?)```/g;
+    for (const m of content.matchAll(refRe)) {
+      const refPath = join(cwd, "backend", "app", m[1].replace(/^backend\/app\//, ""));
+      const realPath = existsSync(refPath) ? refPath : join(cwd, m[1]);
+      if (!existsSync(realPath)) continue;
+      const real = readFileSync(realPath, "utf-8").replace(/\s+/g, " ");
+      for (const line of m[2].split("\n")) {
+        const t = line.trim();
+        if (t === "" || t.startsWith("#") || t.startsWith("...")) continue;
+        if (!real.includes(t.replace(/\s+/g, " "))) {
+          issues.push(
+            `${file}: reference snippet for \`${m[1]}\` drifted — line not in the real file: "${t.slice(0, 70)}" — ` +
+              "quote the actual file or drop the reference claim",
+          );
+          break;
+        }
+      }
+    }
+  }
+
+  // Check 8: legacy schema-class tokens. The naming convention is
+  // <Name>CreateRequest/<Name>ReadResponse/...Internal — bare XCreate/NameRead
+  // style tokens contradict it inside the same rulebook (measured:
+  // backend-domain.md said both, and following the legacy half failed the hook).
+  const LEGACY = /(?:\b(?:X|Xxx|Name)|<Name>)(?:Create|Read|Update)(?!Request|Response|Internal)\b/;
+  for (const file of ruleFiles) {
+    if (!file.startsWith("backend-")) continue;
+    const content = readFileSync(join(rulesDir, file), "utf-8");
+    const m = LEGACY.exec(content);
+    if (m) {
+      issues.push(
+        `${file}: legacy schema token \`${m[0]}\` — the convention is ` +
+          "<Name>CreateRequest/<Name>ReadResponse/...Internal; state one naming scheme only",
       );
     }
   }

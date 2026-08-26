@@ -46,6 +46,7 @@
 | [`2026-08-26.s2.stuckreset-v3.md`](2026-08-26.s2.stuckreset-v3.md) | v3(일반화 3레버: end-gate turn_end 재구동+자카드 thrash+정체 리셋) REST n=3 = **2/3 초록·회귀 0** — baseline(1/2)·v2(1/2) 대비 우세 추세(확인 패스 1셀은 중단, 미확정). END-GATE 평시 침묵·red 종료시만(마이크로테스트 실증). 후속은 체계화판 `ext/continuity.ts` 캠페인 |
 | [`2026-08-26.s2.continuity.md`](2026-08-26.s2.continuity.md) | 체계화판 continuity 검증 + **하네스 결함 2건 실측·수정**(red-clear 무력화 버그, 마이그레이션 룰 미발화 구멍→migrate-gen 블록, thrashing 10→2). 옛 baseline 은 새 스택 비교기준으로 무효 판정, 정량 비교는 n 한계로 종료 — continuity 는 회귀 0의 메커니즘 검증된 옵트인으로 유지(baking 보류) |
 | [`2026-08-26.s2.fixed-harness-baseline.md`](2026-08-26.s2.fixed-harness-baseline.md) | 룰 감사 수정(전달 Workflow·완전 체크리스트·모순 통일·룰귀속·메타검사) 후 **훅 없이 REST n=2 = 2/2 초록·회귀 0**(39.5m/41.2m) — 옛 "능력 천장(~50%)"의 상당 부분이 하네스 아티팩트였음을 시사(하네스가 달라진 비교·n=2 한계 명시) |
+| [`2026-08-26.s2.fixed-harness-continuity.md`](2026-08-26.s2.fixed-harness-continuity.md) | 같은 하네스에 4신호 훅을 얹은 비교(유효 n=1) — **45m TO·writes 70**: 위생·유사도 리셋이 건강한 작업 중 churn 비용으로 작용. 훅을 "아플 때만 발동"(정체 이중트리거+end-gate) 슬림판으로 재설계해 `.omp/extensions/` 워크스페이스 내부화한 근거 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
