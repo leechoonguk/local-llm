@@ -1,0 +1,6 @@
+{
+  "venvPath": "sandbox/backend",
+  "venv": ".venv",
+  "include": ["sandbox/backend/app", "sandbox/backend/alembic", "sandbox/backend/tests"],
+  "typeCheckingMode": "standard"
+}
