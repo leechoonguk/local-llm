@@ -52,6 +52,7 @@
 | [`2026-08-27.s2.hygiene2p-v2.md`](2026-08-27.s2.hygiene2p-v2.md) | 수정 반영판 REST n=2 — **훅 메커니즘 전 항목 정당 동작**(과발화 0·가짜초록 0·정당 sick 발화만·컷 지속) 그러나 **성적 0/2 near-miss**(45m TO×2) vs baseline 2/2. 셀 #2 회귀 2(기존 서비스 `session.begin()` 제거 — additive 가드 사각). continuity 는 옵트인 유지·baking 안 함 확정, 새 사각 2건(verify 미관측 종료·소규모 edit 회귀) 기록 |
 | [`2026-08-27.s2.hygiene2p-v3.md`](2026-08-27.s2.hygiene2p-v3.md) | 사각 보강판(verify-unseen end-gate + unwrap 가드), 유효 n=1 + 조기 종료 — **END-GATE red 재구동 2회 최초 실전 발화**(green 복귀 2회로 연결), 회귀 0. 그래도 45m TO near-miss(훅 셀 누적 6/6 TO) — v2 결론 유지. v2 시그니처 재현 확정 시점에 셀 #2 조기 kill(조기 종료 정책 첫 적용) |
 | [`2026-08-27.s2.shiftleft-nohyg.md`](2026-08-27.s2.shiftleft-nohyg.md) | shift-left 넛지 + 위생컷 off, n=2 — **훅 셀 첫 게이트 초록**(38.5m 자체 종료, baseline보다 빠름): 넛지가 첫 verify 를 25분+→14분으로 당김. 위생컷 off 는 반증(ctx 101k·dt 308s, 컴팩션 미발화 — 컷 복원). 셀 #2 는 **스코프 가짜초록**(서브셋 green 을 게이트 green 으로 오인, 22분 조기 종료 미완성 1) — finish-gate 후보 도출 |
+| [`2026-08-27.s2.rulebook-only.md`](2026-08-27.s2.rulebook-only.md) | 대조군(훅 제거, RULES 줄만), 유효 n=1+조기중단 1 — **shift-left 의 대부분은 문서 줄이 해냄**(첫 verify 16.5분) 그러나 **끝 규율은 문서로 안 됨**(red 인 채 39.6m 자체 종료, 미완성 1). 상주 continuity 패키지가 전 캠페인 공통 배경이었음도 확인. 최적안 = 문서 줄+훅 끝 규율 → exp4 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
