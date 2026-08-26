@@ -14,7 +14,9 @@
  *      suppress it across every tool until the issues change or resolve.
  */
 
+// @ts-expect-error — Node builtin, not project-compiled
 import { existsSync } from "node:fs";
+// @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 
 /** check-<x> 훅명 → rulebook 룰명. 이름이 1:1이 아닌 예외만 명시하고, 최종적으로

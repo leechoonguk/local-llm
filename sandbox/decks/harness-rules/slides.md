@@ -152,7 +152,7 @@ style: |
 <!-- sync: lib/harness-env.d.ts=c41ee1561d50960b -->
 <!-- sync: lib/hook-dormancy.ts=764526765b1aba69 -->
 <!-- sync: lib/hook-metrics.ts=0e383f687f1c56da -->
-<!-- sync: lib/hook-safety-guard.ts=22db1dab20ce341a -->
+<!-- sync: lib/hook-safety-guard.ts=da784231c3018a60 -->
 <!-- sync: lib/hook-visibility.ts=378b831827345c84 -->
 <!-- sync: ast-grep/rules/audit/=fa43ff9131409a46 -->
 <!-- sync: ast-grep/rules/audit-readonly/=4371bf3c9670540a -->
