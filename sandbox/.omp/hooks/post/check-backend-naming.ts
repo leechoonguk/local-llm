@@ -7,6 +7,7 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { runAstRules } from "../lib/ast-rules.ts";
 import { checkDomainNaming } from "../lib/backend-naming.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 /**
  * Check-Backend-Naming Post Hook
@@ -82,6 +83,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-n
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-backend-naming");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

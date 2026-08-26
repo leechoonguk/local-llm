@@ -7,6 +7,7 @@ import { runAstRules } from "../lib/ast-rules.ts";
 import { checkDomainStructure, checkRelationshipLoading } from "../lib/backend-domain-structure.ts";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 /**
  * Check-Backend-Domain Post Hook
@@ -100,6 +101,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-d
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-backend-domain");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

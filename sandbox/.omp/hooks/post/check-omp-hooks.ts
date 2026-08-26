@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint, ruleForHook } from "../lib/hook-rule-hint.ts";
 
 declare const process: {
   argv: string[];
@@ -177,6 +178,32 @@ function checkOmpHooksSync(): string[] {
             "see omp-hooks.md 'lib module naming'",
         );
       }
+    }
+  }
+
+  // --- rule attribution (omp-hooks.md "Rule Attribution") ---
+  // Every check's CLI tail must name the rule it enforces via
+  // printRuleHint("check-<self>") so a failing `make verify` tells the agent
+  // which rule to read, and the check-name -> rule mapping must resolve unless
+  // the check is explicitly rule-less. Measured: requirements delivered only
+  // as verify failures cost a rediscovery cycle each; the hint closes it.
+  const NO_RULE_CHECKS = new Set(["check-omp-types", "check-verify"]);
+  for (const f of readdirSync(join(hooksDir, "post"))) {
+    if (!f.startsWith("check-") || !f.endsWith(".ts")) continue;
+    const name = f.slice(0, -3);
+    const src = readFileSync(join(hooksDir, "post", f), "utf-8");
+    if (!src.includes("process.argv[1]?.endsWith(")) continue; // no CLI tail
+    if (!src.includes(`printRuleHint("${name}")`)) {
+      issues.push(
+        `post/${f}: CLI tail must call printRuleHint("${name}") before reporting failures — ` +
+          "see omp-hooks.md 'Rule Attribution'",
+      );
+    }
+    if (!ruleForHook(name) && !NO_RULE_CHECKS.has(name)) {
+      issues.push(
+        `post/${f}: no rule resolves for ${name} — add the rule, extend the name map in ` +
+          "lib/hook-rule-hint.ts, or list it in NO_RULE_CHECKS with a reason",
+      );
     }
   }
 
@@ -1098,6 +1125,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-omp-hooks
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-omp-hooks");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

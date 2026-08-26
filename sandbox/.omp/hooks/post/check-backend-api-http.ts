@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { checkDomainApiHttp } from "../lib/backend-api-http.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 /**
  * Check-Backend-Api-Http Post Hook
@@ -59,6 +60,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-a
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-backend-api-http");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

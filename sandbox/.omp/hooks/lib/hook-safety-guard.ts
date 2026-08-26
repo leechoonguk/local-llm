@@ -14,24 +14,7 @@
  *      suppress it across every tool until the issues change or resolve.
  */
 
-// @ts-expect-error — Node builtin, not project-compiled
-import { existsSync } from "node:fs";
-// @ts-expect-error — Node builtin, not project-compiled
-import { join } from "node:path";
-
-/** check-<x> 훅명 → rulebook 룰명. 이름이 1:1이 아닌 예외만 명시하고, 최종적으로
- *  .omp/rules/<name>.md 실재를 확인해 없는 포인터는 내지 않는다(오귀속 방지). */
-const RULE_NAME_EXCEPTIONS: Record<string, string> = {
-  "backend-tests": "backend-testing",
-  "ast-rules": "omp-ast-rules",
-};
-function ruleForHook(hookName: string): string | null {
-  const base = hookName.replace(/^check-/, "");
-  const candidate = RULE_NAME_EXCEPTIONS[base] ?? base;
-  const path = join(process.cwd(), ".omp", "rules", `${candidate}.md`);
-  try { if (existsSync(path)) return candidate; } catch { /* cwd 밖 실행 등 — 포인터 생략 */ }
-  return null;
-}
+import { ruleForHook } from "./hook-rule-hint.ts";
 
 const MAX_ISSUE_LINES = 3;
 const CONTENT_PROTECT_THRESHOLD = 200;

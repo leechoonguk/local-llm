@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 /**
  * Check-Tooling Post Hook
@@ -297,6 +298,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-tooling.t
     for (const issue of issues) {
       console.log(`    FAIL: ${issue}`);
     }
+    printRuleHint("check-tooling");
     console.log(`    ${issues.length} issue(s) found`);
     process.exit(1);
   }

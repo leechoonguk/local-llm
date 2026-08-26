@@ -15,6 +15,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 import { checkIntegrationConfiguration } from "../lib/backend-integration-configuration.ts";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 declare const process: {
   argv: string[];
@@ -57,6 +58,7 @@ if (
     process.exit(0);
   }
   for (const issue of issues) console.log(`    FAIL: ${issue}`);
+  printRuleHint("check-backend-integration-configuration");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

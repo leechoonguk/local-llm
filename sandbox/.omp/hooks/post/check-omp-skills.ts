@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 declare const process: {
   argv: string[];
@@ -185,6 +186,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-omp-skill
     console.log("    PASS: skills catalog matches discovered SKILL.md files");
   } else {
     for (const issue of issues) console.error(`    FAIL: ${issue}`);
+    printRuleHint("check-omp-skills");
     process.exitCode = 1;
   }
 }

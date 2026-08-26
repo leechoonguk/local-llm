@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 declare const process: {
   argv: string[];
@@ -142,6 +143,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-verify.ts
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-verify");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

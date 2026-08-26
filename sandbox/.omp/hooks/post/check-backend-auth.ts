@@ -7,6 +7,7 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { runAstRules } from "../lib/ast-rules.ts";
 import { checkDomainAuth } from "../lib/backend-auth.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 /**
  * Check-Backend-Auth Post Hook
@@ -106,6 +107,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-a
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-backend-auth");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

@@ -8,6 +8,7 @@ import { checkMigrationPolicy } from "../lib/backend-migration-policy.ts";
 import { dormant, passLine } from "../lib/hook-dormancy.ts";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
+import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
 /**
  * Check-Backend-Migrations Post Hook
@@ -77,6 +78,7 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-m
   for (const issue of issues) {
     console.log(`    FAIL: ${issue}`);
   }
+  printRuleHint("check-backend-migrations");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }

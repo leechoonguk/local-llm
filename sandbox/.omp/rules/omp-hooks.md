@@ -429,6 +429,17 @@ because each hook owns a different filter. What the report is for:
 - `totalMs`/`maxMs` turn "hooks feel slow" into a number per hook;
 - `crash` is the count behind `.omp/state/hook-crash.log`.
 
+### Rule Attribution
+
+Every check's CLI tail calls `printRuleHint("check-<self>")` (from
+`lib/hook-rule-hint.ts`) before reporting failures, so a red `make verify`
+prints `Rule: rule://<name> — <description>` and the agent can read the
+governing rule instead of rediscovering its requirements one failure at a
+time. The check-name → rule-name mapping lives in `hook-rule-hint.ts`
+(`RULE_NAME_EXCEPTIONS` for non-1:1 names, existence-verified); checks with no
+governing rule are listed in `check-omp-hooks`'s `NO_RULE_CHECKS` with a
+reason. `check-omp-hooks` enforces both statically.
+
 ### Warning Shape
 
 An issue line names **where**, **what**, and **how**: `main.py: CORS missing —
