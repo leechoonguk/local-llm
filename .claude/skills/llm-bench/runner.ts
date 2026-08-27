@@ -278,6 +278,8 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
   }
   m.writes = (tools.write ?? 0) + (tools.edit ?? 0);
   m.tools = tools;
+  m.gate_runs = gateRuns;            // 계수만 하고 되쓰기를 빠뜨렸던 버그(refrozen 블록 실측) 수정
+  m.first_full_gate_s = firstGateS;
   return m;
 }
 
@@ -365,7 +367,13 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     // 이전 실측(2026-08-26)은 헤드리스 셀에서 advisor 무동작(aux 호출 0)이었다 — 재검증용 스위치.
     const adv = process.env.BENCH_ADVISOR;
     const advisor = adv ? `advisor:\n  enabled: true\n  immuneTurns: 3\n${adv !== "1" ? `  model: ${adv}\n` : ""}` : "";
-    writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisor}`);
+    // 실험 옵트인: BENCH_THINKING_BUDGET=<n> 이면 코더의 extraBody thinking_budget 을
+    // 오버레이로 덮는다(라이브 config 불변). models.yml 실측 주석 참고: thinking_budget 은
+    // 3.6 에서 실제로 먹는 유일한 thinking 제어(64→3000 비례 반응). 오버레이 딥머지가
+    // 안 먹으면 셀의 thinking 비중이 5120 대역 그대로일 것 — 세션에서 자가 진단 가능.
+    const tb = process.env.BENCH_THINKING_BUDGET;
+    const budget = tb ? `providers:\n  omlx:\n    modelOverrides:\n      "${model.replace(/^omlx\//, "")}":\n        compat:\n          extraBody:\n            thinking_budget: ${tb}\n` : "";
+    writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisor}${budget}`);
     extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
     // 실측(2026-08-27): config(advisor.enabled)만으로는 헤드리스에서 무동작(4중 0건),
     // --advisor CLI 플래그를 줘야 런타임이 깬다(플래그 프로브에서 세션 advisor 흔적 12건).
