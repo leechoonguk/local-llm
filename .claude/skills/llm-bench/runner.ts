@@ -347,7 +347,10 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   const extra: string[] = [];
   if (local) {
     overlayDir = mkdtempSync(join(tmpdir(), "llm-bench-cfg-"));
-    writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n`);
+    // 실험 옵트인: BENCH_ADVISOR=1 이면 벤치 셀에만 advisor 를 켠다(라이브 config 는 불변).
+    // 이전 실측(2026-08-26)은 헤드리스 셀에서 advisor 무동작(aux 호출 0)이었다 — 재검증용 스위치.
+    const advisor = process.env.BENCH_ADVISOR ? `advisor:\n  enabled: true\n  immuneTurns: 3\n` : "";
+    writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisor}`);
     extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
   }
   // 실험 옵트인: BENCH_HOOK=<확장 .ts 경로> 면 그 훅을 로드한다(예: stuck-reset). 미설정이면 기존 동작.
