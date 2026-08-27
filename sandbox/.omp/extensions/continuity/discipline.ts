@@ -40,6 +40,11 @@
  *    green (a passing subset cleared red while the gate failed), a finish
  *    with api/notice.http missing, and a hidden 57%-coverage fake-done were
  *    each caught live.
+ *  - OPENING-BRIEF one message at the first turn: the measured recipe of the
+ *    fastest green cell (spontaneous first verification at +9.2m, tests
+ *    riding with their layers, 32 writes, 21.2-minute finish). Every nudge
+ *    fires 10-15 minutes in — after the opening has already set the
+ *    trajectory; this moves the proven message channel to minute zero.
  *  - REG-WATCH    a mutation touching a registration file (alembic/env.py,
  *    tests/conftest.py) is followed by an import-line diff against the
  *    session-start snapshot; a vanished line gets one immediate message.
@@ -166,8 +171,14 @@ export function registerDiscipline(pi: any): void {
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
+  let openingSent = false;
   pi.on("turn_end", (e: any, ctx: any) => {
     try {
+      if (!openingSent) {
+        openingSent = true;
+        pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
+        log("OPENING-BRIEF sent");
+      }
       stallTurns++;
       if (redSig) redTurns++;
       const now = Date.now();
