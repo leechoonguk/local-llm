@@ -40,6 +40,10 @@ test-fast: ## Run tests without the coverage gate (usage: make test-fast t="test
 lint: ## Lint (ruff)
 	.venv/bin/ruff check app alembic tests
 
+fix: ## Auto-fix lint and formatting (ruff --fix + format)
+	.venv/bin/ruff check --fix app alembic tests
+	.venv/bin/ruff format app alembic tests
+
 typecheck: ## Type-check (pyright)
 	.venv/bin/pyright
 

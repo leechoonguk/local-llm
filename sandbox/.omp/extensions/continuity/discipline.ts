@@ -74,7 +74,7 @@ const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
 const FINISH_CHECK_MAX = 2;          // finish-check re-drives (23.9m finish with 1 incomplete slipped past a single check - measured 2026-08-27)
-const VERIFY_NUDGE_MS = 8 * 60_000;  // session time tolerated before the one verify reminder (opening-anchored; brief says ~8m)
+const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
 const REG_FILES = ["backend/alembic/env.py", "backend/tests/conftest.py"]; // registration files under watch
@@ -86,8 +86,11 @@ export function registerDiscipline(pi: any): void {
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let mutatedEver = false;
-  let firstMutationAt = 0, verifyNudged = false, testNudged = false, finishChecks = 0;
-  let verifySeen = false, openingAt = 0, redFirstAt = 0;
+  let firstMutationAt = 0, testNudged = false, finishChecks = 0;
+  let redFirstAt = 0;
+  let lastGateAt = 0, lastNoticeAt = 0, gateBlocks = 0, turnCount = 0;
+  let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
+  const unverified = new Set<string>();
   const srcWritten = new Set<string>();
   const testWritten = new Set<string>();
   let lastProgressAt = Date.now();
@@ -132,7 +135,7 @@ export function registerDiscipline(pi: any): void {
     }
   }
 
-  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS / 60000)}m testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
+  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} gateCadence=${EDITS_PER_GATE}edits testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -153,12 +156,18 @@ export function registerDiscipline(pi: any): void {
       const content = contentText(event.content);
       if (event.isError && isPolicyBlock(content)) return;
       const f = failSig(content);
+      // 서 있는 하네스 검사 경고 추적 — backend 스코프 verify 초록 위에서 종료한
+      // 실측 셀(1738s)의 가짜완료 메커니즘. finish 시점에 lastGateAt 과 비교한다.
+      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) lastNoticeAt = Date.now();
       if (/^bash/i.test(event.toolName)) {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
         const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
-        if (fullGate) verifySeen = true;
+        if (fullGate) {
+          lastGateAt = Date.now(); unverified.clear();
+          cadenceNudged = false; cadenceEscalated = false;
+        }
         if (f) {
           if (!redSig) { redSince = Date.now(); redFirstAt = Date.now(); redTurns = 0; }
           // 시그니처 교체 = 다른 실패로 전진 중 — same-signature 시계를 절반만 남기고
@@ -177,7 +186,7 @@ export function registerDiscipline(pi: any): void {
         stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
-        if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); regCheck(path); }
+        if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); regCheck(path); }
         else if (/^bash/i.test(event.toolName)) regCheck(norm(str(event.input)).slice(0, 300));
         // 스키마 무관 백스톱: 패치형 결과는 입력에 path 가 없어도 결과 텍스트에
         // [path#TAG] 로 파일명을 남긴다 — 실셀에서 입력 트리거만으로 env.py
@@ -191,11 +200,11 @@ export function registerDiscipline(pi: any): void {
   pi.on("turn_end", (e: any, ctx: any) => {
     try {
       if (!openingSent) {
-        openingSent = true; openingAt = Date.now();
+        openingSent = true;
         pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
-      stallTurns++;
+      stallTurns++; turnCount++;
       if (redSig) redTurns++;
       const now = Date.now();
       const used = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
@@ -224,10 +233,16 @@ export function registerDiscipline(pi: any): void {
           return;
         }
       }
-      if (phase === "idle" && mutatedEver && openingAt > 0 && !verifySeen && !verifyNudged && now - openingAt >= VERIFY_NUDGE_MS) {
-        verifyNudged = true;
-        pi.sendUserMessage(`Files have been changing for ~${Math.round(VERIFY_NUDGE_MS / 60000)} minutes with no verification run observed. Run the project's verification now — failures found early are cheaper than a pile at the end. Then continue working.`);
-        log("VERIFY-NUDGE sent");
+      if (phase === "idle" && unverified.size >= EDITS_PER_GATE && !cadenceNudged) {
+        cadenceNudged = true; turnAtCadenceNudge = turnCount;
+        pi.sendUserMessage(`${unverified.size} files have changed since the last full verification run. Run \`make verify\` now — failures found early are cheaper than a pile at the end. Then continue working.`);
+        log("GATE-CADENCE nudge");
+        return;
+      }
+      if (phase === "idle" && cadenceNudged && !cadenceEscalated && unverified.size >= EDITS_PER_GATE * 2 && turnCount - turnAtCadenceNudge >= 3) {
+        cadenceEscalated = true;
+        pi.sendUserMessage(`${unverified.size} files are now unverified and the earlier reminder was not followed. Before your NEXT edit, run \`make verify\` end-to-end and fix what it reports.`);
+        log("GATE-CADENCE escalation");
         return;
       }
       if (phase === "idle" && !testNudged && srcWritten.size >= SRC_BEFORE_TESTS && testWritten.size === 0 && firstMutationAt > 0 && now - firstMutationAt >= TEST_NUDGE_MS) {
@@ -246,6 +261,18 @@ export function registerDiscipline(pi: any): void {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
           log(`END-GATE re-drive #${endGateSends}`);
+        } else if (mutatedEver && (lastGateAt === 0 || lastNoticeAt > lastGateAt)) {
+          // 하드 finish-block(무제한·멱등): 널 블록에서 full 게이트 무실행 종료와
+          // backend 스코프 초록 + 서 있는 check-* 경고 위 종료가 finish-check ×2 를
+          // 통과했다(2026-08-28 부검). 게이트의 완료 정의를 기계로 집행한다.
+          gateBlocks++;
+          const why = lastGateAt === 0
+            ? "this session has never run the full verification"
+            : "a harness check notice was raised after your last full verification run";
+          let bmsg = `You are finishing, but ${why}. Run \`make verify\` from the sandbox root end-to-end now, address anything it or a standing system-notice reports, and only then finish.`;
+          if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
+          pi.sendUserMessage(bmsg);
+          log(`FINISH-BLOCK #${gateBlocks}`);
         } else if (mutatedEver && finishChecks < FINISH_CHECK_MAX) {
           finishChecks++;
           pi.sendUserMessage(`Final check before finishing: run the project's full verification once end-to-end and confirm it is green. A passing subset or an earlier run does not count — the gate needs a fresh full pass. If it fails, finish the remaining failures first.`);

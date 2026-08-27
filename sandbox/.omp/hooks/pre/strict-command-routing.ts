@@ -58,11 +58,6 @@ const denylist: Array<{
     target: "make test",
   },
   {
-    desc: "Ruff 직접 실행",
-    pattern: new RegExp(`${atCmdStart("\\.venv/bin/ruff")}(?:\\s|$)`),
-    target: "make lint",
-  },
-  {
     desc: "Pyright 직접 실행",
     pattern: new RegExp(`${atCmdStart("\\.venv/bin/pyright")}(?:\\s|$)`),
     target: "make typecheck",

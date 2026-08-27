@@ -250,10 +250,22 @@ function newestSessionAfter(afterMs: number): string | null {
 
 /** 세션 로그의 turns/toolCalls/loops/compactions/peak, 그리고 툴 종류별 횟수(write/edit 포함). */
 function sessionMetrics(path: string | null): Record<string, unknown> {
-  const m: Record<string, unknown> = { session: path, turns: null, toolCalls: null, loops: null, compactions: null, peak: null, writes: 0, tools: {} };
+  const m: Record<string, unknown> = { session: path, turns: null, toolCalls: null, loops: null, compactions: null, peak: null, writes: 0, tools: {}, gate_runs: 0, first_full_gate_s: null };
   if (path === null || !existsSync(path)) return m;
   const tools: Record<string, number> = {};
+  // 연속 지표(4자 토의 라운드 2, 2026-08-28): full-gate 실행 횟수·첫 실행 시각 —
+  // p̂=12.5% 기준선에서 binary green 은 무력하므로 암 판정은 이 연속 지표로 한다.
+  let t0: number | null = null;
+  let gateRuns = 0;
+  let firstGateS: number | null = null;
+  const FULL_GATE = /make(?:\\?["'\s][^"]{0,40})?\s*(?:-C\s+\S+\s+)?(?:verify|test)(?!-fast)\b/;
   for (const line of readFileSync(path, "utf-8").split("\n")) {
+    const ts = line.match(/"timestamp"\s*:\s*"([^"]+)"/)?.[1];
+    if (ts && t0 === null) t0 = Date.parse(ts);
+    if (/"name"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line)) {
+      gateRuns++;
+      if (firstGateS === null && ts && t0 !== null) firstGateS = Math.round((Date.parse(ts) - t0) / 1000);
+    }
     if (line.includes('"continuity')) {
       try {
         const d = (JSON.parse(line).data ?? {}) as Record<string, unknown>;
