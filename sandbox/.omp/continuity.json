@@ -1,0 +1,6 @@
+{
+  "profiles": {
+    "frontier": { "maxHygiene": 0 },
+    "off": { "enabled": false }
+  }
+}
