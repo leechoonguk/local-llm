@@ -85,35 +85,16 @@ providers:
       - id: "mlx-community--Qwen3.6-35B-A3B-5bit:nothink"
         contextWindow: 131072
         maxTokens: 8192
-      - id: "mlx-community--Qwen3.6-35B-A3B-4bit"
-        api: openai-completions  # bare id — 프로파일 별칭이 default 모델에만 생겨 apply 로 mtp 설정을 본체에 입힘(2026-08-27)
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "mlx-community--Qwen3.6-35B-A3B-4bit:mtp"
-        api: openai-completions  # 5bit:mtp 와 동일 사유(compat.extraBody)
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "mlx-community--Qwen3.6-35B-A3B-4bit:nothink"
-        contextWindow: 131072
-        maxTokens: 8192
       - id: "mlx-community--Qwen3.5-4B-4bit"
         contextWindow: 8192
         maxTokens: 1024
       # 2026-08-25 배제·캐시 삭제한 실험 모델들(bench/ 기록에 근거 유지):
       #  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)
       #  - GLM-4.7-Flash-4bit: integration 45분 타임아웃 FAIL(writes 26), 3.6 대비 느리고 미완주
+      #  - Qwen3.6-35B-A3B-4bit(+MTP-4bit): 기각(2026-08-27) — 웜 70.2 tok/s 로 5bit 동급 이하, 45m TO+회귀 1(coder-4bit.md)
       #  - Qwen3.8 dense 27B(nvfp4·oQ6·표준4bit): 전부 writes 0(에이전트 루프에서 파일 미생성, 양자화 무관)
       # 코더는 3.6:mtp 유지. 실험 재개 시 install.sh 로 재다운로드.
     modelOverrides:
-      "mlx-community--Qwen3.6-35B-A3B-4bit":
-        compat:
-          extraBody:
-            thinking_budget: 5120
-      "mlx-community--Qwen3.6-35B-A3B-4bit:mtp":
-        compactionModel: "omlx/mlx-community--Qwen3.6-35B-A3B-4bit:nothink"
-        compat:
-          extraBody:
-            thinking_budget: 5120
       "mlx-community--Qwen3.6-35B-A3B-5bit:mtp":
         compactionModel: "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:nothink"
         # 실측(2026-08-24): reasoning_effort는 3.6 template에서 완전 no-op(seed 고정
