@@ -77,7 +77,12 @@ const FINISH_CHECK_MAX = 2;          // finish-check re-drives (23.9m finish wit
 const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
-const REG_FILES = ["backend/alembic/env.py", "backend/tests/conftest.py"]; // registration files under watch
+const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
+  "backend/alembic/env.py",
+  "backend/tests/conftest.py",
+  "backend/app/dependencies/services.py",
+  "backend/app/main.py",
+];
 const REG_WATCH_MAX = 3;             // registration-loss messages per session
 
 export function registerDiscipline(pi: any): void {
@@ -318,7 +323,12 @@ export function registerDiscipline(pi: any): void {
 
 // ---- helpers (details after the entry point — check-code-layout) ----
 function importLines(content: string): Set<string> {
-  return new Set(content.split("\n").map((l) => l.trim()).filter((l) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l)));
+  // 감시 줄 = import + DI 별칭(*Dep = Annotated[...]) + 라우터 등록(include_router).
+  // import 만으로는 services.py 의 Dep 교체·main.py 의 라우터 소실을 못 본다(실측).
+  return new Set(content.split("\n").map((l) => l.trim()).filter((l) =>
+    /^(from\s+\S+\s+import\b|import\s+\S)/.test(l)
+    || /^\w+Dep\s*=\s*Annotated\b/.test(l)
+    || /\binclude_router\(/.test(l)));
 }
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
