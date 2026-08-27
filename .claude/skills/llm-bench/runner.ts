@@ -348,8 +348,11 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   if (local) {
     overlayDir = mkdtempSync(join(tmpdir(), "llm-bench-cfg-"));
     // 실험 옵트인: BENCH_ADVISOR=1 이면 벤치 셀에만 advisor 를 켠다(라이브 config 는 불변).
+    // BENCH_ADVISOR=<모델id> 면 advisor.model 도 지정 — 예: omlx/…-5bit:nothink 는 코더와 같은
+    // 물리 모델의 프로파일이라 추가 상주 0 으로 35B 어드바이저가 된다(사용자 아이디어, 2026-08-27).
     // 이전 실측(2026-08-26)은 헤드리스 셀에서 advisor 무동작(aux 호출 0)이었다 — 재검증용 스위치.
-    const advisor = process.env.BENCH_ADVISOR ? `advisor:\n  enabled: true\n  immuneTurns: 3\n` : "";
+    const adv = process.env.BENCH_ADVISOR;
+    const advisor = adv ? `advisor:\n  enabled: true\n  immuneTurns: 3\n${adv !== "1" ? `  model: ${adv}\n` : ""}` : "";
     writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisor}`);
     extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
   }
