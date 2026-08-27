@@ -54,6 +54,7 @@
 | [`2026-08-27.s2.shiftleft-nohyg.md`](2026-08-27.s2.shiftleft-nohyg.md) | shift-left 넛지 + 위생컷 off, n=2 — **훅 셀 첫 게이트 초록**(38.5m 자체 종료, baseline보다 빠름): 넛지가 첫 verify 를 25분+→14분으로 당김. 위생컷 off 는 반증(ctx 101k·dt 308s, 컴팩션 미발화 — 컷 복원). 셀 #2 는 **스코프 가짜초록**(서브셋 green 을 게이트 green 으로 오인, 22분 조기 종료 미완성 1) — finish-gate 후보 도출 |
 | [`2026-08-27.s2.rulebook-only.md`](2026-08-27.s2.rulebook-only.md) | 대조군(훅 제거, RULES 줄만), 유효 n=1+조기중단 1 — **shift-left 의 대부분은 문서 줄이 해냄**(첫 verify 16.5분) 그러나 **끝 규율은 문서로 안 됨**(red 인 채 39.6m 자체 종료, 미완성 1). 상주 continuity 패키지가 전 캠페인 공통 배경이었음도 확인. 최적안 = 문서 줄+훅 끝 규율 → exp4 |
 | [`2026-08-27.s2.optimal-set.md`](2026-08-27.s2.optimal-set.md) | 최적 후보 조합(문서 줄+넛지+위생 컷+finish-gate), 유효 n=1+중단 1 — **39.7m 초록 자체 종료**: 첫 green 20.7분(역대 최속), **finish-gate 첫 실전 발화**. 단 산출물의 `75_.py`(빈 슬러그·no-op 리비전)가 **게이트 구멍**을 드러내 보강(슬러그 규칙·upgrade no-op·migrate-gen 빈 m 거부, 주입 실증) — 확정은 보강 게이트의 `optimal-set2` |
+| [`2026-08-27.s2.optimal-set2.md`](2026-08-27.s2.optimal-set2.md) | 보강 게이트 재실험, 유효 n=2+중단 2 — 게이트 0/2 TO 이나 **하향 검토로 하네스·게이트·DB 무죄, 모델 분산 유죄 확정**(일탈 셀은 migrate-gen 실행 0회). finish-gate 가짜완료 폭로·넛지·컷 재현. 발견: 2단계 import 스왑 우회(verify 가 잡으므로 가드 보류), 조기킬 스냅샷 오판 교훈, `addopts` 커버리지가 서브셋 pytest 까지 물어 싼 반복 불가 → 워크플로 속도 트랙의 근거 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
@@ -92,6 +93,6 @@ stuckreset v2·v3 → continuity 체계화 → 하네스 룰 감사 → slim/two
 
 1. **최대 수확은 훅이 아니라 하네스 감사였다.** 룰 전달 구멍·내용 모순·체크리스트 부재를 고치자 **훅 없이 REST 2/2 초록**(39.5/41.2m) — 옛 "능력 천장 ~50%"의 상당 부분이 하네스 아티팩트.
 2. **continuity 훅의 메커니즘은 전부 실측 검증됐다**: 릴레이(리셋 생존·todo 기억), 지속형 컷(ctx 유지, dt 2~4배 개선), save-then-clear 체크포인트, 시간단독 sickness(과발화 해소, 엣지 12/12), truncated-clear 가드, 위생 컷(6.5s, omp 컴팩션 48.5s 대비 7배 저렴 + 구조화 체크포인트).
-3. **그러나 게이트 개선 증거는 없다(음성)**: 훅 셀 누적(4신호 fat 1, slim 1, two-phase C 1, v2 2, v3 1) 전부 45m TO — 같은 하네스 baseline 2/2 와 대비. 컷이 버는 시간 ≤ 체크포인트·재구동·재수렴이 쓰는 시간. **continuity 는 옵트인으로 유지, 표준 baking 은 하지 않는다.** 단 v3 에서 END-GATE red 재구동이 최초로 실전 발화(2회, green 복귀로 연결) — "아플 때 개입" 신호 자체는 값을 한다.
+3. **게이트 개선 증거는 shift-left 도입 후에야 나왔다**: 턴수/시간단독 sickness 시대의 훅 셀은 전부 45m TO 였으나, **shift-left(문서 줄+넛지)+finish-gate 조합에서 훅 셀 첫 초록 2회**(shiftleft-nohyg #1 38.5m, optimal-set #1 39.7m — baseline 대역). 보강 게이트 재실험(optimal-set2)은 0/2 로 회귀했지만 하향 검토 결과 지배 변수는 모델 분산(일탈 셀은 migrate-gen 실행 0회). **결론: 시작=문서 줄(+넛지 백스톱), 속도=위생 컷, 끝=finish-gate 가 최적 구성이되, REST 45m 초록률 자체는 3.6 의 분산이 지배한다.** discipline 은 표준 상주(통합 패키지)로 승격, 신호는 전부 실측 검증.
 4. **REST 의 실질 병목은 "45분 캡 안의 100% 커버리지"** — 훅 유무와 무관하게 마지막 1%에서 반복 캡킬. near-miss(미완성 1)가 지배적 실패형이고 회귀는 대부분 0(예외: v2 셀 #2 의 소규모 edit 회귀 2 — additive 가드 사각).
 5. **사각 2건은 v3 에서 보강 완료**(verify-unseen end-gate, unwrap 가드 — 합성 15/15+8/8 실증, 실전 발화는 각각 미발생/0회로 무해 확인). 운영 교훈: 러너 셀 경계 revert 가 미커밋 하네스 수정을 지운다 — 하네스 수정은 커밋 후 캠페인. 벤치 조기 종료 정책(예측 확정 시 kill) 도입, v3 에서 첫 적용.
