@@ -23,44 +23,31 @@
  *    sick checkpoint cancels if the session recovers first; agent_end releases
  *    the window so a finished session is not re-driven by our own bootstrap.
  *
- * Configuration (session-start dynamic): `.omp/continuity.json` at the
- * workspace root, shape { "discipline": {<knob overrides>}, "profiles":
- * {"<name>": {<overrides>}} }. `CONTINUITY_PROFILE=<name>` selects a profile
- * on top of the base overrides — e.g. a frontier-model profile can set
- * maxHygiene 0 (context cuts break provider prompt caches) or enabled false.
- * Sick cuts are rate-limited by sickCooldownMs instead of a small absolute
- * cap: long sessions earn more interventions, loops still cannot spin.
- * Logging only when STUCK_RESET_LOG is set.
+ * Knobs are fixed constants — this module targets the local bench only
+ * (the dynamic config/profile layer was reverted 2026-08-27, user decision:
+ * to be reintroduced separately if needed). Logging only when
+ * STUCK_RESET_LOG is set.
  */
 // @ts-expect-error — Node builtin, not project-compiled
-import { appendFileSync, readFileSync } from "node:fs";
-// @ts-expect-error — Node builtin, not project-compiled
-import { join } from "node:path";
+import { appendFileSync } from "node:fs";
 
-const DEFAULTS = {
-  enabled: true,
-  stallMs: 7 * 60_000,        // wall time without a successful mutation
-  redAgeMs: 12 * 60_000,      // wall time with a persisting red state
-  sickCooldownMs: 5 * 60_000, // minimum spacing between sickness cuts
-  maxResets: 12,              // absolute backstop, far above any healthy session
-  hygieneBudget: 50_000,      // session-token growth per two-phase hygiene cut
-  maxHygiene: 3,
-  keepRecent: 4,
-  endGateMax: 2,
-  verifyNudgeMs: 10 * 60_000, // minutes of mutations tolerated before the one reminder
-};
+const STALL_MS = 7 * 60_000;       // wall time without a successful mutation (time only — see header)
+const RED_AGE_MS = 12 * 60_000;    // wall time with a persisting red state (time only — see header)
+const MAX_RESETS = 6;              // sickness cuts — save-then-clear made cuts cheap (measured)
+const HYGIENE_BUDGET = 50_000;     // session-token growth per two-phase hygiene cut
+const MAX_HYGIENE = 3;             // restored after the ablation refuted "cuts are net cost"
+const KEEP_RECENT = 4;
+const END_GATE_MAX = 2;
+const VERIFY_NUDGE_MS = 10 * 60_000; // minutes of mutations tolerated before the one reminder
 
 export function registerDiscipline(pi: any): void {
-  const K = loadKnobs();
   const logPath = process.env.STUCK_RESET_LOG || "";
   const log = (s: string) => { if (logPath) { try { appendFileSync(logPath, `[continuity] ${s}\n`); } catch {} } };
-  if (!K.enabled) { log("discipline disabled by config"); return; }
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let everRed = false, mutatedEver = false;
   let firstMutationAt = 0, verifyNudged = false, finishChecked = false;
   let lastProgressAt = Date.now();
-  let lastSickCutAt = 0;
   let redSig: string | null = null;
   let redCmdTk: Set<string> | null = null;
   let redSince = 0, redTurns = 0;
@@ -74,7 +61,7 @@ export function registerDiscipline(pi: any): void {
   let armed = false;
   let bootstrap: string | null = null;
 
-  log(`loaded discipline. stall=${Math.round(K.stallMs / 60000)}m redAge=${Math.round(K.redAgeMs / 60000)}m (time-only) cooldown=${Math.round(K.sickCooldownMs / 60000)}m backstop=${K.maxResets} hygiene=${Math.round(K.hygieneBudget / 1000)}k x${K.maxHygiene} endGate=${K.endGateMax} verifyNudge=${Math.round(K.verifyNudgeMs / 60000)}m`);
+  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS / 60000)}m`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -132,7 +119,7 @@ export function registerDiscipline(pi: any): void {
         // sickness resolved inside that turn (verification back to green, or a
         // change just landed — measured: red cleared in the checkpoint window
         // and the cut still fired after green), cancel instead of cutting.
-        if (cutKind === "sick" && redSig === null && now - lastProgressAt < K.stallMs) {
+        if (cutKind === "sick" && redSig === null && now - lastProgressAt < STALL_MS) {
           phase = "idle"; bootstrap = null;
           log("CHECKPOINT canceled (recovered before the cut)");
           return;
@@ -140,9 +127,9 @@ export function registerDiscipline(pi: any): void {
         phase = "cutting"; armed = true;
         return;
       }
-      if (phase === "idle" && resets < K.maxResets && now - lastSickCutAt >= K.sickCooldownMs) {
-        const stalled = now - lastProgressAt >= K.stallMs;
-        const redAged = redSig !== null && redSince > 0 && now - redSince >= K.redAgeMs;
+      if (phase === "idle" && resets < MAX_RESETS) {
+        const stalled = now - lastProgressAt >= STALL_MS;
+        const redAged = redSig !== null && redSince > 0 && now - redSince >= RED_AGE_MS;
         if (redAged) {
           beginCheckpoint(`the verification has stayed failing for ${redTurns} turns / ${Math.round((now - redSince) / 60000)} minutes while edits kept landing`);
           return;
@@ -155,16 +142,16 @@ export function registerDiscipline(pi: any): void {
       // Shift-left verification nudge (once per session): failures found at
       // minute 15 are fixed inside the cap; the same failures found at minute
       // 30 pile into a near-miss (measured across every hook cell).
-      if (phase === "idle" && firstMutationAt > 0 && !everRed && !verifyNudged && now - firstMutationAt >= K.verifyNudgeMs) {
+      if (phase === "idle" && firstMutationAt > 0 && !everRed && !verifyNudged && now - firstMutationAt >= VERIFY_NUDGE_MS) {
         verifyNudged = true;
-        pi.sendUserMessage(`Files have been changing for ~${Math.round(K.verifyNudgeMs / 60000)} minutes with no verification run observed. Run the project's verification now — failures found early are cheaper than a pile at the end. Then continue working.`);
+        pi.sendUserMessage(`Files have been changing for ~${Math.round(VERIFY_NUDGE_MS / 60000)} minutes with no verification run observed. Run the project's verification now — failures found early are cheaper than a pile at the end. Then continue working.`);
         log("VERIFY-NUDGE sent");
         return;
       }
       // Hypothesis lever (two-phase hygiene): the old cut-first hygiene cost more than
       // it saved; with save-then-clear the price dropped, so re-test whether trimming a
       // grown context buys back late-turn speed.
-      if (phase === "idle" && hygieneCuts < K.maxHygiene && tokensAtCut > 0 && used - tokensAtCut >= K.hygieneBudget) {
+      if (phase === "idle" && hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET) {
         beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`, "hygiene");
         return;
       }
@@ -172,7 +159,7 @@ export function registerDiscipline(pi: any): void {
       // (both measured): finishing while the last verification was red, and
       // finishing after mutations with no fresh full verification.
       const prose = !(e.toolResults && e.toolResults.length);
-      if (phase === "idle" && prose && endGateSends < K.endGateMax) {
+      if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
         if (redSig) {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
@@ -195,9 +182,9 @@ export function registerDiscipline(pi: any): void {
         // turn log). A cut must persist: remember the boundary and keep
         // windowing every later call until a newer cut supersedes it.
         armed = false;
-        cutIndex = Math.max(0, msgs.length - K.keepRecent);
+        cutIndex = Math.max(0, msgs.length - KEEP_RECENT);
         cutBootstrap = bootstrap;
-        if (cutKind === "hygiene") hygieneCuts++; else { resets++; lastSickCutAt = Date.now(); }
+        if (cutKind === "hygiene") hygieneCuts++; else resets++;
         tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
         phase = "idle";
         stallTurns = 0; lastProgressAt = Date.now();
@@ -225,15 +212,6 @@ export function registerDiscipline(pi: any): void {
 }
 
 // ---- helpers (details after the entry point — check-code-layout) ----
-function loadKnobs(): typeof DEFAULTS {
-  try {
-    const raw = readFileSync(join(process.cwd(), ".omp", "continuity.json"), "utf-8");
-    const cfg = JSON.parse(raw);
-    const profile = process.env.CONTINUITY_PROFILE;
-    const fromProfile = profile && cfg.profiles && cfg.profiles[profile] ? cfg.profiles[profile] : {};
-    return { ...DEFAULTS, ...(cfg.discipline ?? {}), ...fromProfile };
-  } catch { return { ...DEFAULTS }; }
-}
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
 const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));
