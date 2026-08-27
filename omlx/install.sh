@@ -24,6 +24,8 @@ fi
 HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 $HF download mlx-community/Qwen3.6-35B-A3B-5bit        # 코더 본체 23.1GiB
 $HF download mlx-community/Qwen3.6-35B-A3B-MTP-5bit    # MTP 드래프터 0.6GiB
+$HF download mlx-community/Qwen3.6-35B-A3B-4bit        # 4bit 실험판(속도 벤치용, 2026-08-27)
+$HF download mlx-community/Qwen3.6-35B-A3B-MTP-4bit    # 4bit 드래프터
 $HF download mlx-community/Qwen3.5-4B-4bit             # aux(tiny 역할) 2.3GiB
 # 2026-08-25 배제·캐시 삭제한 실험 모델들은 다운로드하지 않는다(근거는 bench/ 기록):
 #  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)

@@ -164,23 +164,6 @@ from app.routers import auth, batch, health, integration, user
 api_router.include_router(batch.router)
 ```
 
-### Build Order — a test rides with its layer (measured)
-
-Every timed-out cell died in the same place: five layers first, all tests
-last, then a coverage hole and buggy tests with no cap left. Land each layer
-with its test instead:
-
-1. Model + migration (`make migrate-gen m="..."`), then repository **with**
-   `tests/repositories/test_<name>.py` — run
-   `make -C backend verify-fast t="tests/repositories/test_<name>.py"`
-2. Schema + service **with** `tests/services/test_<name>.py` — scoped `verify-fast`
-3. Router + wiring + `api/<name>.http` **with** `tests/api/test_<name>.py` — scoped `verify-fast`
-4. Finish only after a full `make verify` is green
-
-A scoped `verify-fast` run takes seconds, and a test written next to fresh
-code does not guess at names that do not exist — a test written thirty
-minutes after its service does (measured: NameError in the late test pile).
-
 ## Domain Naming
 
 - `<name>` must be lowercase, alphanumeric (e.g. `todo`, `inventory`, `order`)
