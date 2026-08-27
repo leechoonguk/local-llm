@@ -29,7 +29,9 @@ imports register models and behavior other code depends on.
 Run the verification after wiring each layer or file group, not only at the
 end — failures discovered early are cheaper than one pile at the finish.
 
-Iterate with `make verify-fast` (add t="tests/..." to scope one file) — it skips
+Write each layer's test immediately after the layer, and check it with
+`make verify-fast t="tests/..."` before moving on — never leave all tests for
+the end (measured: every timeout died in a late test pile). verify-fast skips
 the coverage gate, so a fast pass never counts as done.
 
 Before declaring work done, run the full `make verify` and confirm it is green.
