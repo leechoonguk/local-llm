@@ -355,6 +355,9 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     const advisor = adv ? `advisor:\n  enabled: true\n  immuneTurns: 3\n${adv !== "1" ? `  model: ${adv}\n` : ""}` : "";
     writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisor}`);
     extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
+    // 실측(2026-08-27): config(advisor.enabled)만으로는 헤드리스에서 무동작(4중 0건),
+    // --advisor CLI 플래그를 줘야 런타임이 깬다(플래그 프로브에서 세션 advisor 흔적 12건).
+    if (adv) extra.push("--advisor");
   }
   // 실험 옵트인: BENCH_HOOK=<확장 .ts 경로> 면 그 훅을 로드한다(예: stuck-reset). 미설정이면 기존 동작.
   const benchHook = process.env.BENCH_HOOK;
