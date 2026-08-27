@@ -85,7 +85,7 @@ export function registerDiscipline(pi: any): void {
   const log = (s: string) => { if (logPath) { try { appendFileSync(logPath, `[continuity] ${s}\n`); } catch {} } };
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
-  let everRed = false, mutatedEver = false;
+  let mutatedEver = false;
   let firstMutationAt = 0, verifyNudged = false, testNudged = false, finishChecks = 0;
   let verifySeen = false, openingAt = 0, redFirstAt = 0;
   const srcWritten = new Set<string>();
@@ -165,7 +165,7 @@ export function registerDiscipline(pi: any): void {
           // 연장한다(총상한 RED_TOTAL_MS). 실측: gatefix-a2 에서 4개 시그니처가 12분간
           // 전진 중인데 컷이 원래 시계로 발화했다(토의 2026-08-27).
           else if (f !== redSig) redSince = Math.max(redSince, Date.now() - RED_AGE_MS / 2);
-          redSig = f; redCmdTk = cmdTk; everRed = true; log(`red: ${f.slice(0, 100)}`);
+          redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
         } else if (!event.isError && (fullGate || (!truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5))) {
           // 전체 게이트 성공은 가장 강한 초록 증거 — Jaccard 무관 clear.
           // 실측: 성공 셀에서 stale red 가 END-GATE 2발을 소진시켰다(토의 2026-08-27).
