@@ -32,6 +32,7 @@ enforces it on the root, backend, frontend and decks Makefiles.
 | `make down` | `lsof -ti:18000` + `xargs kill -9` | Stop backend (kill uvicorn) |
 | `make test` | `pytest -q` | Run tests (100% coverage gate) |
 | `make lint` | `ruff check app alembic tests` | Lint Python code (incl. tests) |
+| `make fix` | `ruff check --fix` + `ruff format` (app alembic tests) | Auto-fix lint findings and formatting |
 | `make typecheck` | `pyright` | Type-check Python code (incl. tests) |
 | `make clean` | `rm -rf .coverage .pytest_cache .ruff_cache __pycache__` | Remove test, lint, coverage, and Python caches |
 
