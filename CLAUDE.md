@@ -18,6 +18,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 - 3.8은 dense라 3.6(MoE, 활성 3B)보다 원천적으로 느리다 — 실측(2026-08-24, MTP on, 웜 디코드): 3.6 75~80 tok/s, 3.8 oQ6(6bit) 10.7 tok/s(~7.3배 느림), 3.8 nvfp4(4bit) 21.0 tok/s(~3.7배 느림, oQ6의 2배). nvfp4 쪽 수치는 2026-08-20 Ollama nvfp4 벤치(22~29 tok/s)와 같은 대역이라 oMLX 자체 결함이 아님을 교차 확인함. **2026-08-25 제거**: s2 벤치(`bench/2026-08-24.s2.qwen-recipe.md`)에서 oQ6·nvfp4 둘 다 writes 0(무산출)로 실패해 캐시·`omp/models.yml`·`omlx/*.json`·`install.sh`에서 걷어냈다. 위 속도 실측치는 왜 뺐는지의 근거로 남긴다.
 - oMLX `memory_guard_tier` 는 `balanced` 대신 `safe` 로 강제한다(`omlx/install.sh`). `balanced`(RAM−6GB 정적 상한)가 이 레포의 `iogpu.wired_limit_mb` 티어보다 커서(64GB: 58GB > 56GB, 48GB: 42GB > 40GB) admin 대시보드가 계속 sysctl을 올리라는 배너를 띄운다 — 실사용 상한은 metal_cap이 커널 캡을 이미 접어 넣어 안전했지만(소스 확인), 커널 캡을 더 올리는 대신 oMLX 목표를 낮추는 쪽이 이식성 있다. `safe`(RAM−8GB)는 이 레포의 두 RAM 티어 모두에서 정확히 wired_limit_mb 값과 같아진다.
 - Ornith-1.5는 2026-08-23 검증 후 제외했다: 단발 벤치는 동률이었지만 장기 세션에서 느리고(3.5~4배) 분산이 컸다. 다시 제안하지 말 것.
+- omp **advisor 는 헤드리스(`-p`) 세션에서 무동작**이다(3중 실측: 2026-08-26 40분 셀 aux 호출 0, 2026-08-27 2턴·10턴 프로브 모두 advisor 모델 요청 0·설정 거부 경고 0) — 벤치에는 영향 없고 인터랙티브 전용. 러너의 `BENCH_ADVISOR` 스위치는 재검증용으로 남긴다. 인터랙티브에서 켜려면 `advisor.model: omlx/…-5bit:nothink`(코더와 같은 엔진 슬롯이라 추가 상주 0)가 후보다.
 
 ## 규칙
 1. **모델 검증은 단일 로드로.** 벤치/메모리 측정 전에 `ollama ps`의 다른 모델을 전부 `ollama stop`한다(oMLX 는 서버 재시작 후 로그 `total:` 확인). 단발 벤치(`/bench-model`, 1단계)는 필요조건일 뿐이다 — 기본 코더를 바꾸려면 `/llm-bench`(2단계, `sandbox/` 장기 omp 세션: 산출물, 게이트, 회귀, 소요 시간, n≥2)로 확인한다. 로컬 LLM 설정과 벤치는 이 워크스페이스에서만 관리한다 — fast-api-standard 에 벤치 자산을 다시 두지 말 것.
