@@ -1,44 +1,65 @@
 /**
- * Session Discipline (bench continuity) — integrated into the continuity package.
+ * Session Discipline — zero-base redesign (2026-08-27) from measured lessons.
  *
- * History: born as the standalone `extensions/continuity.ts` bench hook and
- * merged here (2026-08-27) next to the resident package it always ran beside.
- * `registerDiscipline(pi)` is called from `index.ts`; state is independent of
- * the package's own goal/loop machinery.
+ * Design system (every principle carries its measurement):
+ *  1. Knowledge lives in docs. The rulebook checklist + Exemplar Map took the
+ *     hookless REST gate to 2/2 (fixed-harness-baseline). Docs are for WHAT.
+ *  2. Behavior moves only through runtime messages. Injected turn-time
+ *     messages worked every time they fired (verify nudge pulled the first
+ *     verification from 25+ to ~14 minutes; finish-check redirected four real
+ *     finishes; red re-drives led to green recoveries). Static doc directives
+ *     for tool choice or work order were adopted zero times in two campaigns
+ *     and were removed. Hooks are for WHEN.
+ *  3. Sickness is wall time only. Turn counts over-fire on fast turns and
+ *     under-fire on slow ones (both measured); 7m stall / 12m red-age.
+ *  4. Start early, guard the finish. The two green hook cells shared exactly
+ *     these two levers; everything in between belongs to the model.
+ *  5. Destruction is blocked, not advised (strict-* pre hooks + the verify
+ *     gate). This module only nudges and cuts; it never blocks.
  *
- * What it does (all measured on the REST bench, see bench/2026-08-2*.md):
- *  - Shift-left nudge: one reminder when files have been changing for
- *    verifyNudgeMs with no verification observed (near-miss cells ran their
- *    first verification 25+ minutes in).
- *  - Sickness cuts, wall-time only (turn counts over-fire on fast turns and
- *    under-fire on slow ones): stall (no successful mutation for stallMs) and
- *    red-age (a failing verification persisting redAgeMs). Cuts are two-phase
- *    (checkpoint-then-clear) and windows persist until superseded or released.
- *  - Hygiene cuts: trim a context that grew hygieneBudget tokens since the
- *    last cut — 6.5s vs omp compaction's 48.5s, and dt recovers 2-4x.
- *  - End-gates: finishing while red gets re-driven (endGateMax); any mutated
- *    finish gets ONE final-full-verification re-drive (a passing subset
- *    legitimately cleared red while the gate still failed — scope green).
- *  - Guards: truncated pipelines (| tail/head/...) never clear red; a pending
- *    sick checkpoint cancels if the session recovers first; agent_end releases
- *    the window so a finished session is not re-driven by our own bootstrap.
+ * Signals (all sickness- or blindness-triggered; healthy sessions pay zero):
+ *  - VERIFY-NUDGE  once: mutations ran VERIFY_NUDGE_MS with no verification
+ *    observed. Basis: every near-miss ran its first verification 25+ min in.
+ *  - TEST-NUDGE    once: SRC_BEFORE_TESTS+ source files written, zero files
+ *    under a tests/ directory, TEST_NUDGE_MS after the first mutation.
+ *    Basis: every timeout died in a late test pile (53-57% coverage, NameError
+ *    against 30-minute-old code); a cell was observed at minute 26 with zero
+ *    test files while the doc directive for the same behavior went unadopted.
+ *  - SICKNESS CUT  stall (no successful mutation for STALL_MS) or red-age
+ *    (verification failing for RED_AGE_MS). Two-phase: checkpoint request with
+ *    context intact, then a persistent window cut; canceled if the session
+ *    recovers inside the checkpoint turn (measured: a cut once fired after
+ *    green). Windows persist until superseded (measured: one-shot rewrites
+ *    lasted a single call, ctx 80k->22k->81k) and are released at agent_end
+ *    (measured: the injected bootstrap re-drove a finished session to the cap).
+ *  - HYGIENE CUT   context grew HYGIENE_BUDGET since the last cut. Basis:
+ *    without cuts ctx hit 101k and dt crawled to 308s; a cut costs ~6.5s vs
+ *    omp compaction's 48.5s and recovers dt 2-4x (119.7s -> 3.5-17s).
+ *  - END-GATES     a prose finish while red is re-driven (END_GATE_MAX);
+ *    any mutated finish gets ONE full-verification re-drive. Basis: scope
+ *    green (a passing subset cleared red while the gate failed), a finish
+ *    with api/notice.http missing, and a hidden 57%-coverage fake-done were
+ *    each caught live.
+ *  - Guards: truncated pipelines (| tail/head/...) never clear red (measured
+ *    fake green via `make verify | tail -30`); tool-policy blocks are not
+ *    task failures.
  *
- * Knobs are fixed constants — this module targets the local bench only
- * (the dynamic config/profile layer was reverted 2026-08-27, user decision:
- * to be reintroduced separately if needed). Logging only when
- * STUCK_RESET_LOG is set.
+ * Knobs are fixed constants (local bench target only — the config/profile
+ * layer was reverted by user decision). Logging only when STUCK_RESET_LOG set.
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { appendFileSync } from "node:fs";
 
-const STALL_MS = 7 * 60_000;       // wall time without a successful mutation (time only — see header)
-const RED_AGE_MS = 12 * 60_000;    // wall time with a persisting red state (time only — see header)
-const MAX_RESETS = 6;              // sickness cuts — save-then-clear made cuts cheap (measured)
-const HYGIENE_BUDGET = 50_000;     // session-token growth per two-phase hygiene cut
-const MAX_HYGIENE = 3;             // restored after the ablation refuted "cuts are net cost"
-const KEEP_RECENT = 4;
-const END_GATE_MAX = 2;
-const VERIFY_NUDGE_MS = 10 * 60_000; // minutes of mutations tolerated before the one reminder
+const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
+const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state
+const MAX_RESETS = 6;                // sickness-cut backstop
+const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
+const MAX_HYGIENE = 3;
+const KEEP_RECENT = 4;               // messages kept across a cut
+const END_GATE_MAX = 2;              // red-finish re-drives
+const VERIFY_NUDGE_MS = 10 * 60_000; // mutations tolerated before the one verify reminder
+const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
+const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
 
 export function registerDiscipline(pi: any): void {
   const logPath = process.env.STUCK_RESET_LOG || "";
@@ -46,14 +67,16 @@ export function registerDiscipline(pi: any): void {
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let everRed = false, mutatedEver = false;
-  let firstMutationAt = 0, verifyNudged = false, finishChecked = false;
+  let firstMutationAt = 0, verifyNudged = false, testNudged = false, finishChecked = false;
+  const srcWritten = new Set<string>();
+  const testWritten = new Set<string>();
   let lastProgressAt = Date.now();
   let redSig: string | null = null;
   let redCmdTk: Set<string> | null = null;
   let redSince = 0, redTurns = 0;
   let phase: "idle" | "checkpoint" | "cutting" = "idle";
   let cutKind: "sick" | "hygiene" = "sick";
-  let cutIndex = -1;                 // persistent window: drop messages before this index
+  let cutIndex = -1;
   let cutBootstrap: string | null = null;
   let hygieneCuts = 0;
   let lastTurnAt = Date.now();
@@ -61,7 +84,7 @@ export function registerDiscipline(pi: any): void {
   let armed = false;
   let bootstrap: string | null = null;
 
-  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS / 60000)}m`);
+  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS / 60000)}m testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -85,10 +108,6 @@ export function registerDiscipline(pi: any): void {
       if (/^bash/i.test(event.toolName)) {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
-        // Truncated pipelines (| tail/head/grep/...) hide FAIL lines and fake a
-        // green run (measured: `make verify | tail -30` cleared red while the
-        // gate still failed). Partial output is evidence of failure, never of
-        // success — set red from it, but require an untruncated run to clear.
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
         if (f) {
           if (!redSig) { redSince = Date.now(); redTurns = 0; }
@@ -98,7 +117,12 @@ export function registerDiscipline(pi: any): void {
           redSig = null; redCmdTk = null; redSince = 0; redTurns = 0;
         }
       }
-      if (!f && !event.isError && isMutating(event.toolName)) { stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true; if (!firstMutationAt) firstMutationAt = Date.now(); }
+      if (!f && !event.isError && isMutating(event.toolName)) {
+        stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
+        if (!firstMutationAt) firstMutationAt = Date.now();
+        const path = String(event.input?.path ?? "");
+        if (path) (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path);
+      }
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
@@ -107,18 +131,12 @@ export function registerDiscipline(pi: any): void {
       stallTurns++;
       if (redSig) redTurns++;
       const now = Date.now();
-      // Instrumentation: per-turn wall interval and session token growth — the
-      // data that decided the "context growth slows late turns" hypothesis.
       const used = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
       log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);
       lastTurnAt = now;
       if (tokensAtCut === 0 && used > 0) tokensAtCut = used;
 
       if (phase === "checkpoint") {
-        // The model has had one full turn to write its checkpoint. If the
-        // sickness resolved inside that turn (verification back to green, or a
-        // change just landed — measured: red cleared in the checkpoint window
-        // and the cut still fired after green), cancel instead of cutting.
         if (cutKind === "sick" && redSig === null && now - lastProgressAt < STALL_MS) {
           phase = "idle"; bootstrap = null;
           log("CHECKPOINT canceled (recovered before the cut)");
@@ -139,25 +157,22 @@ export function registerDiscipline(pi: any): void {
           return;
         }
       }
-      // Shift-left verification nudge (once per session): failures found at
-      // minute 15 are fixed inside the cap; the same failures found at minute
-      // 30 pile into a near-miss (measured across every hook cell).
       if (phase === "idle" && firstMutationAt > 0 && !everRed && !verifyNudged && now - firstMutationAt >= VERIFY_NUDGE_MS) {
         verifyNudged = true;
         pi.sendUserMessage(`Files have been changing for ~${Math.round(VERIFY_NUDGE_MS / 60000)} minutes with no verification run observed. Run the project's verification now — failures found early are cheaper than a pile at the end. Then continue working.`);
         log("VERIFY-NUDGE sent");
         return;
       }
-      // Hypothesis lever (two-phase hygiene): the old cut-first hygiene cost more than
-      // it saved; with save-then-clear the price dropped, so re-test whether trimming a
-      // grown context buys back late-turn speed.
+      if (phase === "idle" && !testNudged && srcWritten.size >= SRC_BEFORE_TESTS && testWritten.size === 0 && firstMutationAt > 0 && now - firstMutationAt >= TEST_NUDGE_MS) {
+        testNudged = true;
+        pi.sendUserMessage(`You have written ${srcWritten.size} source files and no test files yet. Tests are part of the deliverable and the gate requires them at full coverage — write the sibling tests for what already exists NOW, before adding more source. A test written next to fresh code does not guess at names that do not exist.`);
+        log("TEST-NUDGE sent");
+        return;
+      }
       if (phase === "idle" && hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET) {
         beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`, "hygiene");
         return;
       }
-      // End-gate only while no reset is in flight. Two blind-finish shapes
-      // (both measured): finishing while the last verification was red, and
-      // finishing after mutations with no fresh full verification.
       const prose = !(e.toolResults && e.toolResults.length);
       if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
         if (redSig) {
@@ -177,10 +192,6 @@ export function registerDiscipline(pi: any): void {
     try {
       const msgs = event.messages || [];
       if (armed) {
-        // Measured: a one-shot rewrite lasts a single model call — the stored
-        // session returns in full on the next one (ctx 80k -> 22k -> 81k in the
-        // turn log). A cut must persist: remember the boundary and keep
-        // windowing every later call until a newer cut supersedes it.
         armed = false;
         cutIndex = Math.max(0, msgs.length - KEEP_RECENT);
         cutBootstrap = bootstrap;
@@ -188,11 +199,11 @@ export function registerDiscipline(pi: any): void {
         tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
         phase = "idle";
         stallTurns = 0; lastProgressAt = Date.now();
-        if (redSig) { redSince = Date.now(); redTurns = 0; }   // avoid immediate red-age re-fire
+        if (redSig) { redSince = Date.now(); redTurns = 0; }
         log(`RESET window @${cutIndex}/${msgs.length} (${cutKind} cut, sick#${resets} hyg#${hygieneCuts}, after checkpoint)`);
       }
       if (cutIndex < 0) return undefined;
-      if (cutIndex > msgs.length) { cutIndex = -1; return undefined; }  // session rewritten under us — drop the marker
+      if (cutIndex > msgs.length) { cutIndex = -1; return undefined; }
       const sys = msgs.filter((m: any) => m.role === "system");
       const bootMsg = { role: "user", content: cutBootstrap };
       const seen = new Set<any>();
@@ -203,10 +214,6 @@ export function registerDiscipline(pi: any): void {
 
   pi.on("agent_end", (e: any) => {
     log(`agent_end msgs=${(e.messages||[]).length} resets=${resets} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`);
-    // A finished session must not be re-driven by our own machinery: the
-    // injected bootstrap user message can reopen the loop after agent_end
-    // (measured — post-green turns kept running until the cap). Release the
-    // window and any in-flight cut; a deliberate revival sees the full session.
     cutIndex = -1; cutBootstrap = null; phase = "idle"; armed = false; bootstrap = null;
   });
 }
