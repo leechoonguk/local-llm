@@ -31,8 +31,8 @@ verify: lint typecheck test ## Run lint, typecheck, and test (fail-fast)
 
 verify-fast: lint typecheck test-fast ## Fast iteration gate — no coverage; finish still requires `make verify`
 
-test: ## Run tests (pytest)
-	.venv/bin/pytest -q
+test: ## Run tests (pytest, full coverage gate)
+	.venv/bin/pytest -q --cov=app --cov-report=term-missing --cov-fail-under=100
 
 test-fast: ## Run tests without the coverage gate (usage: make test-fast t="tests/api/test_x.py")
 	.venv/bin/pytest -q --no-cov $(t)

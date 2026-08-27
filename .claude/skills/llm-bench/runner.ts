@@ -60,7 +60,7 @@ const TASKS: Record<string, Task> = {
   rest: {
     mode: "B",
     spec: "rest_spec.md",
-    expect: 13,
+    expect: 15, // 실측 재보정(2026-08-27 4자 토의): 초록 셀 산출물이 일관되게 15-16 — 13은 만성 과대달성으로 읽혀 미달 감지 불능
     prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository.
 
 1. Read the domain rule first: .omp/rules/backend-domain.md. Follow it.

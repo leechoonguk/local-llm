@@ -65,14 +65,16 @@ import { appendFileSync, existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
-const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state
+const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state (same signature)
+const RED_TOTAL_MS = 20 * 60_000;    // absolute ceiling for one red episode even with advancing signatures (debate 2026-08-27)
+const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b|\bmake\b[^|;&]*\btest\b(?!-fast)/; // full-gate command shapes
 const MAX_RESETS = 6;                // sickness-cut backstop
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
 const FINISH_CHECK_MAX = 2;          // finish-check re-drives (23.9m finish with 1 incomplete slipped past a single check - measured 2026-08-27)
-const VERIFY_NUDGE_MS = 10 * 60_000; // mutations tolerated before the one verify reminder
+const VERIFY_NUDGE_MS = 8 * 60_000;  // session time tolerated before the one verify reminder (opening-anchored; brief says ~8m)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
 const REG_FILES = ["backend/alembic/env.py", "backend/tests/conftest.py"]; // registration files under watch
@@ -85,6 +87,7 @@ export function registerDiscipline(pi: any): void {
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let everRed = false, mutatedEver = false;
   let firstMutationAt = 0, verifyNudged = false, testNudged = false, finishChecks = 0;
+  let verifySeen = false, openingAt = 0, redFirstAt = 0;
   const srcWritten = new Set<string>();
   const testWritten = new Set<string>();
   let lastProgressAt = Date.now();
@@ -154,12 +157,20 @@ export function registerDiscipline(pi: any): void {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
+        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
+        if (fullGate) verifySeen = true;
         if (f) {
-          if (!redSig) { redSince = Date.now(); redTurns = 0; }
+          if (!redSig) { redSince = Date.now(); redFirstAt = Date.now(); redTurns = 0; }
+          // 시그니처 교체 = 다른 실패로 전진 중 — same-signature 시계를 절반만 남기고
+          // 연장한다(총상한 RED_TOTAL_MS). 실측: gatefix-a2 에서 4개 시그니처가 12분간
+          // 전진 중인데 컷이 원래 시계로 발화했다(토의 2026-08-27).
+          else if (f !== redSig) redSince = Math.max(redSince, Date.now() - RED_AGE_MS / 2);
           redSig = f; redCmdTk = cmdTk; everRed = true; log(`red: ${f.slice(0, 100)}`);
-        } else if (!event.isError && !truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5) {
-          log("green — red cleared (same-command success)");
-          redSig = null; redCmdTk = null; redSince = 0; redTurns = 0;
+        } else if (!event.isError && (fullGate || (!truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5))) {
+          // 전체 게이트 성공은 가장 강한 초록 증거 — Jaccard 무관 clear.
+          // 실측: 성공 셀에서 stale red 가 END-GATE 2발을 소진시켰다(토의 2026-08-27).
+          if (redSig) log(fullGate ? "green — red cleared (full-gate success)" : "green — red cleared (same-command success)");
+          redSig = null; redCmdTk = null; redSince = 0; redFirstAt = 0; redTurns = 0;
         }
       }
       if (!f && !event.isError && isMutating(event.toolName)) {
@@ -180,7 +191,7 @@ export function registerDiscipline(pi: any): void {
   pi.on("turn_end", (e: any, ctx: any) => {
     try {
       if (!openingSent) {
-        openingSent = true;
+        openingSent = true; openingAt = Date.now();
         pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
@@ -203,7 +214,7 @@ export function registerDiscipline(pi: any): void {
       }
       if (phase === "idle" && resets < MAX_RESETS) {
         const stalled = now - lastProgressAt >= STALL_MS;
-        const redAged = redSig !== null && redSince > 0 && now - redSince >= RED_AGE_MS;
+        const redAged = redSig !== null && ((redSince > 0 && now - redSince >= RED_AGE_MS) || (redFirstAt > 0 && now - redFirstAt >= RED_TOTAL_MS));
         if (redAged) {
           beginCheckpoint(`the verification has stayed failing for ${redTurns} turns / ${Math.round((now - redSince) / 60000)} minutes while edits kept landing`);
           return;
@@ -213,7 +224,7 @@ export function registerDiscipline(pi: any): void {
           return;
         }
       }
-      if (phase === "idle" && firstMutationAt > 0 && !everRed && !verifyNudged && now - firstMutationAt >= VERIFY_NUDGE_MS) {
+      if (phase === "idle" && mutatedEver && openingAt > 0 && !verifySeen && !verifyNudged && now - openingAt >= VERIFY_NUDGE_MS) {
         verifyNudged = true;
         pi.sendUserMessage(`Files have been changing for ~${Math.round(VERIFY_NUDGE_MS / 60000)} minutes with no verification run observed. Run the project's verification now — failures found early are cheaper than a pile at the end. Then continue working.`);
         log("VERIFY-NUDGE sent");
@@ -255,7 +266,7 @@ export function registerDiscipline(pi: any): void {
         tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
         phase = "idle";
         stallTurns = 0; lastProgressAt = Date.now();
-        if (redSig) { redSince = Date.now(); redTurns = 0; }
+        if (redSig) { redSince = Date.now(); redFirstAt = Date.now(); redTurns = 0; }
         log(`RESET window @${cutIndex}/${msgs.length} (${cutKind} cut, sick#${resets} hyg#${hygieneCuts}, after checkpoint)`);
       }
       if (cutIndex < 0) return undefined;

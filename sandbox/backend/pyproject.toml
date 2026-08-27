@@ -73,7 +73,9 @@ venv = ".venv"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
-addopts = "--cov=app --cov-report=term-missing --cov-fail-under=100"
+# 커버리지 게이트는 make test 레시피로 이동(2026-08-27 4자 토의) — 서브셋 pytest 가
+# 총커버리지 red 를 뒤집어쓰던 혼동 제거. 채점 게이트(make verify→make test)는 동일 강도.
+addopts = ""
 
 [tool.coverage.run]
 # app/ only — exclude generated/entrypoint files with no testable logic.
