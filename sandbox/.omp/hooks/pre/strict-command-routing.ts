@@ -53,6 +53,13 @@ const denylist: Array<{
     target: "make migrate",
   },
   {
+    // ruff 자동수정·포맷터가 alembic 을 건드리면 기존 마이그레이션 37개가 통째로
+    // 재서식된다(2026-08-28 실측, +2256/-2413 순수 포맷 처닝). 마이그레이션은 불변.
+    desc: "Ruff 자동수정/포맷을 alembic 에 실행",
+    pattern: /\bruff\b[^|;&]*(?:--fix|\bformat\b)[^|;&]*\balembic\b|\bruff\b[^|;&]*\balembic\b[^|;&]*(?:--fix|\bformat\b)/,
+    target: "make fix (app/tests 한정)",
+  },
+  {
     desc: "Pytest 직접 실행",
     pattern: new RegExp(`${atCmdStart("\\.venv/bin/pytest")}(?:\\s|$)`),
     target: "make test",

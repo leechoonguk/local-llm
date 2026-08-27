@@ -68,7 +68,7 @@ style: |
 <!-- sync: backend-identity-tokens.md=dc89bdba3680fdd8 -->
 <!-- sync: backend-integration-configuration.md=efaf472c56d5113e -->
 <!-- sync: backend-integration.md=3fd57fcc535b4e66 -->
-<!-- sync: backend-makefile.md=b96365f846384b6a -->
+<!-- sync: backend-makefile.md=b00e4cc9a0925356 -->
 <!-- sync: backend-middleware.md=f54d26f09ba562a2 -->
 <!-- sync: backend-migrations.md=4341e5f3947d709a -->
 <!-- sync: backend-naming.md=a9dc70a6e7e74b0c -->
@@ -99,7 +99,7 @@ style: |
 <!-- sync: strict-additive-writes.ts=c6e0445d01e83a34 -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
-<!-- sync: strict-command-routing.ts=a105f9730ca8bf6f -->
+<!-- sync: strict-command-routing.ts=6e4cc14b1c2d2469 -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
 <!-- sync: strict-no-vcs-publish.ts=724e9d5a9494d647 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
