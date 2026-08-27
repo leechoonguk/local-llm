@@ -372,7 +372,14 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     // 3.6 에서 실제로 먹는 유일한 thinking 제어(64→3000 비례 반응). 오버레이 딥머지가
     // 안 먹으면 셀의 thinking 비중이 5120 대역 그대로일 것 — 세션에서 자가 진단 가능.
     const tb = process.env.BENCH_THINKING_BUDGET;
-    const budget = tb ? `providers:\n  omlx:\n    modelOverrides:\n      "${model.replace(/^omlx\//, "")}":\n        compat:\n          extraBody:\n            thinking_budget: ${tb}\n` : "";
+    // BENCH_MAX_TOKENS=<n>: 출력 상한 축(사용자 제안 2026-08-28) — 한 번도 안 움직인 변수.
+    // 하한 리스크: 절단(finish_reason=length)이 파일 쓰기·reasoning 분리를 깨뜬 실측 전례
+    // 가 있어, 절단 발생은 세션에서 가드 지표로 같이 확인할 것.
+    const mt = process.env.BENCH_MAX_TOKENS;
+    const ov: string[] = [];
+    if (tb) ov.push(`        compat:\n          extraBody:\n            thinking_budget: ${tb}`);
+    if (mt) ov.push(`        maxTokens: ${mt}`);
+    const budget = ov.length ? `providers:\n  omlx:\n    modelOverrides:\n      "${model.replace(/^omlx\//, "")}":\n${ov.join("\n")}\n` : "";
     writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisor}${budget}`);
     extra.push("--config", join(overlayDir, "overlay.yml"), "--smol", AUX_MODEL);
     // 실측(2026-08-27): config(advisor.enabled)만으로는 헤드리스에서 무동작(4중 0건),
