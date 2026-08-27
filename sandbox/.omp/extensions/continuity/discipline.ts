@@ -71,6 +71,7 @@ const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
+const FINISH_CHECK_MAX = 2;          // finish-check re-drives (23.9m finish with 1 incomplete slipped past a single check - measured 2026-08-27)
 const VERIFY_NUDGE_MS = 10 * 60_000; // mutations tolerated before the one verify reminder
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
@@ -83,7 +84,7 @@ export function registerDiscipline(pi: any): void {
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let everRed = false, mutatedEver = false;
-  let firstMutationAt = 0, verifyNudged = false, testNudged = false, finishChecked = false;
+  let firstMutationAt = 0, verifyNudged = false, testNudged = false, finishChecks = 0;
   const srcWritten = new Set<string>();
   const testWritten = new Set<string>();
   let lastProgressAt = Date.now();
@@ -167,6 +168,10 @@ export function registerDiscipline(pi: any): void {
         const path = String(event.input?.path ?? "");
         if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); regCheck(path); }
         else if (/^bash/i.test(event.toolName)) regCheck(norm(str(event.input)).slice(0, 300));
+        // 스키마 무관 백스톱: 패치형 결과는 입력에 path 가 없어도 결과 텍스트에
+        // [path#TAG] 로 파일명을 남긴다 — 실셀에서 입력 트리거만으로 env.py
+        // 회귀를 놓친 실측(2026-08-27)이 근거.
+        regCheck(content.slice(0, 500));
       }
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
@@ -230,8 +235,8 @@ export function registerDiscipline(pi: any): void {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
           log(`END-GATE re-drive #${endGateSends}`);
-        } else if (mutatedEver && !finishChecked) {
-          finishChecked = true;
+        } else if (mutatedEver && finishChecks < FINISH_CHECK_MAX) {
+          finishChecks++;
           pi.sendUserMessage(`Final check before finishing: run the project's full verification once end-to-end and confirm it is green. A passing subset or an earlier run does not count — the gate needs a fresh full pass. If it fails, finish the remaining failures first.`);
           log("END-GATE finish-check");
         }
