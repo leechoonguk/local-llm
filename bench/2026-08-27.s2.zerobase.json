@@ -118,5 +118,66 @@
    "grep": 10
   },
   "no_work": false
+ },
+ {
+  "at": "2026-08-27T07:44:47.169Z",
+  "model": "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 2700,
+  "timed_out": true,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "mlx-community--Qwen3.6-35B-A3B-5bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 14,
+  "expected": 13,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   " M sandbox/backend/tests/conftest.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/alembic/versions/74_add_notice_table.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py",
+   "?? sandbox/backend/tests/api/test_notice.py",
+   "?? sandbox/backend/tests/repositories/test_notice.py",
+   "?? sandbox/backend/tests/services/test_notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 1,
+  "regressions": 1,
+  "regression_detail": [
+   "FAIL: user: not imported in alembic/env.py"
+  ],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-27T07-45-11-869Z_01a0422e-16bd-763c-8d14-a5e5a87f9d01.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 33,
+  "tools": {
+   "read": 66,
+   "grep": 3,
+   "write": 13,
+   "edit": 20,
+   "bash": 27,
+   "glob": 8
+  },
+  "no_work": false
  }
 ]

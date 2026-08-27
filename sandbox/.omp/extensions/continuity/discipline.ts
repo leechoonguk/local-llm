@@ -40,6 +40,13 @@
  *    green (a passing subset cleared red while the gate failed), a finish
  *    with api/notice.http missing, and a hidden 57%-coverage fake-done were
  *    each caught live.
+ *  - REG-WATCH    a mutation touching a registration file (alembic/env.py,
+ *    tests/conftest.py) is followed by an import-line diff against the
+ *    session-start snapshot; a vanished line gets one immediate message.
+ *    Basis: the single most frequent regression (a registration import
+ *    removed — four occurrences) slipped past three guard vectors (edit
+ *    swap, two-step remove+add, bash sed) and was only caught by verify
+ *    20+ minutes later; the runtime-message channel is the one that works.
  *  - Guards: truncated pipelines (| tail/head/...) never clear red (measured
  *    fake green via `make verify | tail -30`); tool-policy blocks are not
  *    task failures.
@@ -48,7 +55,9 @@
  * layer was reverted by user decision). Logging only when STUCK_RESET_LOG set.
  */
 // @ts-expect-error — Node builtin, not project-compiled
-import { appendFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync } from "node:fs";
+// @ts-expect-error — Node builtin, not project-compiled
+import { resolve } from "node:path";
 
 const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
 const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state
@@ -60,6 +69,8 @@ const END_GATE_MAX = 2;              // red-finish re-drives
 const VERIFY_NUDGE_MS = 10 * 60_000; // mutations tolerated before the one verify reminder
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
+const REG_FILES = ["backend/alembic/env.py", "backend/tests/conftest.py"]; // registration files under watch
+const REG_WATCH_MAX = 3;             // registration-loss messages per session
 
 export function registerDiscipline(pi: any): void {
   const logPath = process.env.STUCK_RESET_LOG || "";
@@ -83,8 +94,36 @@ export function registerDiscipline(pi: any): void {
   let tokensAtCut = 0;
   let armed = false;
   let bootstrap: string | null = null;
+  const regSnapshot = new Map<string, Set<string>>();
+  const regWarned = new Set<string>();
+  let regWarnCount = 0;
+  for (const rel of REG_FILES) {
+    try {
+      const abs = resolve(process.cwd(), rel);
+      if (existsSync(abs)) regSnapshot.set(rel, importLines(readFileSync(abs, "utf-8")));
+    } catch {}
+  }
 
-  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS / 60000)}m testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src`);
+  function regCheck(touched: string): void {
+    for (const rel of REG_FILES) {
+      if (!touched.endsWith(rel) && !rel.endsWith(touched) && !touched.includes(rel.split("/").pop() ?? rel)) continue;
+      const snap = regSnapshot.get(rel);
+      if (!snap) continue;
+      try {
+        const abs = resolve(process.cwd(), rel);
+        if (!existsSync(abs)) continue;
+        const cur = importLines(readFileSync(abs, "utf-8"));
+        const dropped = [...snap].filter((l) => !cur.has(l) && !regWarned.has(l));
+        if (dropped.length === 0 || regWarnCount >= REG_WATCH_MAX) continue;
+        dropped.forEach((l) => regWarned.add(l));
+        regWarnCount++;
+        pi.sendUserMessage(`A registration line just vanished from ${rel}: \`${dropped[0]}\`${dropped.length > 1 ? ` (+${dropped.length - 1} more)` : ""}. These imports register models/behavior the rest of the code depends on — restore the line and add yours alongside it instead of replacing.`);
+        log(`REG-WATCH ${rel}: ${dropped[0].slice(0, 60)}`);
+      } catch {}
+    }
+  }
+
+  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} verifyNudge=${Math.round(VERIFY_NUDGE_MS / 60000)}m testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -121,7 +160,8 @@ export function registerDiscipline(pi: any): void {
         stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
-        if (path) (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path);
+        if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); regCheck(path); }
+        else if (/^bash/i.test(event.toolName)) regCheck(norm(str(event.input)).slice(0, 300));
       }
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
@@ -219,6 +259,9 @@ export function registerDiscipline(pi: any): void {
 }
 
 // ---- helpers (details after the entry point — check-code-layout) ----
+function importLines(content: string): Set<string> {
+  return new Set(content.split("\n").map((l) => l.trim()).filter((l) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l)));
+}
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
 const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));
