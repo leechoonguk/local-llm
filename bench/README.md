@@ -58,6 +58,7 @@
 | [`2026-08-27.s2.workflow-speed.md`](2026-08-27.s2.workflow-speed.md) | 속도 레버 2종(verify-fast·Exemplar Map), 유효 n=1 — **verify 런타임 6초 실측**(병목은 모델 측), verify-fast 채택 0. 셀은 13/13·최저 writes 33 의 최상 형태로 45m TO(종반 테스트 수렁). finish-gate 3번째 실전 발화(http 누락 폭로) |
 | [`2026-08-27.s2.test-companion.md`](2026-08-27.s2.test-companion.md) | 레이어-테스트 동행 지시, n=0 관측 판정 — **문서 지시 2연속 무효**(동행 미발현·verify-fast 0회) → 지시 제거(`340bcf8`). import 훼손 3번째 우회(bash sed) 기록 — 순서 강제는 훅/구조 레벨이어야 한다는 가설 |
 | [`2026-08-27.s2.coder-4bit.md`](2026-08-27.s2.coder-4bit.md) | 4bit(+MTP-4bit) 실험, 유효 n=1 — **기각, 5bit:mtp 유지**: 웜 70.2 tok/s(5bit 75~80 동급 이하), 45m TO 그대로 + 회귀 1(env.py user import). 배선 3전 수확: omp models.yml 등록 필수, oMLX 프로파일 별칭 default 한정(bare id+apply 우회), admin /reload 라우트 드랍(셔틀 재시작 필요) |
+| [`2026-08-27.s2.zerobase.md`](2026-08-27.s2.zerobase.md) | **제로베이스 재설계 판 — 훅 최초 2/2 게이트 초록(보강 게이트)**, 셀 #1 **21.2분 역대 최속**(자발 verify 9.2분, 넛지 전부 침묵=건강 비용 0 실증) + 셀 #2 초록 트리 캡(넛지·finish-check 개입 셀). 5원칙 재작성 + TEST-NUDGE 신규. 분산 유의(n=2)나 시간 기록은 분산 밖 |
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
