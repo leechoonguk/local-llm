@@ -255,6 +255,10 @@ export function registerDiscipline(pi: any): void {
   pi.on("agent_end", (e: any) => {
     log(`agent_end msgs=${(e.messages||[]).length} resets=${resets} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`);
     cutIndex = -1; cutBootstrap = null; phase = "idle"; armed = false; bootstrap = null;
+    // A released window means a revived session returns at FULL size (125k
+    // measured) while the hygiene baseline still points at the cut-time value,
+    // so the next hygiene cut comes far too late. Re-baseline on the next turn.
+    tokensAtCut = 0;
   });
 }
 
