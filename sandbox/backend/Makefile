@@ -1,4 +1,4 @@
-.PHONY: help install dev down migrate migrate-gen migrate-down verify test lint typecheck clean
+.PHONY: help install dev down migrate migrate-gen migrate-down verify verify-fast test test-fast lint typecheck clean
 
 UV := uv
 
@@ -29,8 +29,13 @@ migrate-gen: ## Generate a new migration from model changes (usage: make migrate
 
 verify: lint typecheck test ## Run lint, typecheck, and test (fail-fast)
 
+verify-fast: lint typecheck test-fast ## Fast iteration gate — no coverage; finish still requires `make verify`
+
 test: ## Run tests (pytest)
 	.venv/bin/pytest -q
+
+test-fast: ## Run tests without the coverage gate (usage: make test-fast t="tests/api/test_x.py")
+	.venv/bin/pytest -q --no-cov $(t)
 
 lint: ## Lint (ruff)
 	.venv/bin/ruff check app alembic tests

@@ -27,6 +27,8 @@ enforces it on the root, backend, frontend and decks Makefiles.
 | `make migrate-down` | `alembic downgrade -1` | Roll back the most recent migration |
 | `make migrate-gen` | `alembic revision --autogenerate` | Auto-generate migration from model changes |
 | `make verify` | `lint + typecheck + test` | Full quality gate (fail-fast) |
+| `make verify-fast` | `lint + typecheck + test-fast` | Iteration gate — no coverage; the finish still requires `make verify` |
+| `make test-fast` | `pytest -q --no-cov $(t)` | Tests without the coverage gate; `t="tests/..."` scopes to one file |
 | `make down` | `lsof -ti:18000` + `xargs kill -9` | Stop backend (kill uvicorn) |
 | `make test` | `pytest -q` | Run tests (100% coverage gate) |
 | `make lint` | `ruff check app alembic tests` | Lint Python code (incl. tests) |

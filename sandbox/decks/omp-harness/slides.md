@@ -48,13 +48,13 @@ style: |
 <!-- sync: backend-batch.md=65c45b90acb2340f -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-core-config.md=dcd8e7bc6c1cbf9f -->
-<!-- sync: backend-domain.md=a456c17f7a889242 -->
+<!-- sync: backend-domain.md=08f0cfacffbae337 -->
 <!-- sync: backend-exceptions.md=d36379949336814d -->
 <!-- sync: backend-file-upload.md=417dc0174bf98a36 -->
 <!-- sync: backend-identity-tokens.md=dc89bdba3680fdd8 -->
 <!-- sync: backend-integration-configuration.md=efaf472c56d5113e -->
 <!-- sync: backend-integration.md=3fd57fcc535b4e66 -->
-<!-- sync: backend-makefile.md=26cc8434783021b3 -->
+<!-- sync: backend-makefile.md=d8eab1723a173bb6 -->
 <!-- sync: backend-middleware.md=f54d26f09ba562a2 -->
 <!-- sync: backend-migrations.md=4341e5f3947d709a -->
 <!-- sync: backend-naming.md=a9dc70a6e7e74b0c -->
@@ -80,7 +80,7 @@ style: |
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
-<!-- sync: root-makefile.md=d8c2569156bd7693 -->
+<!-- sync: root-makefile.md=7691dca3d8796a13 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
 <!-- sync: strict-additive-writes.ts=c6e0445d01e83a34 -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->

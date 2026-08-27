@@ -131,6 +131,39 @@ The gate (`make verify`) checks every item below — missing any one fails:
 - `api/<name>.http` — request file per rule://backend-api-http (unique-constraint domains follow `api/user.http`: `{{$guid}}` + a `409` section)
 - `backend/tests/{api,repositories,services}/test_<name>.py` — per rule://backend-testing
 
+### Exemplar Map (single read — copy the `batch` domain)
+
+Every deliverable has a working exemplar in the `batch` domain. Read this table
+instead of rediscovering the layout file by file; open an exemplar only when
+its section below leaves a question.
+
+| Deliverable | Exemplar | Contract (one line) |
+|---|---|---|
+| `app/models/<name>.py` | `app/models/batch.py` | Explicit `String(<len>)` on every string column; see Model section |
+| `app/schemas/<name>.py` | `app/schemas/batch.py` | `<Name>CreateRequest` / `<Name>ReadResponse` naming; see Schema section |
+| `app/repositories/<name>.py` | `app/repositories/batch.py` | Session-injected class, no commits; see Repository section |
+| `app/services/<name>.py` | `app/services/batch.py` | Owns `session.begin()` transactions; see Service section |
+| `app/routers/<name>.py` | `app/routers/batch.py` | Existing auth dependency + pagination convention; see Router section |
+| migration | `make migrate-gen m="add <name> table"` | Generated, never hand-written; non-empty message |
+| `api/<name>.http` | `api/user.http` (unique fields) or `api/batch.http` | `{{$guid}}` + a `409` section for unique-constraint domains |
+| tests ×3 | `tests/{api,repositories,services}/test_batch.py` | Same file trio, same fixture style |
+
+Wiring lines (verbatim from the exemplar — add yours alongside, never replace):
+
+```python
+# alembic/env.py
+from app.models.batch import Batch  # noqa: F401 — register model on metadata
+# tests/conftest.py
+from app.models.batch import Batch  # noqa: F401 — register model on metadata
+# app/dependencies/services.py
+from app.services.batch import BatchService
+def get_batch_service(session: SessionDep) -> BatchService:
+BatchServiceDep = Annotated[BatchService, Depends(get_batch_service)]
+# app/main.py
+from app.routers import auth, batch, health, integration, user
+api_router.include_router(batch.router)
+```
+
 ## Domain Naming
 
 - `<name>` must be lowercase, alphanumeric (e.g. `todo`, `inventory`, `order`)

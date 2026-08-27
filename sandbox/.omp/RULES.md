@@ -29,4 +29,7 @@ imports register models and behavior other code depends on.
 Run the verification after wiring each layer or file group, not only at the
 end — failures discovered early are cheaper than one pile at the finish.
 
-Before declaring work done, run `make verify` again and confirm it is green.
+Iterate with `make verify-fast` (add t="tests/..." to scope one file) — it skips
+the coverage gate, so a fast pass never counts as done.
+
+Before declaring work done, run the full `make verify` and confirm it is green.
