@@ -96,7 +96,7 @@ style: |
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
 <!-- sync: root-makefile.md=7691dca3d8796a13 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
-<!-- sync: strict-additive-writes.ts=c6e0445d01e83a34 -->
+<!-- sync: strict-additive-writes.ts=a840609398fb62fa -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=6e4cc14b1c2d2469 -->

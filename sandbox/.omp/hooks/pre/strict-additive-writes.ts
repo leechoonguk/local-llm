@@ -36,8 +36,52 @@ export default function strictAdditiveWrites(pi: any) {
       };
     }
 
+    if (toolName === "edit" && typeof (event.input as any).input === "string") {
+      // omp 18 patch form, measured 2026-08-28: {path, input: "[rel#TAG]\nPUT 12.:\n+line..."}.
+      // Grammar observed in sessions: `PUT N:`/`PUT N.:` REPLACE line N; `PUT N+k@:`/`PUT N+k:`
+      // INSERT after line N. The services.py wholesale swap (User->Notice, 7th observation of
+      // the replace-instead-of-add habit — frontier models do it in omp too) arrived as a
+      // replace-form PUT on the user import line. Destruction is blocked, not advised.
+      const patch = String((event.input as any).input);
+      const path = String(event.input.path ?? "");
+      const abs = path.startsWith("/") ? path : resolve(process.cwd(), path);
+      if (!existsSync(abs)) return;
+      const fileLines = readFileSync(abs, "utf-8").split("\n");
+      const isReg = (l: string) =>
+        /^(from\s+\S+\s+import\b|import\s+\S)/.test(l) || /^\w+Dep\s*=\s*Annotated\b/.test(l) || /\binclude_router\(/.test(l);
+      const isImport = (l: string) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l);
+      const WATCHED = /backend\/(alembic\/env\.py|tests\/conftest\.py|app\/dependencies\/services\.py|app\/main\.py)$/;
+      for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?\.?:\n((?:\+[^\n]*(?:\n|$))+)/g)) {
+        if (op[2]) continue; // insert form — additive, fine
+        const target = (fileLines[Number(op[1]) - 1] ?? "").trim();
+        if (!target) continue;
+        const bodyLines = op[3].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
+        const retained = bodyLines.includes(target);
+        if (retained) continue;
+        if (WATCHED.test(abs) && isReg(target)) {
+          return {
+            block: true,
+            reason:
+              `this edit REPLACES a registration/wiring line (\`${target.slice(0, 70)}\`) in a shared file — ` +
+              "add yours ALONGSIDE instead: keep that line and use the insert form " +
+              `(\`PUT ${op[1]}+1@:\`) to put the new line after it. Existing registrations are read-only invariants.`,
+          };
+        }
+        if (isImport(target) && bodyLines.some(isImport)) {
+          return {
+            block: true,
+            reason:
+              `this edit replaces an existing import (\`${target.slice(0, 60)}\`) with a new one — ` +
+              "an additive task adds its import alongside; keep the old line and insert yours next to it " +
+              `(\`PUT ${op[1]}+1@:\`).`,
+          };
+        }
+      }
+      return;
+    }
+
     if (toolName === "edit") {
-      // Field shape measured from the runtime: {path, old_string, new_string}
+      // Legacy field shape: {path, old_string, new_string}
       // or {path, edits: [{old_string, new_string}]}.
       const pairs: Array<{ old_string?: unknown; new_string?: unknown }> =
         Array.isArray((event.input as any).edits) ? (event.input as any).edits : [event.input as any];
