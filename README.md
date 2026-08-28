@@ -38,6 +38,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 | 코더 | `mlx-community/Qwen3.6-35B-A3B-5bit` (23.1GiB, HF 캐시로 다운로드) |
 | MTP 드래프터 | `mlx-community/Qwen3.6-35B-A3B-MTP-5bit` (0.6GiB, `qwen3_5_mtp` 타입) |
 | aux | `mlx-community/Qwen3.5-4B-4bit` (2.3GiB, thinking off) |
+| 실험 코더(어드바이저 매트릭스) | `mlx-community/Qwen3.5-9B-MLX-4bit` (5.6GiB) + MTP 드래프터 `Qwen3.5-9B-MTP-4bit` (0.14GiB, `qwen3_5_mtp`) — 2026-08-28 등록, 판정 전 |
 | ~~무거운 추론~~ | ~~`Qwen3.8-27B-oQ6`/`nvfp4`~~ — **2026-08-25 제거**(s2 벤치 writes 0 실패, `bench/2026-08-24.s2.qwen-recipe.md`). 아래 3.8 실측 절은 근거로 보존 |
 
 **3.8 thinking effort는 `medium`으로 고정한다 (2026-08-24).** 아래 "Thinking 제어" 절의

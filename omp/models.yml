@@ -88,6 +88,10 @@ providers:
       - id: "mlx-community--Qwen3.5-4B-4bit"
         contextWindow: 8192
         maxTokens: 1024
+      - id: "mlx-community--Qwen3.5-9B-MLX-4bit"  # 어드바이저 매트릭스 실험 코더(2026-08-28, MTP 드래프터 페어링은 oMLX settings)
+        api: openai-completions  # extraBody(thinking_budget) 오버레이 경로
+        contextWindow: 131072
+        maxTokens: 8192
       # 2026-08-25 배제·캐시 삭제한 실험 모델들(bench/ 기록에 근거 유지):
       #  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)
       #  - GLM-4.7-Flash-4bit: integration 45분 타임아웃 FAIL(writes 26), 3.6 대비 느리고 미완주
