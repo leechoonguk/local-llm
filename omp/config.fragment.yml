@@ -6,11 +6,11 @@
 modelRoles:
   # 코딩 본체. 같은 Qwen3.6-35B-A3B 를 oMLX(5bit MLX)로 서빙 - 2026-08-24 Ollama 서비스
   # 중단 후 전환. :mtp 프로파일 = 창 131072 / 출력 8192 + MTP speculative decoding.
-  default: omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp
+  default: omlx/Qwen3.6-35B-A3B-5bit:mtp
   # 제목·메모리·사고강도 분류·비정상 종료 감지. 4B, 창 8192, thinking off
   # (oMLX model_settings.json 에서 enable_thinking: false).
   # `smol`이 아니라 `tiny`여야 한다 - README 참고(prewalk 타깃).
-  tiny: omlx/mlx-community--Qwen3.5-4B-4bit
+  tiny: omlx/Qwen3.5-4B-4bit
 
 # 사고 강도를 medium 으로 고정한다. `auto` 는 tiny 모델이 턴마다 강도를 분류해서
 # 정하는데, 그것이 벤치 결과의 변동성 원천이었다 - 같은 과제·같은 모델로 6/6, 0/6,

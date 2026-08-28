@@ -11,7 +11,7 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 - nvfp4 태그는 Ollama의 MLX 경로(빠름, ~65 tok/s). HF GGUF(Q4/Q5)는 llama.cpp 경로(~42~49 tok/s). 모델 비교 시 포맷 차이를 속도 차이로 오해하지 말 것.
 - 모델 구성의 단일 진실은 `omp/models.yml` + `omp/config.fragment.yml`(omp 쪽), `omlx/model_settings.json` + `omlx/model_profiles.json`(oMLX 쪽). 라이브 사본은 각각 `~/.omp/agent/` 와 `~/.omlx/`.
 - 2026-08-24 부로 서빙을 oMLX(brew `jundot/omlx`, 포트 9090)로 전환했다(사용자 결정, 장기 세션 검증 전). 서버는 GUI 앱(`/Applications/oMLX.app`, DMG)이 관리하고 `omlx start|stop|restart`(앱 셔틀 `~/.omlx/bin/omlx`)로 제어한다 — brew services·LaunchAgent 아님(2026-08-25). jundot/omlx 탭·포뮬러는 2026-08-27 제거 — `hf` CLI 는 코어 포뮬러(`brew install hf`)로 대체. Ollama LaunchAgent 는 `launchctl disable` 상태로 남아 있다 — 롤백 절차는 README "oMLX 전환" 표.
-- 기본 코더: `omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp` (창 131072 / 출력 8192 — README "컨텍스트 레시피" 실측, MTP 드래프터 페어링). 보조: `omlx/mlx-community--Qwen3.5-4B-4bit` (thinking off).
+- 기본 코더: `omlx/Qwen3.6-35B-A3B-5bit:mtp` (창 131072 / 출력 8192 — README "컨텍스트 레시피" 실측, MTP 드래프터 페어링). 보조: `omlx/Qwen3.5-4B-4bit` (thinking off).
 - oMLX 에서 MTP 를 죽이는 설정: 비중립 `repetition_penalty`/`presence_penalty`, `guided_grammar`. 프로파일 수정 시 중립값 유지.
 - oMLX thinking 분리에는 `reasoning_parser: qwen` 이 필수다(없으면 CoT 가 content 에 섞임). `--with-custom-kernel` 은 macOS 27 에서 brew 소스 빌드가 거부돼 실패한다(2026-08-24) — 표준 커널로 동작.
 - README "Thinking 제어"의 "low/medium/high는 Qwen에서 효과 없음"은 **Ollama 한정**이다. oMLX는 토크나이저 chat template을 그대로 태우고, Qwen3.8 템플릿은 `reasoning_effort`(유효값 `xhigh`/`medium`/`low`, `high`/`none` 아님)를 네이티브로 해석한다 — 실측 전 재차 확인할 것. 3.8은 `medium`을 서버쪽 기본값(`chat_template_kwargs`)으로 고정했다(2026-08-24). **3.6의 chat template에는 이 로직이 없다** — `reasoning_effort`를 보내도 조용히 무시된다(에러 없음). 3.6에서 thinking 길이를 줄이려면 `thinking_budget_enabled`/`thinking_budget_tokens`(생성 시점 프로세서, 템플릿 무관)를 쓸 것.
@@ -24,11 +24,11 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 ## 규칙
 1. **모델 검증은 단일 로드로.** 벤치/메모리 측정 전에 `ollama ps`의 다른 모델을 전부 `ollama stop`한다(oMLX 는 서버 재시작 후 로그 `total:` 확인). 단발 벤치(`/bench-model`, 1단계)는 필요조건일 뿐이다 — 기본 코더를 바꾸려면 `/llm-bench`(2단계, `sandbox/` 장기 omp 세션: 산출물, 게이트, 회귀, 소요 시간, n≥2)로 확인한다. 로컬 LLM 설정과 벤치는 이 워크스페이스에서만 관리한다 — fast-api-standard 에 벤치 자산을 다시 두지 말 것.
 2. **벤치 수치는 자체 보고와 구분한다.** 개발사 벤치마크를 인용할 땐 "자체 측정"임을 명시하고, 우리 실측은 n과 조건(양자화, ctx, thinking, temp)을 함께 적는다.
-3. **새 모델 추가는 `/add-model` 절차대로** 5곳을 한 번에 맞춘다: Modelfile, install.sh, models.yml, config.fragment.yml, README. 라이브 `~/.omp/agent/`도 동기화한다(`make check-live-sync` 가 어긋난 곳과 명령을 알려준다).
+3. **새 모델 추가는 `/add-model` 절차대로**(2026-08-28 oMLX 시대 개정) — 다운로드는 oMLX admin API(`POST /admin/api/hf/download`, 앱 스토어 `~/.omlx/models`·짧은 서빙 id), 등록은 model_settings(.json)·models.yml·(역할 시)config.fragment·README·install.sh 관리 주석을 한 번에. 라이브 `~/.omp/agent/`·`~/.omlx/` 동기화(`make check-live-sync`). HF 캐시·`hf` CLI 경로는 폐지.
 4. **Modelfile 파라미터**: `num_ctx`는 Modelfile로만 관리한다(`/v1` API는 요청에 실을 수 없음). omp `contextWindow`/`maxTokens`는 Modelfile `num_ctx`/`num_predict`와 같은 값이어야 한다(입력 상한 = num_ctx − num_predict). 샘플링은 모델 카드 권장값을 따르고 출처를 주석에 남긴다.
 5. **models.yml 의 두 provider는 합치지 않는다.** `ollama`(openai-responses, thinking on)와 `ollama-nothink`(openai-completions + `reasoning_effort: none`)는 omp 스키마 제약 때문에 나뉜 것이다. 사유는 파일 상단 주석 참고.
 6. **`brew services` 로 Ollama/oMLX 를 띄우지 않는다.** Ollama 는 레포 LaunchAgent(`com.ollama.serve`), oMLX 는 GUI 앱만 쓰고, 둘 다 자동 시작·자동 재시작(RunAtLoad/KeepAlive, 로그인 항목, oMLX `auto_start_on_launch`)은 꺼 둔다 — `make check-autostart`. 기동은 `launchctl kickstart -k`.
-7. **sudo는 사용자가 직접.** sudo가 필요한 단계(예: `iogpu.wired_limit_mb`, `install.sh`의 sysctl)는 명령을 제시하고 기다린다. **모델 다운로드(`hf download`/`ollama pull`)는 에이전트가 직접 해도 된다**(2026-08-25 사용자 허용, `pre-bash` deny 제거). `install.sh` 전체 실행은 sudo를 포함하므로 여전히 사용자 몫이다.
+7. **sudo는 사용자가 직접.** sudo가 필요한 단계(예: `iogpu.wired_limit_mb`, `install.sh`의 sysctl)는 명령을 제시하고 기다린다. **모델 다운로드는 에이전트가 직접 해도 된다**(2026-08-25 허용) — 경로는 oMLX admin API(`/admin/api/hf/download`)를 쓴다(2026-08-28, HF 캐시 폐지·전면 앱 스토어 포팅: 짧은 서빙 id, 재시작 검증은 uptime 으로). `install.sh` 전체 실행은 sudo를 포함하므로 여전히 사용자 몫이다.
 8. **커밋/푸시는 요청 시에만.** omp 하네스는 훅으로 강제한다 — `sandbox/.omp/hooks/pre/strict-no-vcs-publish.ts` 가 피험자의 git commit/push 를 deny. Claude 쪽 ask 게이트는 승인 부담으로 2026-08-27 제거(행동 규칙으로만 유지). 커밋 메시지는 영어, 본문에 실측 근거를 한 줄 남긴다.
 9. **주석·README는 한국어**, 코드 식별자와 커밋 메시지는 영어. 기존 파일의 말투("~한다" 체)를 따른다.
 10. 실측으로 얻은 숫자(메모리, tok/s, 중단 토큰 수)는 README의 해당 표에 날짜와 함께 기록한다. 추정치는 "추정"이라고 쓴다.

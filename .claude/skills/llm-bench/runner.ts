@@ -82,12 +82,12 @@ const TASKS: Record<string, Task> = {
 
 /** --matrix 의 기본 후보. 현재 서빙(oMLX)에 등록된 코더 — omp/models.yml 참고. */
 const DEFAULT_MODELS = [
-  "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp",
-  "omlx/mlx-community--Qwen3.8-27B-nvfp4:mtp",
+  "omlx/Qwen3.6-35B-A3B-5bit:mtp",
+  "omlx/Qwen3.8-27B-nvfp4:mtp",
 ];
 
 /** aux(tiny/smol) 역할 고정 대상. 실사용 구성의 4B — 벤치도 이걸로 검증한다(omp/config.fragment.yml). */
-const AUX_MODEL = "omlx/mlx-community--Qwen3.5-4B-4bit";
+const AUX_MODEL = "omlx/Qwen3.5-4B-4bit";
 
 function sh(cmd: string, args: string[], cwd = SANDBOX, timeout = 900_000): { code: number; out: string } {
   const r = spawnSync(cmd, args, { cwd, encoding: "utf-8", timeout });

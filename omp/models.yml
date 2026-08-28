@@ -72,27 +72,27 @@ providers:
   # 서버쪽 per-model/프로파일 설정이라 provider 를 둘로 쪼갤 필요가 없다:
   #  - :mtp      = coder 레시피 + MTP speculative decoding, thinking on (omlx/model_profiles.json)
   #  - :nothink  = 같은 엔진 슬롯에서 thinking off - 압축 요약용
-  # 모델 id 는 oMLX 가 HF 캐시 항목(models--org--repo)을 route-safe 로 바꾼 "org--repo" 형식.
+  # 모델 id 는 oMLX 앱 스토어(~/.omlx/models) 의 짧은 서빙 id(2026-08-28 전면 포팅 — HF 캐시 제거).
   omlx:
     baseUrl: http://127.0.0.1:9090/v1
     api: openai-responses
     auth: none
     models:
-      - id: "mlx-community--Qwen3.6-35B-A3B-5bit:mtp"
+      - id: "Qwen3.6-35B-A3B-5bit:mtp"
         api: openai-completions  # 실험: openai-responses 에선 compat.extraBody 가 안 실린다(실측, 2026-08-24)
         contextWindow: 131072
         maxTokens: 8192
-      - id: "mlx-community--Qwen3.6-35B-A3B-5bit:nothink"
+      - id: "Qwen3.6-35B-A3B-5bit:nothink"
         contextWindow: 131072
         maxTokens: 8192
-      - id: "mlx-community--Qwen3.5-4B-4bit"
+      - id: "Qwen3.5-4B-4bit"
         contextWindow: 8192
         maxTokens: 1024
-      - id: "mlx-community--Qwen3.5-9B-MLX-4bit"  # 어드바이저 매트릭스 실험 코더(2026-08-28, MTP 드래프터 페어링은 oMLX settings)
+      - id: "Qwen3.5-9B-MLX-4bit"  # 어드바이저 매트릭스 실험 코더 — oMLX 앱 스토어(~/.omlx/models) 관리, 짧은 서빙 id(2026-08-28)
         api: openai-completions  # extraBody(thinking_budget) 오버레이 경로
         contextWindow: 131072
         maxTokens: 8192
-      - id: "mlx-community--Qwen3.8-27B-nvfp4"  # 어드바이저 전용(2026-08-28 부활 — 코더 기각(writes 0)은 유지, 읽기 전용 감시 역할. 창 32k=48GB 캡, effort=medium 고정)
+      - id: "Qwen3.8-27B-nvfp4"  # 어드바이저 전용(2026-08-28 부활 — 코더 기각 유지). oMLX 앱 스토어 관리, 창 32k=48GB 캡, effort=medium 고정
         api: openai-completions
         contextWindow: 32768
         maxTokens: 4096
@@ -103,8 +103,8 @@ providers:
       #  - Qwen3.8 dense 27B(nvfp4·oQ6·표준4bit): 전부 writes 0(에이전트 루프에서 파일 미생성, 양자화 무관)
       # 코더는 3.6:mtp 유지. 실험 재개 시 install.sh 로 재다운로드.
     modelOverrides:
-      "mlx-community--Qwen3.6-35B-A3B-5bit:mtp":
-        compactionModel: "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:nothink"
+      "Qwen3.6-35B-A3B-5bit:mtp":
+        compactionModel: "omlx/Qwen3.6-35B-A3B-5bit:nothink"
         # 실측(2026-08-24): reasoning_effort는 3.6 template에서 완전 no-op(seed 고정
         # A/B로 확인, low/high 완전 동일). thinking_budget만 실제로 먹는다(64→3000에서
         # 토큰·시간이 비례 반응). 프로필 파일(model_profiles.json)에는 안 먹혀서

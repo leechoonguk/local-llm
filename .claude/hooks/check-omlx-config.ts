@@ -8,7 +8,7 @@
  *  - vlm_mtp_enabled 면 vlm_mtp_draft_model 필수. is_default 는 정확히 1개. active_profile_name 은 실재
  *  - 프로파일: key == name == api_name. 같은 모델의 프로파일들은 창·MTP 설정이 같아야(엔진 시그니처 동일 → 같은 슬롯)
  *    `nothink` 는 enable_thinking false, `mtp` 는 vlm_mtp_enabled true
- *  - install.sh: 모델·드래프터마다 `$HF download mlx-community/<name>`, memory_guard_tier 'safe', 포트 9090
+ *  - install.sh: 모델·드래프터마다 `$HF download …` 또는 앱 스토어 관리 주석에 이름 명기, memory_guard_tier 'safe', 포트 9090
  */
 import { type Check, type Issue, isMain, read, runCli } from "./lib/harness.ts";
 
@@ -32,7 +32,11 @@ export function run(root: string): Issue[] {
   for (const m of (install ?? "").matchAll(/\$HF download (\S+)/g)) hf.add(m[1]);
   const needDownload = (name: string, why: string) => {
     const repo = name.replace("--", "/");
-    if (install !== null && !hf.has(repo)) issues.push(`${I}: '$HF download ${repo}' 가 없다(${why})`);
+    // 2026-08-28 전면 포팅: 모델은 oMLX 앱 스토어(~/.omlx/models)로 관리한다 —
+    // $HF download 줄 또는 앱 관리 주석에 짧은 이름이 명기돼 있으면 통과.
+    if (install !== null && !hf.has(repo) && !install.includes(name)) {
+      issues.push(`${I}: '$HF download ${repo}' 도, 앱 스토어 관리 주석의 '${name}' 도 없다(${why})`);
+    }
   };
 
   let defaults = 0;

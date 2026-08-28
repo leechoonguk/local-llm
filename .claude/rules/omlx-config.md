@@ -21,7 +21,7 @@ paths:
 - thinking 길이: Qwen3.8 은 `chat_template_kwargs.reasoning_effort`(`xhigh`/`medium`/`low`), Qwen3.6 은 템플릿이 무시하므로 `thinking_budget`(omp 쪽 extraBody).
 
 ## install.sh
-- 모델과 드래프터마다 `$HF download mlx-community/<name>`(설정 키의 `--` 는 `/`).
+- 모델과 드래프터마다 `$HF download mlx-community/<name>`(설정 키의 `--` 는 `/`) **또는** 앱 스토어 관리 주석에 짧은 이름 명기(2026-08-28 전면 포팅 — 모델은 oMLX 앱 다운로드 `~/.omlx/models` 관리).
 - `memory_guard_tier` 를 `'safe'` 로 강제(이 레포의 `iogpu.wired_limit_mb` 티어와 일치), 포트 `9090`, 두 JSON 을 `cp … ~/.omlx/` 로 설치.
 - 서버는 GUI 앱(`/Applications/oMLX.app`)이 관리한다. brew 서비스(`homebrew.mxcl.omlx`)와 예전 LaunchAgent(`com.local-llm.omlx`) 잔재는 걷어내고, `auto_start_on_launch` 를 False 로 쓴다(`autostart.md`). brew 포뮬러는 `hf` CLI 용으로만 남긴다.
 - 실행은 사용자가 한다(대용량 다운로드).

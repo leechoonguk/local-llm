@@ -1,7 +1,7 @@
 {
  "version": 1,
  "models": {
-  "mlx-community--Qwen3.6-35B-A3B-5bit": {
+  "Qwen3.6-35B-A3B-5bit": {
    "max_context_window": 131072,
    "max_tokens": 8192,
    "temperature": 0.6,
@@ -10,18 +10,18 @@
    "min_p": 0.0,
    "enable_thinking": true,
    "vlm_mtp_enabled": true,
-   "vlm_mtp_draft_model": "mlx-community--Qwen3.6-35B-A3B-MTP-5bit",
+   "vlm_mtp_draft_model": "Qwen3.6-35B-A3B-MTP-5bit",
    "is_default": true,
    "active_profile_name": "mtp",
    "reasoning_parser": "qwen",
    "thinking_budget": 5120
   },
-  "mlx-community--Qwen3.5-4B-4bit": {
+  "Qwen3.5-4B-4bit": {
    "max_context_window": 8192,
    "max_tokens": 1024,
    "enable_thinking": false
   },
-  "mlx-community--Qwen3.5-9B-MLX-4bit": {
+  "Qwen3.5-9B-MLX-4bit": {
    "max_context_window": 131072,
    "max_tokens": 8192,
    "temperature": 0.6,
@@ -30,10 +30,10 @@
    "min_p": 0.0,
    "enable_thinking": true,
    "vlm_mtp_enabled": true,
-   "vlm_mtp_draft_model": "mlx-community--Qwen3.5-9B-MTP-4bit",
+   "vlm_mtp_draft_model": "Qwen3.5-9B-MTP-4bit",
    "reasoning_parser": "qwen"
   },
-  "mlx-community--Qwen3.8-27B-nvfp4": {
+  "Qwen3.8-27B-nvfp4": {
    "max_context_window": 32768,
    "max_tokens": 4096,
    "temperature": 0.6,
@@ -42,7 +42,7 @@
    "min_p": 0.0,
    "enable_thinking": true,
    "vlm_mtp_enabled": true,
-   "vlm_mtp_draft_model": "mlx-community--Qwen3.8-27B-MTP-4bit",
+   "vlm_mtp_draft_model": "Qwen3.8-27B-MTP-4bit",
    "reasoning_parser": "qwen",
    "chat_template_kwargs": {
     "reasoning_effort": "medium"

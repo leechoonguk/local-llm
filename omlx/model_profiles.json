@@ -1,7 +1,7 @@
 {
  "version": 1,
  "profiles": {
-  "mlx-community--Qwen3.6-35B-A3B-5bit": {
+  "Qwen3.6-35B-A3B-5bit": {
    "mtp": {
     "name": "mtp",
     "display_name": "mtp",
@@ -18,7 +18,7 @@
      "min_p": 0.0,
      "enable_thinking": true,
      "vlm_mtp_enabled": true,
-     "vlm_mtp_draft_model": "mlx-community--Qwen3.6-35B-A3B-MTP-5bit",
+     "vlm_mtp_draft_model": "Qwen3.6-35B-A3B-MTP-5bit",
      "reasoning_parser": "qwen",
      "thinking_budget": 5120
     },
@@ -41,7 +41,7 @@
      "min_p": 0.0,
      "enable_thinking": false,
      "vlm_mtp_enabled": true,
-     "vlm_mtp_draft_model": "mlx-community--Qwen3.6-35B-A3B-MTP-5bit",
+     "vlm_mtp_draft_model": "Qwen3.6-35B-A3B-MTP-5bit",
      "reasoning_parser": "qwen"
     },
     "source_template": null,
