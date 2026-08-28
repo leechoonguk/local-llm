@@ -67,7 +67,7 @@ import { resolve } from "node:path";
 const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
 const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state (same signature)
 const RED_TOTAL_MS = 20 * 60_000;    // absolute ceiling for one red episode even with advancing signatures (debate 2026-08-27)
-const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b|\bmake\b[^|;&]*\btest\b(?!-fast)/; // full-gate command shapes
+const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
 const MAX_RESETS = 6;                // sickness-cut backstop
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;

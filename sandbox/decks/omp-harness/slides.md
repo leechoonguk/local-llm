@@ -54,7 +54,7 @@ style: |
 <!-- sync: backend-identity-tokens.md=dc89bdba3680fdd8 -->
 <!-- sync: backend-integration-configuration.md=efaf472c56d5113e -->
 <!-- sync: backend-integration.md=3fd57fcc535b4e66 -->
-<!-- sync: backend-makefile.md=b00e4cc9a0925356 -->
+<!-- sync: backend-makefile.md=991ed072a220701e -->
 <!-- sync: backend-middleware.md=f54d26f09ba562a2 -->
 <!-- sync: backend-migrations.md=4341e5f3947d709a -->
 <!-- sync: backend-naming.md=a9dc70a6e7e74b0c -->
@@ -168,7 +168,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=c2794214f308b6e3 -->
+<!-- sync: extensions/continuity/=873e49114a5af36e -->
 
 # 우리 하네스 (OMP) 소개
 

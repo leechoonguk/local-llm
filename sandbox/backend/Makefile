@@ -1,4 +1,4 @@
-.PHONY: help install dev down migrate migrate-gen migrate-down verify verify-fast test test-fast lint typecheck clean
+.PHONY: help install dev down migrate migrate-gen migrate-down verify test test-fast lint typecheck clean
 
 UV := uv
 
@@ -29,7 +29,6 @@ migrate-gen: ## Generate a new migration from model changes (usage: make migrate
 
 verify: lint typecheck test ## Run lint, typecheck, and test (fail-fast)
 
-verify-fast: lint typecheck test-fast ## Fast iteration gate — no coverage; finish still requires `make verify`
 
 test: ## Run tests (pytest, full coverage gate)
 	.venv/bin/pytest -q --cov=app --cov-report=term-missing --cov-fail-under=100
