@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -32,6 +33,7 @@ export default function checkBackendMigrations(pi: ExtensionAPI): void {
     content?: Array<{ type: string; text?: string }>;
   }) => guarded("check-backend-migrations", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
     if (isMigrationCommand(event.input)) {
       resetSuppression("check-backend-migrations");
       return;

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesStrict } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -61,6 +62,7 @@ export default function checkOmpHooks(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-omp-hooks", event, () => {
     // Skip read-only tools — they cannot change .omp/ files.
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesStrict(event, [".omp/"])) return;
 
     const issues = checkOmpHooksSync();
     if (issues.length === 0) {
@@ -299,6 +301,7 @@ function checkOmpHooksSync(): string[] {
       }
       issues.push(...checkWarningCallShape(actual, fileName, hookContent));
       issues.push(...checkCrashGuard(actual, fileName, hookContent));
+      issues.push(...checkScopeGate(actual, fileName, hookContent));
       if (
         actual !== "post/check-omp-hooks.ts" &&
         /\blet lastWarning\b|warning === lastWarning|lastWarning = warning/.test(hookContent)
@@ -526,6 +529,20 @@ function checkWarningCallShape(actual: string, fileName: string, hookContent: st
  * green. Routing the handler body through `guarded()` is what turns that into a
  * visible `<system-notice>` plus a line in `.omp/state/hook-crash.log`.
  */
+/**
+ * 경로 스코프 계약 — 훅은 자기 도메인 이벤트에만 돈다(omp-hooks.md "Path gate").
+ * 실측 2026-08-29: 변이 도구 결과 1회에 post 훅 36개가 write 6.8초/bash 4.9초를 썼고,
+ * 그 절반이 이벤트와 무관한 하네스 메타 검사였다. 비용은 컨텍스트가 아니라 벽시계다.
+ */
+function checkScopeGate(actual: string, _fileName: string, hookContent: string): string[] {
+  if (/\btouchesPath\s*\(|\btouchesStrict\s*\(/.test(hookContent)) return [];
+  if (/\/\/\s*hook-scope:\s*global\s*—\s*\S/.test(hookContent)) return [];
+  return [
+    `${actual}: declares no path scope — gate the handler with touchesPath()/touchesStrict() ` +
+      "from lib/hook-scope.ts, or state `// hook-scope: global — <reason>` (omp-hooks.md, Path gate)",
+  ];
+}
+
 function checkCrashGuard(actual: string, fileName: string, hookContent: string): string[] {
   const issues: string[] = [];
   const hookName = fileName.replace(/\.ts$/, "");

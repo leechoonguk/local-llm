@@ -491,6 +491,13 @@ such as `lib/backend-integration-configuration.ts`. Prefix-less hooks are cross-
 2. **Shared warning guard**: at most three issue lines; long tool output gets a
    one-line notice; the same hook/issue warning is injected at most twice
    across tools and resets only when the issue set resolves.
+3. **Path gate**: a hook runs only when the event touched its domain. Import
+   `touchesPath` (path-bearing events only; shells pass) or `touchesStrict`
+   (also reads the shell command) from `lib/hook-scope.ts` and gate right after
+   the tool filter; a hook that must see everything says so with a
+   `// hook-scope: global — <reason>` comment. Measured 2026-08-29: one mutating
+   tool result cost 6.8s across the 36 post hooks (write) and 4.9s (bash), and
+   3.3s of that was harness meta checks firing on a `backend/` edit.
 
 ```ts
 const warning = buildSafeWarning(
@@ -581,6 +588,7 @@ These exist because the harness's own measurements say each class can grow. From
 | Invariant | Why | Measured |
 |---|---|---|
 | Every post hook gates on `MUTATING_TOOLS` | a check that runs after a read spends context on a turn that changed nothing | 36/36 already comply — this holds the line |
+| Every post hook declares a path scope (`touchesPath`/`touchesStrict`) or a `// hook-scope: global — <reason>` | a check that runs on events outside its domain spends the agent's wall clock, not just context | one write cost 6.8s of hook time; the meta checks in it (2.7s `check-omp-hooks`, 0.4s `check-omp-types`) had nothing to do with the edited file (2026-08-29) |
 | Only `post/check-verify.ts` may execute the project gate (`make`, `pytest`, `ruff`, `pyright`, `npm`, `uv`) | the gate is 54% of all hook time (1,120s of 2,058s) and a second runner races the agent's own `make` | one owner today |
 | Every `LoopKind` the continuity extension declares must be emitted by a detector | a kind nothing emits still ships in the state blob and the report vocabulary | `oscillation` was emitted but judged by nobody |
 | Every declared `LoopKind` must be **driven by a self-test case** | grepping the self-test for a kind's name proves someone typed it, not that a case exercises it | measured by the run itself: `oscillation` and `errorLoop` had no case until the claim said so |

@@ -19,6 +19,7 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { createHash } from "node:crypto";
+import { touchesStrict } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -45,6 +46,7 @@ export default function checkDecksSync(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-decks-sync", event, () => {
     // Skip read-only tools — they cannot change .omp/ or decks/ files.
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesStrict(event, [".omp/", "decks/"])) return;
 
     const issues = checkDecksSyncSync();
     if (issues.length === 0) {

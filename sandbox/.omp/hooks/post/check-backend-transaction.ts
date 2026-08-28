@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -28,6 +29,7 @@ const MUTATING_TOOLS = new Set([
 export default function checkBackendTransaction(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-transaction", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
 
     const issues = checkBackendTransactionSync();
     if (issues.length === 0) {

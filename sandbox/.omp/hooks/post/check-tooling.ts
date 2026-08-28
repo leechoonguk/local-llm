@@ -79,6 +79,7 @@ const SKIPPED_DIRS: Record<string, true> = {
 export default function checkTooling(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-tooling", event, () => {
     // Read-only tools never change files — running the check after them wastes context.
+    // hook-scope: global — 도구 규약은 어느 경로의 스크립트에도 걸린다
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
 
     const issues = checkToolingSync();

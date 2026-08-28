@@ -21,6 +21,7 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
@@ -98,6 +99,7 @@ const AUTH_CASES: [string, RegExp][] = [
 export default function checkBackendTests(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-tests", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
 
     const issues = checkBackendTestsSync();
     if (issues.length === 0) {

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -51,6 +52,7 @@ export default function checkBackendExceptionsHook(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-exceptions", event, () => {
     // Read-only tools never change files — running the check after them wastes context.
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
 
     const issues = checkBackendExceptionsSync();
     if (issues.length === 0) {

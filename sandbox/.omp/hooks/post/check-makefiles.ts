@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesStrict } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -50,6 +51,7 @@ export default function checkMakefiles(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-makefiles", event, () => {
     // Skip read-only tools — they cannot change Makefiles.
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesStrict(event, ["Makefile", "makefile"])) return;
 
     const issues = checkMakefileConsistency();
     if (issues.length === 0) {

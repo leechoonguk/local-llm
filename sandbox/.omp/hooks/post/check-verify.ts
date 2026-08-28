@@ -39,7 +39,9 @@ const projectRoot = existsSync(join(cwd, "backend", "app")) && existsSync(join(c
  * no feedback at all, so failure re-checks quickly.
  */
 const THROTTLE_MS = 5 * 60 * 1000;
-const FAILURE_THROTTLE_MS = 30 * 1000;
+const FAILURE_THROTTLE_MS = 90 * 1000; // 실측 2026-08-29: 이 훅 1회가 1.8~7.7초(실제 make 실행)다.
+// 30초 스로틀은 빨간 구간(셀 벽시계의 절반)에 게이트를 40회까지 밀어 넣어 모델이 가장 바쁠 때
+// 하네스가 가장 무거워졌다. 90초면 같은 구간에서 13회 안팎 — 조기 발견은 남기고 증폭만 깎는다.
 let lastRunAt = 0;
 let lastRunFailed = false;
 
@@ -57,6 +59,7 @@ export default function checkVerify(pi: ExtensionAPI): void {
     input?: Record<string, unknown>;
     content?: Array<{ type: string; text?: string }>;
   }) => guarded("check-verify", event, () => {
+    // hook-scope: global — 전체 게이트 — 무엇을 고쳤든 프로젝트 검증이 대상이다
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
     if (isMakeCommand(event.input)) return;
 

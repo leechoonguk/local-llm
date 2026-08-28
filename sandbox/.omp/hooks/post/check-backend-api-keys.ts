@@ -8,6 +8,7 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readFileSync } from "node:fs";
+import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
@@ -27,6 +28,7 @@ const MUTATING_TOOLS = new Set([
 export default function checkBackendApiKeys(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-api-keys", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
 
     const issues = checkBackendApiKeysSync();
     if (issues.length === 0) {

@@ -90,7 +90,7 @@ style: |
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
 <!-- sync: omp-conventions.md=1983392cf85dd0da -->
 <!-- sync: omp-hook-crash-guard.md=3813240c3c5ba87d -->
-<!-- sync: omp-hooks.md=3399b8b538df815a -->
+<!-- sync: omp-hooks.md=8f611f1f65a151b7 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
@@ -105,42 +105,42 @@ style: |
 <!-- sync: strict-no-vcs-publish.ts=724e9d5a9494d647 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
 <!-- sync: strict-verified-git.ts=66eeb22752206f71 -->
-<!-- sync: check-ast-rules.ts=ff23e1b418451542 -->
-<!-- sync: check-backend-api-http.ts=1f52956b18e30f16 -->
-<!-- sync: check-backend-api-keys.ts=832e11b0ea975fc8 -->
-<!-- sync: check-backend-app-setup.ts=ffddd91c91f3f5ed -->
-<!-- sync: check-backend-audit-log.ts=e40a32bdf0c16def -->
-<!-- sync: check-backend-auth.ts=09ea91358b01fde2 -->
-<!-- sync: check-backend-background-tasks.ts=2b64d0f962a4c231 -->
-<!-- sync: check-backend-batch.ts=c13904e3533bf6ad -->
-<!-- sync: check-backend-core-config.ts=f233e3265926139d -->
-<!-- sync: check-backend-domain.ts=3097b446e57cb449 -->
-<!-- sync: check-backend-exceptions.ts=90f64269c6500421 -->
-<!-- sync: check-backend-file-upload.ts=f5f6515e411d2b5b -->
-<!-- sync: check-backend-integration-configuration.ts=49f271215e57fa46 -->
-<!-- sync: check-backend-integration.ts=d8cb0407a26bebdb -->
-<!-- sync: check-backend-middleware.ts=e7484cf9de1cd93a -->
-<!-- sync: check-backend-migrations.ts=5f081cb9b13448eb -->
-<!-- sync: check-backend-naming.ts=8cb1ca345255e5d2 -->
-<!-- sync: check-backend-ownership.ts=f7d2da7739fce99e -->
-<!-- sync: check-backend-rate-limit.ts=f2fdac88eb55c877 -->
-<!-- sync: check-backend-redis-cache.ts=61f594031b2d355e -->
-<!-- sync: check-backend-router-params.ts=2dd441a2e9570ff3 -->
-<!-- sync: check-backend-sse.ts=cc65fb242adca6eb -->
-<!-- sync: check-backend-table-design.ts=54339c7c6e7d1c4a -->
-<!-- sync: check-backend-tests.ts=a3fe65b68fcaf067 -->
-<!-- sync: check-backend-transaction.ts=8c9a60483a74aa77 -->
-<!-- sync: check-code-layout.ts=c80add979be3959d -->
-<!-- sync: check-decks-sync.ts=c97c92ba26ef3652 -->
-<!-- sync: check-environment.ts=9f7d47f23a948b56 -->
-<!-- sync: check-frontend-code.ts=49156d0c770533dd -->
-<!-- sync: check-makefiles.ts=4f42287b3dd40632 -->
-<!-- sync: check-omp-hooks.ts=6106b3839788944f -->
-<!-- sync: check-omp-rules.ts=7c3cd97456aeb259 -->
-<!-- sync: check-omp-skills.ts=396c66221d35c195 -->
-<!-- sync: check-omp-types.ts=165a4608d573cb15 -->
-<!-- sync: check-tooling.ts=edc4bb8eea07a8b8 -->
-<!-- sync: check-verify.ts=73a6b53fe00bb9e7 -->
+<!-- sync: check-ast-rules.ts=4ff5ebb7e669cdcf -->
+<!-- sync: check-backend-api-http.ts=9238ceee921e4a60 -->
+<!-- sync: check-backend-api-keys.ts=de367c8e35e2a93f -->
+<!-- sync: check-backend-app-setup.ts=5eba63a489c74ad9 -->
+<!-- sync: check-backend-audit-log.ts=a7cd9c7806dc9ca4 -->
+<!-- sync: check-backend-auth.ts=ee564bb32028f31d -->
+<!-- sync: check-backend-background-tasks.ts=9f072eb78d6c9cb6 -->
+<!-- sync: check-backend-batch.ts=b15f6b399d64392e -->
+<!-- sync: check-backend-core-config.ts=356032ad613d6a96 -->
+<!-- sync: check-backend-domain.ts=19ccd54519cabc4c -->
+<!-- sync: check-backend-exceptions.ts=4ec4128348117404 -->
+<!-- sync: check-backend-file-upload.ts=521ff1840bf25dc0 -->
+<!-- sync: check-backend-integration-configuration.ts=9f98d6294c9ca098 -->
+<!-- sync: check-backend-integration.ts=013e31b8c9fb9cbe -->
+<!-- sync: check-backend-middleware.ts=4039019adcd34d04 -->
+<!-- sync: check-backend-migrations.ts=b43ada85e0680807 -->
+<!-- sync: check-backend-naming.ts=6ac63ba3b8457d64 -->
+<!-- sync: check-backend-ownership.ts=48fb2c0f86301d00 -->
+<!-- sync: check-backend-rate-limit.ts=a2371740c096045f -->
+<!-- sync: check-backend-redis-cache.ts=0e8daba9e768e092 -->
+<!-- sync: check-backend-router-params.ts=adb1d9fd2598a204 -->
+<!-- sync: check-backend-sse.ts=17f6ff3680a5b31b -->
+<!-- sync: check-backend-table-design.ts=bfb89ad64e391d1d -->
+<!-- sync: check-backend-tests.ts=a3fab82bf6ffb945 -->
+<!-- sync: check-backend-transaction.ts=07d2fdefcd194c6d -->
+<!-- sync: check-code-layout.ts=fe94d9e0982daf36 -->
+<!-- sync: check-decks-sync.ts=d1060909b737414c -->
+<!-- sync: check-environment.ts=7ea2d5d378647caa -->
+<!-- sync: check-frontend-code.ts=8964ff0d766d695c -->
+<!-- sync: check-makefiles.ts=a232a657107e6577 -->
+<!-- sync: check-omp-hooks.ts=c78b2d25f12999ed -->
+<!-- sync: check-omp-rules.ts=385339b1dd762c2f -->
+<!-- sync: check-omp-skills.ts=95e200cecf2a1641 -->
+<!-- sync: check-omp-types.ts=8171ad53424a7feb -->
+<!-- sync: check-tooling.ts=10b444f2217c3588 -->
+<!-- sync: check-verify.ts=50d60ebabdb6eda6 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
 <!-- sync: lib/backend-api-http.ts=c69aea7655bd99b2 -->
@@ -157,6 +157,7 @@ style: |
 <!-- sync: lib/hook-metrics.ts=0e383f687f1c56da -->
 <!-- sync: lib/hook-rule-hint.ts=b642274590acf88c -->
 <!-- sync: lib/hook-safety-guard.ts=6d23050389a76a12 -->
+<!-- sync: lib/hook-scope.ts=21a1b6fab8c467bd -->
 <!-- sync: lib/hook-visibility.ts=378b831827345c84 -->
 <!-- sync: ast-grep/rules/audit/=fa43ff9131409a46 -->
 <!-- sync: ast-grep/rules/audit-readonly/=4371bf3c9670540a -->
@@ -343,6 +344,7 @@ flowchart LR
 | `strict-no-subagents.ts` | **cross-cutting** | `task` 도구로 서브에이전트 생성 차단 (agent 타입 6종) |
 | `strict-no-vcs-publish.ts` | **cross-cutting** | `git commit`/`git push` 자체를 차단 — VCS 는 사용자 소관(RULES.md Session Safety). 이 피험자 트리는 바깥 레포가 추적하므로 피험자의 커밋/푸시는 바깥 레포를 건드린다 |
 | `strict-no-harness-edit.ts` | **cross-cutting** | `.omp/` 아래(검사·훅·확장) 편집을 차단 — 피험자는 자기를 채점하는 자를 고칠 수 없다. 실측(2026-08-29): 모델이 `q: NameQuery \| None` 을 통과시키려고 `check-backend-router-params.ts` 의 판정 정규식을 고쳤다 |
+| `lib/hook-scope.ts` | **cross-cutting** | 훅의 경로 게이트 — `touchesPath`(경로 있는 이벤트만) / `touchesStrict`(셸 명령까지). 실측 2026-08-29: 변이 도구 결과 1회에 post 훅 36개가 write 6.8초·bash 4.9초를 썼고 그중 3.3초가 무관한 메타 검사였다. 게이트 후 bash 1.56초 |
 | `strict-verified-git.ts` | **cross-cutting** | `git commit`/`git push` 직전에 `make verify` 실행; 실패하면 차단. **커밋은 검증된 트리여야 한다** — unstaged/untracked가 남아 있으면 `make verify`가 읽은 트리 ≠ 커밋될 트리이므로 차단(`git add -A` 또는 `git stash -k` 안내). 미추적 새 모듈을 추적 파일들이 import하던 케이스가 실제로 있었다 |
 | `strict-tooling.ts` | **cross-cutting** | 파이썬/셸 스크립트 및 루트 `scripts|tools|bin|utils/` 생성 차단 — 스크립트성 코드는 `.omp/hooks/` TypeScript |
 

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -32,6 +33,7 @@ const MUTATING_TOOLS = new Set([
 export default function checkBackendAuth(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-auth", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
 
     const issues = checkBackendAuthSync();
     if (issues.length === 0) {

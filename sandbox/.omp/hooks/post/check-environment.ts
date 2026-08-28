@@ -62,6 +62,7 @@ const CREDENTIAL_KEY = /SECRET|PASSWORD|TOKEN/;
 export default function checkBackendEnvironment(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-environment", event, () => {
     // Skip read-only tools — they cannot change env files.
+    // hook-scope: global — 환경/설정 드리프트는 경로로 좁히면 놓친다
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
 
     const issues = checkBackendEnvironmentSync();

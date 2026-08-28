@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesStrict } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { spawnSync } from "node:child_process";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -41,6 +42,7 @@ const MUTATING_TOOLS = new Set([
 export default function checkOmpTypes(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: { type: string; text?: string }[] }) => guarded("check-omp-types", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return undefined;
+    if (!touchesStrict(event, [".omp/"])) return undefined;
     const now = Date.now();
     const throttle = lastRunFailed ? FAILURE_THROTTLE_MS : THROTTLE_MS;
     if (now - lastRunAt < throttle) return undefined;

@@ -12,6 +12,7 @@
  */
 // @ts-ignore — OMP runtime module, not project-compiled
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { touchesPath } from "../lib/hook-scope.ts";
 import { checkIntegrationConfiguration } from "../lib/backend-integration-configuration.ts";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
@@ -29,6 +30,7 @@ const MUTATING_TOOLS = new Set([
 export default function checkBackendIntegrationConfiguration(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-integration-configuration", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
+    if (!touchesPath(event, ["backend/"])) return;
 
     const issues = checkIntegrationConfiguration();
     if (issues.length === 0) {
