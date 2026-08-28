@@ -32,6 +32,21 @@
    "vlm_mtp_enabled": true,
    "vlm_mtp_draft_model": "mlx-community--Qwen3.5-9B-MTP-4bit",
    "reasoning_parser": "qwen"
+  },
+  "mlx-community--Qwen3.8-27B-nvfp4": {
+   "max_context_window": 32768,
+   "max_tokens": 4096,
+   "temperature": 0.6,
+   "top_p": 0.95,
+   "top_k": 20,
+   "min_p": 0.0,
+   "enable_thinking": true,
+   "vlm_mtp_enabled": true,
+   "vlm_mtp_draft_model": "mlx-community--Qwen3.8-27B-MTP-4bit",
+   "reasoning_parser": "qwen",
+   "chat_template_kwargs": {
+    "reasoning_effort": "medium"
+   }
   }
  }
 }

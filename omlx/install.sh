@@ -28,6 +28,8 @@ $HF download mlx-community/Qwen3.6-35B-A3B-MTP-5bit    # MTP 드래프터 0.6GiB
 $HF download mlx-community/Qwen3.5-4B-4bit             # aux(tiny 역할) 2.3GiB
 $HF download mlx-community/Qwen3.5-9B-MLX-4bit         # 어드바이저 매트릭스 실험 코더 5.6GiB(2026-08-28)
 $HF download mlx-community/Qwen3.5-9B-MTP-4bit         # 9B MTP 드래프터 0.14GiB
+$HF download mlx-community/Qwen3.8-27B-nvfp4           # 어드바이저 전용 15GiB(2026-08-28 부활 — 코더로는 기각 유지)
+$HF download mlx-community/Qwen3.8-27B-MTP-4bit        # 3.8 MTP 드래프터 0.25GiB
 # 2026-08-25 배제·캐시 삭제한 실험 모델들은 다운로드하지 않는다(근거는 bench/ 기록):
 #  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)
 #  - GLM-4.7-Flash-4bit: integration 타임아웃 FAIL(3.6 대비 느림)
