@@ -420,6 +420,13 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     ? `\n# bench-advisor (runner-injected)\nmodelRoles:\n  advisor: ${advEnv}\nadvisor:\n  enabled: true\n  immuneTurns: 3\n  syncBacklog: "off"\n`
     : `\n# bench-advisor off (runner-injected)\nadvisor:\n  enabled: false\n`;
   writeFileSync(projCfg, projCfgOrig + advBlock);
+  // 실동 검증(2026-08-28 미니 프로브): 어드바이저는 WATCHDOG.yml 로스터로 뜬다 —
+  // 헤드리스에서 transcript(__advisor.<slug>.jsonl)에 usage 9회 실측. 어드바이저 암은
+  // sandbox 루트에 로스터를 놓고(untracked — revert 가 지움) 채점 전 제거한다.
+  const watchdog = join(SANDBOX, "WATCHDOG.yml");
+  if (advEnv && advEnv !== "1") {
+    writeFileSync(watchdog, `advisors:\n  - name: bench-advisor\n    model: ${advEnv}\n`);
+  }
 
   const started = Date.now();
   // 2단계 분해(BENCH_PHASE2=1, 2026-08-28 설계): 구현 세션 → fresh-context 마감 세션.
@@ -454,6 +461,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   }
   const wall = Math.round((Date.now() - started) / 1000);
   writeFileSync(projCfg, projCfgOrig); // 채점 전에 프로젝트 설정 원문 복원
+  rmSync(watchdog, { force: true });
 
   const res = residency(model);
   if (overlayDir) rmSync(overlayDir, { recursive: true, force: true });
