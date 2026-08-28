@@ -65,8 +65,13 @@ export default function strictAdditiveWrites(pi: any) {
       if (!existsSync(abs)) return;
       const fileLines = readFileSync(abs, "utf-8").split("\n");
       const isImport = (l: string) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l);
+      // 의도 프로토콜(사용자 설계 2026-08-28): 차단은 "실수 교체"만 걸러내는 장치다.
+      // 진짜 교체 의도는 편집에 `# intent: replace` 마커를 실어 명시하면 통과한다 —
+      // 추가를 원하면 삽입형으로, 교체를 원하면 선언하고 교체한다.
+      const intendedReplace = /#\s*intent:\s*replace/i.test(patch);
       for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?\.?:\n((?:\+[^\n]*(?:\n|$))+)/g)) {
         if (op[2]) continue; // insert form — additive, fine
+        if (intendedReplace) continue; // declared intent — the replacement stands
         const target = (fileLines[Number(op[1]) - 1] ?? "").trim();
         if (!target) continue;
         const bodyLines = op[3].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
@@ -83,8 +88,9 @@ export default function strictAdditiveWrites(pi: any) {
             block: true,
             reason:
               `this edit REPLACES \`${target.slice(0, 60)}\` with its sibling \`${sibling.slice(0, 60)}\` — ` +
-              "an additive task keeps existing lines and adds new ones alongside. Keep the old line and " +
-              `use the insert form (\`PUT ${op[1]}+1@:\`) for the new one.`,
+              "if you meant to ADD, keep the old line and use the insert form " +
+              `(\`PUT ${op[1]}+1@:\`) for the new one. If you truly mean to REPLACE it, resend the same ` +
+              "edit with a `# intent: replace` comment line included.",
           };
         }
         if (watchedLine(abs, target)) {
@@ -93,7 +99,8 @@ export default function strictAdditiveWrites(pi: any) {
             reason:
               `this edit REPLACES a registration/wiring line (\`${target.slice(0, 70)}\`) in a shared file — ` +
               "add yours ALONGSIDE instead: keep that line and use the insert form " +
-              `(\`PUT ${op[1]}+1@:\`) to put the new line after it. Existing registrations are read-only invariants.`,
+              `(\`PUT ${op[1]}+1@:\`) to put the new line after it. If replacement is truly intended, ` +
+              "resend with a `# intent: replace` comment line.",
           };
         }
         if (isImport(target) && bodyLines.some(isImport)) {
@@ -101,8 +108,8 @@ export default function strictAdditiveWrites(pi: any) {
             block: true,
             reason:
               `this edit replaces an existing import (\`${target.slice(0, 60)}\`) with a new one — ` +
-              "an additive task adds its import alongside; keep the old line and insert yours next to it " +
-              `(\`PUT ${op[1]}+1@:\`).`,
+              "if you meant to ADD, keep the old line and insert yours next to it " +
+              `(\`PUT ${op[1]}+1@:\`). If you truly mean to replace it, resend with a \`# intent: replace\` comment.`,
           };
         }
       }
