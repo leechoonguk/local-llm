@@ -76,7 +76,7 @@ style: |
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
 <!-- sync: omp-conventions.md=1983392cf85dd0da -->
 <!-- sync: omp-hook-crash-guard.md=3813240c3c5ba87d -->
-<!-- sync: omp-hooks.md=8f611f1f65a151b7 -->
+<!-- sync: omp-hooks.md=599074a3df5a55b4 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
@@ -86,7 +86,7 @@ style: |
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
-<!-- sync: strict-no-harness-edit.ts=a61485122b4a4d5c -->
+<!-- sync: strict-no-harness-edit.ts=b599542123e39d06 -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
 <!-- sync: strict-no-vcs-publish.ts=724e9d5a9494d647 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
@@ -170,7 +170,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=dc7a30edd2cb7193 -->
+<!-- sync: extensions/continuity/=46fb3f8151d6e877 -->
 
 # 우리 하네스 (OMP) 소개
 

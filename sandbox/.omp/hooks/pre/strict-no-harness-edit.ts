@@ -21,10 +21,23 @@ const SHELL_WRITE = [
 const REASON =
   "이 경로는 하네스다 — 피험자는 자기를 채점하는 검사·훅·확장을 고칠 수 없다. " +
   "검사가 틀렸다고 보이면 파일을 고치지 말고, 무엇이 왜 틀렸는지 답변에 적어 보고하라. " +
-  "코드를 검사에 맞추는 것이 이 과제의 일이다.";
+  "코드를 검사에 맞추는 것이 이 과제의 일이다. " +
+  "하네스를 고치는 것이 사용자가 시킨 작업이라면, 사용자가 `HARNESS_EDIT=1 omp …` 로 세션을 열어야 한다.";
+
+/**
+ * 잠금 해제는 사용자만 할 수 있다 — 세션을 띄우는 환경변수 `HARNESS_EDIT=1`.
+ * 피험자는 자기 프로세스의 env 를 바꿀 수 없고(도구는 셸 명령마다 새 프로세스다), `.omp/` 쓰기는
+ * 이 훅이 막으므로 스스로 열 길이 없다. 벤치 셀(BENCH_CELL=1)에서는 잠금 해제를 무시한다 —
+ * 셀의 계약은 "채점하는 자를 피험자가 못 고친다" 이고, 이건 사용자 편의보다 우선한다.
+ */
+function unlocked(): boolean {
+  if (process.env.BENCH_CELL === "1") return false;
+  return process.env.HARNESS_EDIT === "1";
+}
 
 export default function strictNoHarnessEdit(pi: any) {
   pi.on("tool_call", (event: { toolName?: string; input?: Record<string, unknown> }, _ctx: unknown) => {
+    if (unlocked()) return; // 사용자가 연 하네스 작업 세션
     const tool = String(event.toolName ?? "");
     if (/^(write|edit|patch|multiedit|apply_patch)/i.test(tool)) {
       const path = String(event.input?.path ?? event.input?.file_path ?? event.input?.filePath ?? "");

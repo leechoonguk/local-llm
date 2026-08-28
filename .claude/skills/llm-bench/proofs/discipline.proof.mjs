@@ -430,4 +430,44 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     p2.sent.length === 1 && /verify-fast/.test(p2.sent[0] ?? ""));
 }
 
+{ // Y: 범위 존중 — 사용자가 기능의 한 조각만 시켰을 때 "아직 안 만든 것" 빨강으로 재구동하지 않는다.
+  // 실측(2026-08-29): "모델과 스키마만" 프롬프트가 37.7분·123턴으로 부풀었다. 이 게이트는 도메인
+  // 5계층·커버리지 100%를 요구하므로 조각 작업은 원리상 초록이 될 수 없다.
+  const COMPLETE = "FAIL: notice: not imported in alembic/env.py | FAIL: notice: router not included in main.py";
+  const BROKEN = "FAILED tests/api/test_notice.py::test_create - TypeError: 'NoneType' object";
+
+  { const { handlers, sent } = makePi();          // 인터랙티브(BENCH_CELL 없음)
+    now += 30_000; editOk(handlers, "models/notice.py"); editOk(handlers, "schemas/notice.py");
+    bash(handlers, "make verify", COMPLETE);
+    handlers.turn_end({}, ctx);
+    check("Y1: completeness-only red on a slice -> report-and-stop advice, not a re-drive",
+      sent.length === 1 && /rest of this feature does not exist yet/.test(sent[0] ?? ""));
+    handlers.turn_end({}, ctx);
+    check("Y2: the advice is sent once", sent.length === 1); }
+
+  { const { handlers, sent } = makePi();          // 고장이 섞이면 종전대로 재구동
+    now += 30_000; editOk(handlers, "models/notice.py");
+    bash(handlers, "make verify", `${COMPLETE}\n${BROKEN}`);
+    handlers.turn_end({}, ctx);
+    check("Y3: red with real breakage -> the END-GATE re-drive still fires",
+      sent.length === 1 && /verification result was failing/.test(sent[0] ?? "")); }
+
+  { process.env.BENCH_CELL = "1";                 // 벤치 셀: 과제가 언제나 기능 전체다
+    const { handlers, sent } = makePi();
+    now += 30_000; editOk(handlers, "models/notice.py");
+    bash(handlers, "make verify", COMPLETE);
+    handlers.turn_end({}, ctx);
+    check("Y4: cell mode is unchanged (completeness red still re-drives)",
+      sent.length === 1 && /verification result was failing/.test(sent[0] ?? ""));
+    delete process.env.BENCH_CELL; }
+
+  { const { handlers, sent } = makePi();          // 조각이 아니면(대형 변경) 종전대로
+    now += 30_000;
+    for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
+    bash(handlers, "make verify", COMPLETE);
+    handlers.turn_end({}, ctx);
+    check("Y5: a large change is not a slice -> re-drive",
+      sent.length === 1 && /verification result was failing/.test(sent[0] ?? "")); }
+}
+
 process.exit(failures ? 1 : 0);

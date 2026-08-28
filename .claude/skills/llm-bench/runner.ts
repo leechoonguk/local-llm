@@ -488,7 +488,12 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   for (const [sessionPrompt, cap] of sessionPlans) {
     const pStart = Date.now();
     const ompArgs = baked ? ["-p", sessionPrompt] : ["-p", sessionPrompt, "--model", model, ...extra];
-    const child = spawn("omp", ompArgs, { cwd: SANDBOX, stdio: "ignore", detached: true });
+    // BENCH_CELL: 피험자 하네스에 "이건 벤치 셀"이라고 알린다 — 셀의 과제는 언제나 기능 전체라
+    // 범위 존중 분기(인터랙티브에서 조각 작업의 완성도 빨강을 그대로 두는 규칙)를 끈다.
+    const child = spawn("omp", ompArgs, {
+      cwd: SANDBOX, stdio: "ignore", detached: true,
+      env: { ...process.env, BENCH_CELL: "1" },
+    });
     const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };
     await new Promise<void>((resolveP) => {
       const timer = setTimeout(() => {

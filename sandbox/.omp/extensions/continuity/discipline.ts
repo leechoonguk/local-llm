@@ -73,6 +73,12 @@ const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
+// 빨강의 두 종류. completeness = 아직 만들지 않은 것(등록 누락·테스트 없음·커버리지 미달),
+// breakage = 만든 것이 깨진 것(테스트 실패·타입/문법 오류·표준 위반). 애매하면 breakage 로 본다.
+const COMPLETENESS_RE = /\bnot imported\b|\bnot included\b|\bis missing\b|\bmissing [A-Za-z]|\bhas no tests\b|Coverage failure: total of \d+ is less than fail-under/i;
+const BREAKAGE_RE = /\bFAILED\s+tests?\/|Traceback|SyntaxError|TypeError|AssertionError|ImportError|NameError|\bis neither a\b|\bE\s+\w+Error\b/;
+const SLICE_FOOTPRINT = 6;           // 이만큼 이하의 변경은 "기능의 한 조각" 으로 본다
+const isCellMode = (): boolean => process.env.BENCH_CELL === "1"; // 벤치 셀: 과제가 언제나 기능 전체다
 const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
 const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
 const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
@@ -97,6 +103,7 @@ export function registerDiscipline(pi: any): void {
   const persisted = loadPersisted();
   let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
   let lastFastGateAt = 0, lastMutationAt = 0;
+  let scopeAdvised = false;
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
   // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
@@ -313,6 +320,18 @@ export function registerDiscipline(pi: any): void {
       }
       const prose = !(e.toolResults && e.toolResults.length);
       if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
+        // 범위 존중(2026-08-29): 인터랙티브에서 조각 작업의 빨강이 '아직 안 만든 것' 뿐이면
+        // 초록을 강요하지 않는다 — 무엇이 남았는지 보고하고 멈추는 게 사용자의 다음 프롬프트를 살린다.
+        if (!isCellMode() && redSig
+            && COMPLETENESS_RE.test(redSig) && !BREAKAGE_RE.test(redSig)
+            && srcWritten.size + testWritten.size > 0
+            && srcWritten.size + testWritten.size <= SLICE_FOOTPRINT) {
+          if (scopeAdvised) { log("SCOPE-RESPECT silent (already advised)"); return; }
+          scopeAdvised = true;
+          pi.sendUserMessage(`The full gate is red only because the rest of this feature does not exist yet — nothing you wrote is broken. You were asked for part of it, so do not expand the work: run \`make verify-fast\` on what you changed, then finish by listing what the full gate still reports (${redSig.slice(0, 160)}) so the next request can pick it up.`);
+          log("SCOPE-RESPECT sent (completeness-only red on a slice)");
+          return;
+        }
         if (redSig) {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);

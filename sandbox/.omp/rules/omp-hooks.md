@@ -93,6 +93,7 @@ post hook after every edit.
 | `RULES.md` (sticky) | `strict-additive-writes.ts` | — |
 | `RULES.md` (sticky) | `strict-no-vcs-publish.ts` | — |
 | `RULES.md` (sticky) | `strict-no-harness-edit.ts` | — |
+| `RULES.md` (sticky) | `strict-no-harness-edit.ts` 잠금 해제 = 사용자만(`HARNESS_EDIT=1`, 셀에서는 무시) | — |
 | `backend-app-forbidden-tokens.md` (TTSR trigger) | — | `check-backend-exceptions.ts` + `check-environment.ts` |
 | `backend-service-boundary-tokens.md` (TTSR trigger) | — | `check-backend-transaction.ts` + `check-backend-sse.ts` + `check-backend-background-tasks.ts` + `check-backend-integration.ts` |
 | `backend-router-wiring-tokens.md` (TTSR trigger) | — | `check-backend-auth.ts` |

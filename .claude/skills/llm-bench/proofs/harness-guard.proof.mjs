@@ -41,5 +41,21 @@ check("G12: writing backend files via shell is fine",
 check("G13: block message points at reporting, not editing",
   /보고/.test(call("edit", { path: ".omp/hooks/post/check-backend-auth.ts" })?.reason ?? ""));
 
+// 잠금 해제(2026-08-29 사용자 결정): 실무에서는 샌드박스 안에서 하네스를 고쳐야 한다.
+// 여는 건 사용자뿐이고(세션 env), 벤치 셀에서는 열리지 않는다.
+{
+  process.env.HARNESS_EDIT = "1";
+  let h2; mod.default({ on: (_e, h) => { h2 = h; } });
+  const call2 = (toolName, input) => h2({ toolName, input }, {});
+  check("G14: HARNESS_EDIT=1 -> harness edits are allowed",
+    !blocked(call2("edit", { path: ".omp/hooks/post/check-backend-naming.ts" })));
+  process.env.BENCH_CELL = "1";
+  check("G15: a bench cell ignores the unlock",
+    blocked(call2("edit", { path: ".omp/hooks/post/check-backend-naming.ts" })));
+  delete process.env.BENCH_CELL; delete process.env.HARNESS_EDIT;
+  check("G16: locked again once the session env is gone",
+    blocked(call2("edit", { path: ".omp/hooks/post/check-backend-naming.ts" })));
+}
+
 console.log(failures ? `\n${failures} FAILED` : "\nall green");
 process.exit(failures ? 1 : 0);
