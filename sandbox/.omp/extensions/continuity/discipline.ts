@@ -82,7 +82,7 @@ const REG_FILES = [ // registration/wiring files under watch — line-replacemen
   "backend/app/dependencies/services.py",
   "backend/app/main.py",
 ];
-const REG_WATCH_MAX = 3;             // registration-loss messages per session
+const REG_WATCH_MAX = 3;             // registration-loss messages **per watched file**(2026-08-28: 세션 상한이 앞선 파일들에서 소진돼 main.py 소실 때 침묵했다 — 회귀 1건)
 
 export function registerDiscipline(pi: any): void {
   const logPath = process.env.STUCK_RESET_LOG || "";
@@ -117,7 +117,7 @@ export function registerDiscipline(pi: any): void {
   let bootstrap: string | null = null;
   const regSnapshot = new Map<string, Set<string>>();
   const regWarned = new Set<string>();
-  let regWarnCount = 0;
+  const regWarnCount = new Map<string, number>();
   for (const rel of REG_FILES) {
     try {
       const abs = resolve(process.cwd(), rel);
@@ -135,9 +135,9 @@ export function registerDiscipline(pi: any): void {
         if (!existsSync(abs)) continue;
         const cur = importLines(readFileSync(abs, "utf-8"));
         const dropped = [...snap].filter((l) => !cur.has(l) && !regWarned.has(l));
-        if (dropped.length === 0 || regWarnCount >= REG_WATCH_MAX) continue;
+        if (dropped.length === 0 || (regWarnCount.get(rel) ?? 0) >= REG_WATCH_MAX) continue;
         dropped.forEach((l) => regWarned.add(l));
-        regWarnCount++;
+        regWarnCount.set(rel, (regWarnCount.get(rel) ?? 0) + 1);
         pi.sendUserMessage(`A registration line just vanished from ${rel}: \`${dropped[0]}\`${dropped.length > 1 ? ` (+${dropped.length - 1} more)` : ""}. These imports register models/behavior the rest of the code depends on — restore the line and add yours alongside it instead of replacing.`);
         log(`REG-WATCH ${rel}: ${dropped[0].slice(0, 60)}`);
       } catch {}

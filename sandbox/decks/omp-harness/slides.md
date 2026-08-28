@@ -82,7 +82,7 @@ style: |
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
 <!-- sync: root-makefile.md=7691dca3d8796a13 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
-<!-- sync: strict-additive-writes.ts=f9fb78f5805e6c0a -->
+<!-- sync: strict-additive-writes.ts=610acc3152e012cb -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
@@ -168,7 +168,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=56c1366cf98d9c38 -->
+<!-- sync: extensions/continuity/=77d1c90ad0d3d543 -->
 
 # 우리 하네스 (OMP) 소개
 

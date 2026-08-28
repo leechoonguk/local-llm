@@ -53,12 +53,14 @@ export default function strictAdditiveWrites(pi: any) {
       // 진짜 교체 의도는 편집에 `# intent: replace` 마커를 실어 명시하면 통과한다 —
       // 추가를 원하면 삽입형으로, 교체를 원하면 선언하고 교체한다.
       const intendedReplace = /#\s*intent:\s*replace/i.test(patch);
-      for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?\.?:\n((?:\+[^\n]*(?:\n|$))+)/g)) {
+      // 본문 줄의 `+` 접두는 **선택**이다 — 배포 셀에서 접두 없는 형식(`PUT 233:\n api_router...`)
+      // 으로 등록 줄이 교체됐는데 파서가 통째로 놓쳤다(2026-08-28 실측, 회귀 1건).
+      for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?\.?:\n((?:(?!PUT \d)[^\n]*(?:\n|$))+)/g)) {
         if (op[2]) continue; // insert form — additive, fine
         if (intendedReplace) continue; // declared intent — the replacement stands
         const target = (fileLines[Number(op[1]) - 1] ?? "").trim();
         if (!target) continue;
-        const bodyLines = op[3].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
+        const bodyLines = op[3].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean); // 접두 있으면 벗기고, 없으면 그대로
         const retained = bodyLines.includes(target);
         if (retained) continue;
         // 보편 규칙: 형제 치환(sibling swap). 관측된 7건 전부 "뼈대는 같고 식별자만
@@ -66,6 +68,19 @@ export default function strictAdditiveWrites(pi: any) {
         // 뼈대가 동일하고 식별자가 2군데 이상 갈리면, 추가 과제에서 형제는 공존해야
         // 한다 — 교체가 아니라 삽입으로 유도한다. (값 수정 x=1->x=2, 단일 인자 교체
         // compute(y)->compute(z) 는 통과 — 오탐 경계는 프루프 15-19.)
+        // 등록/배선 줄은 **누적되는 것**이라 교체 자체가 사고다 — 식별자 하나만 바뀌어도
+        // (include_router(user) → include_router(notice)) 다른 도메인이 라우팅에서 사라진다.
+        // 2026-08-28 배포 셀에서 정확히 이 형태로 회귀 1건이 났고, 형제치환 규칙(식별자 2개
+        // 이상)에는 안 걸렸다. 경로 목록이 아니라 **줄 모양**으로 판정한다(프레임워크 무관).
+        if (isRegistrationLine(target)) {
+          return {
+            block: true,
+            reason:
+              `this edit REPLACES a registration line (\`${target.slice(0, 70)}\`) — registries accumulate: ` +
+              `keep it and use the insert form (\`PUT ${op[1]}+1@:\`) for the new entry. ` +
+              "If replacement is truly intended, resend with a `# intent: replace` comment line.",
+          };
+        }
         const sibling = bodyLines.find((b) => siblingSwap(target, b));
         if (sibling) {
           return {
@@ -171,6 +186,13 @@ export default function strictAdditiveWrites(pi: any) {
         "changes, or include the existing content you mean to keep.",
     };
   });
+}
+
+/** 등록·배선 줄(누적되는 레지스트리 항목)인가 — 경로가 아니라 모양으로 판정한다. */
+function isRegistrationLine(l: string): boolean {
+  return /^(from\s+\S+\s+import\b|import\s+\S)/.test(l)
+    || /^\w+Dep\s*=\s*Annotated\b/.test(l)
+    || /\b(include_router|add_middleware|add_api_route|register|add_url_rule|mount)\s*\(/.test(l);
 }
 
 function siblingSwap(oldLine: string, newLine: string): boolean {

@@ -75,8 +75,10 @@ check("17 single-identifier change pass",
   pedit("backend/app/services/generic.py", "[backend/app/services/generic.py#AAAA]\nPUT 3.:\n+result = compute(z)") === undefined);
 check("18 sibling swap retained alongside pass",
   pedit("backend/app/services/generic.py", "[backend/app/services/generic.py#AAAA]\nPUT 1.:\n+self.registry.register(UserHandler)\n+self.registry.register(NoticeHandler)") === undefined);
-check("19 different-shape rewrite pass",
-  pedit("backend/app/services/generic.py", "[backend/app/services/generic.py#AAAA]\nPUT 4.:\n+configure_admin_mounts(app)") === undefined);
+check("19 등록 줄(mount) 교체는 BLOCK — 레지스트리 항목이 사라진다(2026-08-28 회귀 근거)",
+  pedit("backend/app/services/generic.py", "[backend/app/services/generic.py#AAAA]\nPUT 4.:\n+configure_admin_mounts(app)")?.block === true);
+check("19b 비등록 줄의 형태 변경 재작성은 통과",
+  pedit("backend/app/services/generic.py", "[backend/app/services/generic.py#AAAA]\nPUT 3.:\n+result = compute_v2(y)") === undefined);
 
 // 20-21: intent protocol — a declared replacement passes; the marker is edit-scoped
 check("20 declared replace intent passes",
@@ -89,5 +91,13 @@ check("23 empty path fail-open",
   pedit("", "[x#AAAA]\nPUT 1.:\n+whatever") === undefined);
 check("24 directory path fail-open",
   pedit("backend/app", "[backend/app#AAAA]\nPUT 1.:\n+whatever") === undefined);
+
+// 25-26: '+' 접두 없는 PUT 본문(2026-08-28 배포 셀 실측 형식) — 같은 규칙이 걸려야 한다
+writeFileSync(FIX + "/backend/app/main.py",
+  "from app.routers import auth, batch, user\nx = 1\napi_router.include_router(user.router)\n");
+check("25 접두 없는 교체형 형제치환 BLOCK",
+  pedit("backend/app/main.py", "[backend/app/main.py#0D77]\nPUT 3:\napi_router.include_router(notice.router)")?.block === true);
+check("26 접두 없는 삽입형은 통과",
+  pedit("backend/app/main.py", "[backend/app/main.py#0D77]\nPUT 3+1@:\napi_router.include_router(notice.router)") === undefined);
 
 process.exit(bad ? 1 : 0);
