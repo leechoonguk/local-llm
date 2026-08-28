@@ -20,3 +20,12 @@ modelRoles:
 # high 는 medium 의 2.6배 토큰, 2.8배 시간이다. 코딩 과제에서 그만큼의 숙고가
 # 결과를 바꾼다는 증거는 아직 없고, 시간과 창은 확실히 먹는다.
 defaultThinkingLevel: medium
+
+# 어드바이저(선택). 2026-08-28 실측: 헤드리스에서도 실동하지만 벤치 조합은 기각
+# (bench/2026-08-28.s2.advmatrix.md — MoE 속도 역전으로 소형 코더 전제 붕괴).
+# 인터랙티브에서 쓰려면 아래 두 줄이면 된다(WATCHDOG.yml 불필요):
+#   modelRoles.advisor: omlx/Qwen3.6-35B-A3B-5bit:nothink   # 코더와 같은 엔진 슬롯 = 추가 상주 0
+#   advisor.enabled: true                                    # TUI 는 /advisor on|off|status
+# 조언 실물은 실전급이었다(재독 처닝 지적) — 켜고 끄기는 취향.
+advisor:
+  enabled: false

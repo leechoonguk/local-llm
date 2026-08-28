@@ -65,7 +65,11 @@ d = json.load(open(p)) if os.path.exists(p) else {}
 d.setdefault('server', {})['port'] = 9090
 d['server']['auto_start_on_launch'] = False   # 자동 시작 끔 - 서버는 앱 메뉴바 Start 로만 띄운다(omlx start=brew services=금지)
 d.setdefault('memory', {})['memory_guard_tier'] = 'safe'
-d.setdefault('cache', {})['hot_cache_max_size'] = '4GB'
+import subprocess
+_ram_gb = int(subprocess.run(['sysctl','-n','hw.memsize'], capture_output=True, text=True).stdout.strip() or 0) // (1024**3)
+# RAM 티어: 64GB+ 는 8GB(앱 기본값과 같음), 48GB 는 4GB — 모델 23GB + KV ~10GB 위에
+# 8GB 를 더 얹으면 48GB 티어의 wired_limit_mb(40GB)를 넘는다.
+d.setdefault('cache', {})['hot_cache_max_size'] = '8GB' if _ram_gb >= 60 else '4GB'
 # 벤치 러너(skill://llm-bench)가 셀마다 admin API(/admin/api/models/<id>/unload)로 로드된 모델을 비워
 # 강제 단일 상주를 만든다. 루프백 무인증 admin 접근을 위해 skip_api_key_verification 을 켠다(127.0.0.1 전용).
 d.setdefault('auth', {})['skip_api_key_verification'] = True

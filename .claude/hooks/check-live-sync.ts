@@ -5,7 +5,7 @@
  *  - omp: `omp config path`(없으면 ~/.omp/agent) 의 models.yml 이 omp/models.yml 과 바이트 동일,
  *    config.yml 이 config.fragment.yml 의 modelRoles(default/tiny)·defaultThinkingLevel 을 담는다
  *  - oMLX: ~/.omlx/model_settings.json·model_profiles.json 이 레포와 JSON 동일, settings.json 의 port /
- *    memory_guard_tier / hot_cache_max_size 가 install.sh 가 쓰는 값, 모델·드래프터가 HF 캐시에 있다
+ *    memory_guard_tier / hot_cache_max_size 가 install.sh 가 쓰는 값, 모델·드래프터가 앱 스토어(~/.omlx/models)나 HF 캐시에 있다
  *  - Ollama: LaunchAgent plist 설치 + 자리표시자 치환. 서버가 떠 있으면(127.0.0.1:11434, 2s)
  *    Modelfile 마다 모델이 있고 num_ctx/num_predict/샘플링이 Modelfile 과 같다. 서버가 없으면 그 부분은 건너뛴다
  *
@@ -78,7 +78,8 @@ function checkOmlx(root: string): Issue[] {
     const want: Array<[string, string, unknown]> = [
       ["server", "port", Number(install.match(/\['port'\]\s*=\s*(\d+)/)?.[1] ?? 9090)],
       ["memory", "memory_guard_tier", install.match(/\['memory_guard_tier'\]\s*=\s*'([^']+)'/)?.[1] ?? "safe"],
-      ["cache", "hot_cache_max_size", install.match(/\['hot_cache_max_size'\]\s*=\s*'([^']+)'/)?.[1] ?? "4GB"],
+      // hot_cache 는 RAM 티어별(install.sh 와 같은 규칙: 64GB+ 8GB / 그 아래 4GB, 2026-08-28)
+      ["cache", "hot_cache_max_size", hostRamGb() >= 60 ? "8GB" : "4GB"],
     ];
     for (const [sec, key, val] of want) {
       const cur = ((settings[sec] ?? {}) as Rec)[key];
@@ -89,10 +90,18 @@ function checkOmlx(root: string): Issue[] {
   const models = ((jsonOf(read(root, "omlx/model_settings.json"))?.models ?? {}) as Rec);
   for (const [name, raw] of Object.entries(models)) {
     for (const n of [name, (raw as Rec).vlm_mtp_draft_model].filter((x): x is string => typeof x === "string")) {
-      if (!existsSync(join(hub, `models--${n}`))) issues.push(`oMLX: HF 캐시에 ${n} 이 없다 — 다운로드는 사용자가 omlx/install.sh 로 직접`);
+      // 2026-08-28 전면 포팅: 모델 저장소는 oMLX 앱 스토어(~/.omlx/models/<org>/<name>)다.
+      // HF 캐시(models--org--name)는 폐지했지만, 옛 배치도 유효로 인정한다(이식성).
+      const inStore = existsSync(join(homedir(), ".omlx", "models", "mlx-community", n));
+      const inHub = existsSync(join(hub, `models--mlx-community--${n}`)) || existsSync(join(hub, `models--${n}`));
+      if (!inStore && !inHub) issues.push(`oMLX: 앱 스토어(~/.omlx/models)에도 HF 캐시에도 ${n} 이 없다 — oMLX 앱 또는 POST /admin/api/hf/download 로 받는다`);
     }
   }
   return issues;
+}
+
+function hostRamGb(): number {
+  try { return Math.round(Number(execFileSync("sysctl", ["-n", "hw.memsize"], { encoding: "utf-8" }).trim()) / 1024 ** 3); } catch { return 0; }
 }
 
 // --- Ollama ----------------------------------------------------------------------
