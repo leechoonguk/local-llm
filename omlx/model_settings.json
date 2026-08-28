@@ -24,7 +24,9 @@
    "top_k": 20,
    "min_p": 0.0,
    "enable_thinking": false,
-   "reasoning_parser": "qwen"
+   "reasoning_parser": "qwen",
+   "vlm_mtp_enabled": true,
+   "vlm_mtp_draft_model": "Qwen3.5-4B-MTP-4bit"
   },
   "Qwen3.5-9B-MLX-4bit": {
    "max_context_window": 131072,
