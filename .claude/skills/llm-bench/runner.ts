@@ -406,17 +406,36 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   if (benchHook) extra.push("--hook", benchHook);
 
   const started = Date.now();
-  const child = spawn("omp", ["-p", task.prompt(spec), "--model", model, ...extra], { cwd: SANDBOX, stdio: "ignore", detached: true });
+  // 2단계 분해(BENCH_PHASE2=1, 2026-08-28 설계): 구현 세션 → fresh-context 마감 세션.
+  // 중간 revert 없음 — 종반 분산이 긴 컨텍스트와 상관이라는 부검 관찰의 구조 실험.
+  const phase2 = process.env.BENCH_PHASE2 === "1";
+  const p1cap = Number(process.env.BENCH_P1_TIMEOUT ?? 1500);
+  const p2cap = Number(process.env.BENCH_P2_TIMEOUT ?? 1500);
+  const FINISH_PROMPT = `The \`notice\` CRUD domain has been partially implemented in this repository by a previous session. Your job is to FINISH it to the gate:
+
+1. Run \`make verify\` from the sandbox root first — treat its output as the todo list.
+2. Fix everything it reports: wiring (alembic/env.py, app/main.py, app/dependencies/services.py), the migration, the request file, and the sibling-parity tests at 100% coverage (backend/tests/{api,repositories,services}/test_notice.py, plus the expected-http-files list in backend/tests/core/test_seed_api_actor.py).
+3. Do not refactor working code; add what is missing, fix what is red.
+4. Finish only when a fresh full \`make verify\` passes end-to-end.`;
+  const sessionPlans: Array<[string, number]> = phase2
+    ? [[task.prompt(spec), p1cap], [FINISH_PROMPT, p2cap]]
+    : [[task.prompt(spec), opts.timeoutS]];
   let timedOut = false;
-  const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };
-  await new Promise<void>((resolveP) => {
-    const timer = setTimeout(() => {
-      timedOut = true;
-      killGroup("TERM");
-      setTimeout(() => { killGroup("KILL"); resolveP(); }, 60_000);
-    }, opts.timeoutS * 1000);
-    child.on("exit", () => { clearTimeout(timer); resolveP(); });
-  });
+  const phaseWalls: number[] = [];
+  for (const [sessionPrompt, cap] of sessionPlans) {
+    const pStart = Date.now();
+    const child = spawn("omp", ["-p", sessionPrompt, "--model", model, ...extra], { cwd: SANDBOX, stdio: "ignore", detached: true });
+    const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };
+    await new Promise<void>((resolveP) => {
+      const timer = setTimeout(() => {
+        timedOut = true;
+        killGroup("TERM");
+        setTimeout(() => { killGroup("KILL"); resolveP(); }, 60_000);
+      }, cap * 1000);
+      child.on("exit", () => { clearTimeout(timer); resolveP(); });
+    });
+    phaseWalls.push(Math.round((Date.now() - pStart) / 1000));
+  }
   const wall = Math.round((Date.now() - started) / 1000);
 
   const res = residency(model);
@@ -425,6 +444,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   const row: Record<string, unknown> = {
     model, task: taskName, mode: task.mode, wall_s: wall, timed_out: timedOut,
     bundle: process.env.BENCH_BUNDLE ?? null, attempt: Number(process.env.BENCH_ATTEMPT ?? 1),
+    ...(phaseWalls.length > 1 ? { phase_walls: phaseWalls } : {}),
     residency: res,
     ...grade(task, models, snapshot),
     ...sessionMetrics(newestSessionAfter(started)),
