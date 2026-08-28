@@ -409,6 +409,18 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   const benchHook = process.env.BENCH_HOOK;
   if (benchHook) extra.push("--hook", benchHook);
 
+  // 어드바이저는 설정 파일 경로만 실동한다(사용자 실측 2026-08-28: config 의
+  // advisor.enabled 토글이 동작, 오버레이 advisor 블록·과거 키는 무반응). 셀 단위로
+  // sandbox/.omp/config.yml 에 블록을 주입하고 채점 전에 원문 복원한다. 비어드바이저
+  // 셀은 enabled:false 를 강제해 사용자의 전역(홈) 토글이 암을 오염시키지 않게 한다.
+  const projCfg = join(SANDBOX, ".omp", "config.yml");
+  const projCfgOrig = readFileSync(projCfg, "utf-8");
+  const advEnv = process.env.BENCH_ADVISOR;
+  const advBlock = advEnv && advEnv !== "1"
+    ? `\n# bench-advisor (runner-injected)\nmodelRoles:\n  advisor: ${advEnv}\nadvisor:\n  enabled: true\n  immuneTurns: 3\n  syncBacklog: "off"\n`
+    : `\n# bench-advisor off (runner-injected)\nadvisor:\n  enabled: false\n`;
+  writeFileSync(projCfg, projCfgOrig + advBlock);
+
   const started = Date.now();
   // 2단계 분해(BENCH_PHASE2=1, 2026-08-28 설계): 구현 세션 → fresh-context 마감 세션.
   // 중간 revert 없음 — 종반 분산이 긴 컨텍스트와 상관이라는 부검 관찰의 구조 실험.
@@ -441,6 +453,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     phaseWalls.push(Math.round((Date.now() - pStart) / 1000));
   }
   const wall = Math.round((Date.now() - started) / 1000);
+  writeFileSync(projCfg, projCfgOrig); // 채점 전에 프로젝트 설정 원문 복원
 
   const res = residency(model);
   if (overlayDir) rmSync(overlayDir, { recursive: true, force: true });
