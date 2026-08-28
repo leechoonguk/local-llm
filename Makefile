@@ -1,6 +1,6 @@
 # local-llm 검증 진입점. 검사는 전부 순수 파일 읽기(서버·네트워크 없음), node 24+ 로 .ts 를 직접 실행한다.
 # 타깃 계약(check-harness 가 강제): .claude/rules/<name>.md ↔ .claude/hooks/check-<name>.ts ↔ check-<name> ↔ verify.
-.PHONY: help verify check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-harness check-live-sync check-autostart
+.PHONY: help verify preflight check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-harness check-live-sync check-autostart
 
 help: ## 타깃 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
@@ -33,3 +33,9 @@ check-live-sync: ## 레포 설정 ↔ 라이브 시스템 (~/.omp/agent, ~/.omlx
 
 check-autostart: ## Ollama·oMLX 자동 시작/재시작이 둘 다 꺼져 있는지 (템플릿·install.sh·brew services·launchd·로그인 항목·oMLX 설정)
 	node .claude/hooks/check-autostart.ts
+
+preflight: ## 벤치 셀 발진 전 일괄 점검 — 셀 부재(pgrep)·sandbox 타입체크·decks 동기·sandbox 루트 verify(실제 종료코드). 무효 스텁 4회의 재발 방지(2026-08-28)
+	@! pgrep -f "omp -p" >/dev/null || { echo "FAIL: 벤치 셀이 실행 중 — 하네스 편집/발진 금지"; exit 1; }
+	$(MAKE) -C sandbox check-omp-types
+	$(MAKE) -C sandbox/decks build
+	$(MAKE) -C sandbox verify
