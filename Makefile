@@ -1,6 +1,6 @@
 # local-llm 검증 진입점. 검사는 전부 순수 파일 읽기(서버·네트워크 없음), node 24+ 로 .ts 를 직접 실행한다.
 # 타깃 계약(check-harness 가 강제): .claude/rules/<name>.md ↔ .claude/hooks/check-<name>.ts ↔ check-<name> ↔ verify.
-.PHONY: help verify preflight check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-harness check-live-sync check-autostart
+.PHONY: help verify preflight smoke bake check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-harness check-live-sync check-autostart
 
 help: ## 타깃 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
@@ -39,3 +39,16 @@ preflight: ## 벤치 셀 발진 전 일괄 점검 — 셀 부재(pgrep)·sandbox
 	$(MAKE) -C sandbox check-omp-types
 	$(MAKE) -C sandbox/decks build
 	$(MAKE) -C sandbox verify
+
+smoke: ## 베이크 검증 — 서빙·기본 코더 응답·reasoning 분리·MTP 발화·서버가 보는 설정값 (usage: make smoke [MODEL=<id>])
+	bash omlx/smoke.sh $(MODEL)
+
+bake: ## 확정 설정을 라이브에 굽는다 — 레포 → ~/.omlx·~/.omp/agent 복사 후 검증된 재시작 + smoke + verify (셀 실행 중이면 거부)
+	@! pgrep -f "omp -p" >/dev/null || { echo "FAIL: 벤치 셀이 실행 중 — 베이크 금지"; exit 1; }
+	cp omlx/model_settings.json $(HOME)/.omlx/model_settings.json
+	cp omlx/model_profiles.json $(HOME)/.omlx/model_profiles.json
+	cp omp/models.yml "$$(omp config path | tail -1)/models.yml"
+	-$(HOME)/.omlx/bin/omlx restart
+	@for i in $$(seq 1 30); do curl -s http://127.0.0.1:9090/v1/models >/dev/null 2>&1 && break; sleep 2; done
+	$(MAKE) smoke
+	$(MAKE) verify

@@ -88,6 +88,35 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 
 무거운 integration 서브시스템이 계약 테스트와 강하게 결합돼(테스트가 시드 마이그레이션을 리플레이) sandbox 최소화 때 통째로 뺐다. 다시 하려면: fast-api-standard 에서 integration 관련 파일(models/routers/services/repositories/schemas/core integration, tests/core/test_integration*, fixtures, api/integration*.http, 훅 `check-backend-integration*`, 규칙, ast-grep integration, 시드 마이그레이션)을 sandbox 로 복원하고 포트만 치환한 뒤, `runner.ts` 의 `TASKS` 에 `integration` 셀을 되살린다. 부모 상태 복원(레퍼런스 산출물 삭제 + 역패치)은 `reference/a1aebf3.manifest.json` + `a1aebf3.parent.patch` 로 하고, 시드 마이그레이션이 다시 들어오면 마이그레이션 불변 규칙(`@{upstream}`) 때문에 임시 git 핀이 필요해진다 — 예전 러너 이력(git log)에 그 방식이 있다.
 
+## 운영 교훈 (2026-08-26~28 프로그램 실측)
+
+**셀 운영**
+- 발진 전 `make preflight` — 셀 부재(pgrep)·sandbox 타입체크·decks 동기·루트 verify 를 한 번에 본다. 이걸 안 해서 무효 스텁이 4회 났다(TS6133, 미문서 make 타깃, decks 해시, 코드 레이아웃).
+- **하네스 수정은 즉시 커밋**한 뒤 발진한다 — 미커밋 수정은 셀 경계 원복(`git checkout -- sandbox`)이 지운다(사고 2회). 원복·clean 은 **repo 루트에서** 실행한다(cwd=sandbox 면 no-op).
+- 셀이 도는 중에는 하네스·설정·서버를 건드리지 않는다(스택 모호 → 셀 무효).
+- 훅로그는 셀마다 `cp` 로 보존한 뒤 비운다(로테이트 없이 지워 1회 소실).
+- 검증은 **실제 종료코드**로 — `| tail`·`grep -q` 로 끝만 보면 뒤쪽 검사 실패가 묻힌다.
+
+**조기 종료(사용자 확정 정책)**
+- 판정은 스냅샷이 아니라 **궤적**으로: 같은 실패 시그니처가 10분 넘게 무진전이면 수렁(킬), 시그니처가 바뀌며 전진하면 살린다(99.5% 수렴 중이던 셀을 57% 스냅샷으로 죽인 오판 1회, 32.2m red→33.3m 초록 반례 1회).
+- 30분 게이트는 **비채점 운영 판단**용이다. 채점 블록·A/B 안에서는 쓰지 않는다 — near-miss 꼬리를 검열해 분포 추정을 왜곡한다.
+
+**통계**
+- 이 게이트의 단발 초록률은 3.6-35B 기준 **scored 20% / 게이트@50m 40%(풀링 n=10)**. n=1~2 의 2/2 는 대부분 꼬리 추첨이었다(동결 널 n=8 에서 1/8 실증) — **한 판으로 설정을 판정하지 않는다**.
+- 목표는 재시도를 포함한 SLA 로 잡는다(≤2회 시도, 캡 50분). "단발 45분 100%" 는 이 모델 밖이다.
+- 개입 A/B 는 binary green 으로는 검정력이 없다 — 연속 지표(종료 시점 미완성 수, 첫 full 게이트 시각, 첫 초록 시각)를 1차 지표로 사전 등록한다. 러너가 `bundle`/`attempt`/`gate_runs`/`first_full_gate_s`/`first_green_s` 를 기록한다.
+- 러너의 `writes`/`gate_runs` 원시값은 세션 포맷상 부풀 수 있다(도구 1회가 3레코드 + continuity 스냅샷 재포함) — 중복 제거 후 인용한다.
+
+**하네스 신호(현행 discipline)**
+- 지식은 문서로, **행동은 런타임 메시지로** — 정적 문서 지시는 2회 실측 모두 0채택이었고, 주입 메시지는 매번 작동했다.
+- 파괴는 조언이 아니라 **차단**으로: 형제 치환(뼈대 같고 식별자만 다른 줄 교체) 사전 deny + `# intent: replace` 선언 시 통과. 등록 줄 소실은 REG-WATCH 가 결과 텍스트에서 감지해 즉시 복원시킨다(회귀 0/10 유지).
+- **훅은 절대 던지지 않는다** — omp 는 훅 예외를 도구 실패로 승격시킨다. 가드 크래시 하나가 한 셀의 edit 을 전멸시켜 ~10분을 태웠다(fail-open 원칙).
+- 신호를 새로 넣으면 합성 프루프(현재 50케이스)로 경계까지 검증하고, 실전 첫 발화를 부검한다. 베이스라인이 공허하게 초록인 구간(작업 시작 전)에서 오발하지 않는지 반드시 본다(TAIL-TRIM 오발로 셀 1개 손실).
+
+**설정 축**
+- 속도는 모델 설정, 품질 바닥은 하네스, 품질 상한은 모델이다. thinking budget 2048 이 실측 최적(5120 대비 우세, 1024 는 하한 초과), maxTokens 4096·2단계 분해·4bit·소형 코더 조합은 전부 기각(`bench/2026-08-28.s2.*.md`).
+- 구성을 바꿨으면 `/bake-config` 절차로 굽고 `make smoke` 로 "서버가 그 값을 인정했는지"까지 확인한다.
+
 ## 하지 말 것
 - 벤치용으로 지어낸 과제로 채점 / `--model` 외 omp 플래그 / 서브에이전트로 실행 / 셀 중 sandbox 수정
 - 피험자의 "make verify 통과" 말 믿기 — 직접 돌린 게 채점

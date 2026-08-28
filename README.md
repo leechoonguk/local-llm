@@ -111,7 +111,7 @@ seed로 다른 변수를 다 죽였는데 값이 바이트 단위로 같으면 �
 
 | | 3.6 (35B-A3B MoE, 5bit) | 3.8 oQ6 (dense, 6bit) | 3.8 nvfp4 (dense, 4bit) |
 |---|---|---|---|
-| 웜 디코드 속도 | 75~80 tok/s | 10.7 tok/s | **21.0 tok/s** |
+| 웜 디코드 속도 | 75~80 tok/s (MTP 발화 시. **2026-08-28 현재 35B 는 thinking on 이면 MTP 가 스킵돼 62~65 tok/s** — CLAUDE.md 환경 사실 참고) | 10.7 tok/s | **21.0 tok/s** |
 | 3.6 대비 배수 | 1x | ~7.3배 느림 | ~3.7배 느림 |
 
 nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 연산/대역폭이 더 들어가는 게 dense 모델에서 그대로 드러난다(MoE인 3.6은 활성 파라미터가 3B뿐이라 이 효과가 훨씬 작다). 이 nvfp4 수치(21.0 tok/s)는 2026-08-20 Ollama 시절 벤치(22~29 tok/s, 같은 nvfp4)와도 같은 대역이라 oMLX 자체가 3.8을 유난히 느리게 만드는 건 아니라는 교차 확인이 된다 — **느림의 원인은 dense 27B 아키텍처 자체**(토큰당 27B 전부 활성, MoE 3.6은 3B)이고, oQ6는 거기에 양자화 비용까지 얹힌 것.
@@ -514,9 +514,10 @@ sandbox/                           # 2단계 피험자 트리 — fast-api-stand
   skills/bench-model, llm-bench, add-model  # 1단계 단발 벤치 / 2단계 장기 세션 벤치(runner.ts, tasks/, reference/) / 모델 추가
 CLAUDE.md                          # Claude 작업 규칙과 환경 사실
 omlx/
-  install.sh                       # hf 모델 다운로드 + ~/.omlx 설정 동기화 + 서비스 잔재 정리 + 앱 서버 재시작 (멱등, 앱은 DMG 로 먼저)
-  model_settings.json              # 모델별 설정(창/샘플링/MTP) → ~/.omlx/ 로 설치
+  install.sh                       # ~/.omlx 설정 동기화 + 서비스 잔재 정리 + 앱 서버 재시작 (멱등, 앱은 DMG 로 먼저. 모델은 앱 스토어 관리)
+  model_settings.json              # 모델별 설정(창/샘플링/MTP/thinking budget) → ~/.omlx/ 로 설치
   model_profiles.json              # :mtp / :nothink 프로파일 → ~/.omlx/ 로 설치
+  smoke.sh                         # 베이크 후 검증(서빙·응답·reasoning 분리·MTP 발화·서버가 보는 설정값) — `make smoke`
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치
   config.fragment.yml              # config.yml 에 병합할 조각 (덮어쓰지 않음)

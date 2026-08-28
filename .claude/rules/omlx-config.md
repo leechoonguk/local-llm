@@ -18,7 +18,7 @@ paths:
 - key == `name` == `api_name`. 노출 이름은 `<model>:<key>`.
 - 같은 모델의 프로파일들은 `max_context_window`·`vlm_mtp_enabled`·`vlm_mtp_draft_model` 이 같아야 한다 — 엔진 시그니처가 같아야 리로드 없이 같은 슬롯을 쓴다(`:mtp` ↔ `:nothink`).
 - `nothink` 는 `enable_thinking: false`, `mtp` 는 `vlm_mtp_enabled: true`.
-- thinking 길이: Qwen3.8 은 `chat_template_kwargs.reasoning_effort`(`xhigh`/`medium`/`low`), Qwen3.6 은 템플릿이 무시하므로 `thinking_budget`(omp 쪽 extraBody).
+- thinking 길이: Qwen3.8 은 `chat_template_kwargs.reasoning_effort`(`xhigh`/`medium`/`low`), Qwen3.6 은 템플릿이 무시하므로 budget 을 쓴다. **레벨별로 키 이름이 다르다(2026-08-28 확정)**: 모델 설정·프로파일 = `thinking_budget_enabled` + `thinking_budget_tokens`, 요청 = `thinking_budget`(omp `compat.extraBody`). 무효 키는 서버가 조용히 버린다 — 새 키는 `curl -s localhost:9090/openapi.json` 의 `ModelSettingsRequest` 로 실재를 확인하고, 적용은 `GET /admin/api/models` 로 되읽어 검증한다(`make smoke`).
 
 ## install.sh
 - 모델과 드래프터마다 `$HF download mlx-community/<name>`(설정 키의 `--` 는 `/`) **또는** 앱 스토어 관리 주석에 짧은 이름 명기(2026-08-28 전면 포팅 — 모델은 oMLX 앱 다운로드 `~/.omlx/models` 관리).

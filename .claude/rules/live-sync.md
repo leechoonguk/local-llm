@@ -16,7 +16,7 @@ paths:
 | `omp/config.fragment.yml` | 같은 곳 `config.yml` | `modelRoles.default/tiny`, `defaultThinkingLevel` 줄만 손으로 |
 | `omlx/model_settings.json`, `model_profiles.json` | `~/.omlx/` | `cp` 후 `omlx restart`(메뉴바 앱이 서버 관리), 로그 `total:` 로 단일 상주 확인 |
 | `omlx/install.sh` 의 settings 값 | `~/.omlx/settings.json` `server.port`, `memory.memory_guard_tier`, `cache.hot_cache_max_size` | `omlx/install.sh` 의 python 블록 |
-| `omlx/model_settings.json` 의 모델·드래프터 | `~/.cache/huggingface/hub/models--<name>` | 다운로드는 사용자가 직접(`omlx/install.sh`) |
+| `omlx/model_settings.json` 의 모델·드래프터 | oMLX 앱 스토어 `~/.omlx/models/mlx-community/<name>` (HF 캐시는 2026-08-28 폐지) | 앱 다운로드 또는 `POST /admin/api/hf/download` — 절차는 `/add-model` |
 | (oMLX 서버) | `/Applications/oMLX.app` | 사용자가 DMG 설치. brew 서비스·예전 LaunchAgent 는 `omlx/install.sh` 가 걷어낸다 |
 | `ollama/com.ollama.serve.plist.template` | `~/Library/LaunchAgents/com.ollama.serve.plist` (자리표시자 치환됨) | 사용자가 `ollama/install.sh` |
 | `ollama/Modelfile.<name>` | `ollama show <name>` 의 parameters | `ollama create <name> -f ollama/Modelfile.<name>` — 서버(127.0.0.1:11434)가 떠 있을 때만 비교, 내려가 있으면 skip |
@@ -24,4 +24,5 @@ paths:
 ## 검사 원칙
 - 설치돼 있지 않은 시스템(omp 없음, `~/.omlx` 없음, plist 없음)은 이슈가 아니라 **skip** 이다 — 다른 호스트에서도 `make verify` 가 깨지지 않는다.
 - 호스트 접근은 파일 읽기 + `omp config path` + 루프백 `curl --max-time 2` 뿐이다. 이 검사만 예외적으로 호스트 상태를 읽는다(`harness.md`).
-- 라이브를 맞춘 뒤 `/v1` 스모크(omp nothink 경로, oMLX `total:`)까지가 반영 완료다.
+- 라이브를 맞춘 뒤 **`make smoke`**(서빙·응답·reasoning 분리·MTP 발화·서버가 되읽어 준 설정값)까지가 반영 완료다. 한 번에 하려면 `make bake` — 절차와 진단은 `/bake-config`.
+- 재시작 성공 여부는 앱 셔틀 메시지가 아니라 **uptime**(`lsof -nP -iTCP:9090 -sTCP:LISTEN -t | xargs ps -o etime=`)으로 판정한다 — 셔틀은 성공해도 실패 문구를 뱉는다(실측).
