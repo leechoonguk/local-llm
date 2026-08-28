@@ -9,16 +9,31 @@
 // 이 파일은 세션 스크래치가 아니라 레포 자산이다(2026-08-28 이관) — `make check-harness-proofs`.
 // 경로는 이식성을 위해 import.meta.url 과 os.tmpdir() 로 푼다.
 import { tmpdir } from "node:os";
+import { rmSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const FIXROOT = join(tmpdir(), "llm-bench-proof-fixtures");
+// 상태 영속화(.omp/state/discipline.json) 가 레포에 새지 않도록 프루프는 임시 트리에서 돈다.
+const STATEROOT = join(tmpdir(), "llm-bench-proof-state");
+(await import("node:fs")).mkdirSync(STATEROOT, { recursive: true });
+process.chdir(STATEROOT);
 const { registerDiscipline } = await import(pathToFileURL(REPO + "/sandbox/.omp/extensions/continuity/discipline.ts").href);
 
 let now = 1_000_000_000_000;
 Date.now = () => now;
 
+function makePiKeepState() {
+  const handlers = {};
+  const sent = [];
+  registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) }); // 첫 턴 — 브리핑이 다시 나오면 여기서 잡힌다
+  return { handlers, sent };
+}
+
 function makePi() {
+  // 각 케이스는 독립 세션이다 — 프롬프트 간 상태 파일을 지우고 시작한다(2026-08-29 영속화 도입).
+  try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
   const handlers = {};
   const sent = [];
   const pi = { on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) };
@@ -114,7 +129,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   handlers.turn_end({}, ctx);
-  check("H2: 3 files + no gate ever -> full-gate FINISH-BLOCK", sent.length === 1 && /never run the full verification/.test(sent[0] ?? ""));
+  check("H2: 3 files + gate older than the change -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // H3: 작은 변경을 타깃 검증으로 덮었으면 마감은 조용하다
@@ -298,7 +313,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   handlers.turn_end({}, ctx); handlers.turn_end({}, ctx); handlers.turn_end({}, ctx);
   check("R1a: three gate-less finishes -> three blocks, third names the command",
-    sent.length === 3 && /never run the full verification/.test(sent[2] ?? "") && /single next action/.test(sent[2] ?? ""));
+    sent.length === 3 && /has not run since your last change/.test(sent[2] ?? "") && /single next action/.test(sent[2] ?? ""));
   now += 10_000; bash(handlers, "make verify", "all green, 150 passed");
   handlers.turn_end({}, ctx);
   check("R1b: after a gate run the finish is silent (block released)", sent.length === 3);
@@ -349,7 +364,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   now += 10_000; bash(handlers, "make verify-fast", "all green");
   handlers.turn_end({}, ctx);
   check("R3: verify-fast green + prose finish -> FINISH-BLOCK stands",
-    sent.length === 1 && /never run the full verification/.test(sent[0] ?? ""));
+    sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // T1-T2: endgame tail trim — second idle green nudges once; a mutation re-arms the window
@@ -393,6 +408,26 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   now += 10_000; bash(handlers, "make verify", "all green again");
   now += 10_000; bash(handlers, "make verify", "still green");
   check("T5: never-red session -> tail trim stays silent", sent.length === 0);
+}
+
+{ // X: 프롬프트 간 상태 — 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나다.
+  // 실측(2026-08-29 4프롬프트 세션): 브리핑이 4회 반복됐고, p2·p3 가 게이트를 15회 돌았는데
+  // p4 가 "이 세션은 풀 검증을 한 번도 안 돌렸다"며 다시 막았다.
+  const p1 = makePi();                                    // 프롬프트 1 (상태 초기화)
+  now += 30_000; editOk(p1.handlers, "a.py");
+  bash(p1.handlers, "make verify", "all green");           // 게이트 통과
+  p1.handlers.turn_end({}, ctx);
+  check("X1: gate after the change -> finish is silent", p1.sent.length === 0);
+
+  const p2 = makePiKeepState();                            // 프롬프트 2 (같은 트리, 새 프로세스)
+  check("X2: the brief is not repeated in the next prompt", p2.sent.length === 0);
+  p2.handlers.turn_end({}, ctx);
+  check("X3: carried gate + no new change -> no finish block", p2.sent.length === 0);
+
+  now += 30_000; editOk(p2.handlers, "b.py");              // 새 변경
+  p2.handlers.turn_end({}, ctx);
+  check("X4: a change after the carried gate -> blocked again",
+    p2.sent.length === 1 && /verify-fast/.test(p2.sent[0] ?? ""));
 }
 
 process.exit(failures ? 1 : 0);

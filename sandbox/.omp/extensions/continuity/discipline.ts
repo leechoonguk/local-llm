@@ -60,7 +60,7 @@
  * layer was reverted by user decision). Logging only when STUCK_RESET_LOG set.
  */
 // @ts-expect-error — Node builtin, not project-compiled
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { resolve } from "node:path";
 
@@ -94,7 +94,8 @@ export function registerDiscipline(pi: any): void {
   let mutatedEver = false;
   let firstMutationAt = 0, testNudged = false;
   let redFirstAt = 0;
-  let lastGateAt = 0, lastNoticeAt = 0, gateBlocks = 0, turnCount = 0;
+  const persisted = loadPersisted();
+  let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
   let lastFastGateAt = 0, lastMutationAt = 0;
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
@@ -171,7 +172,7 @@ export function registerDiscipline(pi: any): void {
       let wasFullGate = false;
       // 서 있는 하네스 검사 경고 추적 — backend 스코프 verify 초록 위에서 종료한
       // 실측 셀(1738s)의 가짜완료 메커니즘. finish 시점에 lastGateAt 과 비교한다.
-      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) lastNoticeAt = Date.now();
+      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) { lastNoticeAt = Date.now(); savePersisted({ lastNoticeAt }); }
       if (/^read/i.test(event.toolName) && event.input?.path) readPaths.add(String(event.input.path));
       // TRUNC-RECOVERY(사용자 제기): 절단·미완 쓰기는 통째 재시도가 아니라 분할로.
       if (event.isError && /^(write|edit)/i.test(event.toolName)) {
@@ -195,7 +196,7 @@ export function registerDiscipline(pi: any): void {
         const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
         if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
         if (fullGate) {
-          lastGateAt = Date.now(); unverified.clear();
+          lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
           cadenceNudged = false; cadenceEscalated = false;
         }
         if (f) {
@@ -251,11 +252,11 @@ export function registerDiscipline(pi: any): void {
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
-  let openingSent = false;
+  let openingSent = (persisted.briefedAt ?? 0) > 0; // 프롬프트마다 다시 보내지 않는다(실측: 4프롬프트에 4회)
   pi.on("turn_end", (e: any, ctx: any) => {
     try {
       if (!openingSent) {
-        openingSent = true;
+        openingSent = true; savePersisted({ briefedAt: Date.now() });
         pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
@@ -316,7 +317,7 @@ export function registerDiscipline(pi: any): void {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
           log(`END-GATE re-drive #${endGateSends}`);
-        } else if (mutatedEver && (lastGateAt === 0 || lastNoticeAt > lastGateAt)) {
+        } else if (mutatedEver && (lastGateAt < lastMutationAt || (lastNoticeAt > 0 && lastNoticeAt > lastGateAt))) {
           // 하드 finish-block(무제한·멱등): 널 블록에서 full 게이트 무실행 종료와
           // backend 스코프 초록 + 서 있는 check-* 경고 위 종료가 finish-check ×2 를
           // 통과했다(2026-08-28 부검). 게이트의 완료 정의를 기계로 집행한다.
@@ -325,7 +326,7 @@ export function registerDiscipline(pi: any): void {
           // 한 파일 편집에 40분 셀용 풀 게이트를 물리면 그 프롬프트 시간의 절반 이상이 게이트로 간다(실측 59/104초).
           // 벤치 셀은 변경이 13~15 파일이라 이 경로로 새지 않는다.
           const noticeStanding = lastNoticeAt > 0 && lastNoticeAt > lastGateAt;
-          const small = !noticeStanding && lastGateAt === 0 && unverified.size > 0 && unverified.size <= SMALL_FOOTPRINT;
+          const small = !noticeStanding && unverified.size > 0 && unverified.size <= SMALL_FOOTPRINT;
           if (small && lastFastGateAt > lastMutationAt) {
             log(`FINISH-OK targeted (${unverified.size} file(s), fast gate after the last edit)`);
           } else {
@@ -334,9 +335,9 @@ export function registerDiscipline(pi: any): void {
               pi.sendUserMessage(`You are finishing after changing ${unverified.size} file(s) with nothing verified since. Run the check that covers what you touched — \`make verify-fast\`, or pytest on the touched test file — and fix what it reports before finishing.`);
               log(`FINISH-BLOCK #${gateBlocks} (targeted, ${unverified.size} file)`);
             } else {
-              const why = lastGateAt === 0
-                ? "this session has never run the full verification"
-                : "a harness check notice was raised after your last full verification run";
+              const why = noticeStanding
+                ? "a harness check notice was raised after your last full verification run"
+                : "the full verification has not run since your last change";
               let bmsg = `You are finishing, but ${why}. Run \`make verify\` from the sandbox root end-to-end now, address anything it or a standing system-notice reports, and only then finish.`;
               if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
               pi.sendUserMessage(bmsg);
@@ -391,6 +392,30 @@ function importLines(content: string): Set<string> {
     || /^\w+Dep\s*=\s*Annotated\b/.test(l)
     || /\binclude_router\(/.test(l)));
 }
+
+// 프롬프트 간 상태(2026-08-29 실측): 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나라
+// lastGateAt·브리핑 여부가 매 프롬프트 초기화됐다. 4프롬프트 세션에서 p2·p3 이 게이트를 15회
+// 돌았는데 p4 가 "이 세션은 풀 검증을 한 번도 안 돌렸다"며 다시 막았다. 벤치 러너는 셀마다
+// .omp/state 를 지우므로 셀은 영향을 받지 않는다.
+const STATE_DIR = ".omp/state";
+const STATE_FILE = `${STATE_DIR}/discipline.json`;
+type Persisted = { briefedAt?: number; lastGateAt?: number; lastNoticeAt?: number };
+function loadPersisted(): Persisted {
+  try { return JSON.parse(readFileSync(STATE_FILE, "utf-8")) as Persisted; } catch { return {}; }
+}
+function savePersisted(patch: Persisted): void {
+  try {
+    const cur = loadPersisted();
+    const next: Persisted = {
+      briefedAt: Math.max(cur.briefedAt ?? 0, patch.briefedAt ?? 0) || undefined,
+      lastGateAt: Math.max(cur.lastGateAt ?? 0, patch.lastGateAt ?? 0) || undefined,
+      lastNoticeAt: Math.max(cur.lastNoticeAt ?? 0, patch.lastNoticeAt ?? 0) || undefined,
+    };
+    mkdirSync(STATE_DIR, { recursive: true });
+    writeFileSync(STATE_FILE, JSON.stringify(next));
+  } catch { /* 훅·확장은 절대 던지지 않는다 */ }
+}
+
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
 const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));
