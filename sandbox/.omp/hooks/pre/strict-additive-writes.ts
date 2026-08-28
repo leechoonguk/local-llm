@@ -14,6 +14,23 @@ import { existsSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { resolve } from "node:path";
 
+// ---- WATCH SPEC (data, not engine) -------------------------------------
+// 프로젝트별 배선/등록 관용구는 여기에 데이터로 선언한다. 엔진(패치 파싱·교체/삽입
+// 판별·형제 치환 탐지)은 범용이고, 이 블록만 프로젝트에 맞게 바꾼다.
+const WATCH_SPEC: Array<{ paths: RegExp; lines: RegExp[] }> = [
+  {
+    paths: /backend\/(alembic\/env\.py|tests\/conftest\.py|app\/dependencies\/services\.py|app\/main\.py)$/,
+    lines: [
+      /^(from\s+\S+\s+import\b|import\s+\S)/,
+      /^\w+Dep\s*=\s*Annotated\b/,
+      /\binclude_router\(/,
+    ],
+  },
+];
+const watchedLine = (abs: string, line: string): boolean =>
+  WATCH_SPEC.some((w) => w.paths.test(abs) && w.lines.some((r) => r.test(line)));
+// ------------------------------------------------------------------------
+
 const MIN_LINES = 12;        // files smaller than this are cheap to rewrite honestly
 const RETAIN_FLOOR = 0.5;    // block when less than half of the existing lines survive
 
@@ -47,10 +64,7 @@ export default function strictAdditiveWrites(pi: any) {
       const abs = path.startsWith("/") ? path : resolve(process.cwd(), path);
       if (!existsSync(abs)) return;
       const fileLines = readFileSync(abs, "utf-8").split("\n");
-      const isReg = (l: string) =>
-        /^(from\s+\S+\s+import\b|import\s+\S)/.test(l) || /^\w+Dep\s*=\s*Annotated\b/.test(l) || /\binclude_router\(/.test(l);
       const isImport = (l: string) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l);
-      const WATCHED = /backend\/(alembic\/env\.py|tests\/conftest\.py|app\/dependencies\/services\.py|app\/main\.py)$/;
       for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?\.?:\n((?:\+[^\n]*(?:\n|$))+)/g)) {
         if (op[2]) continue; // insert form — additive, fine
         const target = (fileLines[Number(op[1]) - 1] ?? "").trim();
@@ -58,7 +72,22 @@ export default function strictAdditiveWrites(pi: any) {
         const bodyLines = op[3].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
         const retained = bodyLines.includes(target);
         if (retained) continue;
-        if (WATCHED.test(abs) && isReg(target)) {
+        // 보편 규칙: 형제 치환(sibling swap). 관측된 7건 전부 "뼈대는 같고 식별자만
+        // 다른" 줄로의 교체였다(user->notice). 프레임워크 무관: 식별자 마스킹 후
+        // 뼈대가 동일하고 식별자가 2군데 이상 갈리면, 추가 과제에서 형제는 공존해야
+        // 한다 — 교체가 아니라 삽입으로 유도한다. (값 수정 x=1->x=2, 단일 인자 교체
+        // compute(y)->compute(z) 는 통과 — 오탐 경계는 프루프 15-19.)
+        const sibling = bodyLines.find((b) => siblingSwap(target, b));
+        if (sibling) {
+          return {
+            block: true,
+            reason:
+              `this edit REPLACES \`${target.slice(0, 60)}\` with its sibling \`${sibling.slice(0, 60)}\` — ` +
+              "an additive task keeps existing lines and adds new ones alongside. Keep the old line and " +
+              `use the insert form (\`PUT ${op[1]}+1@:\`) for the new one.`,
+          };
+        }
+        if (watchedLine(abs, target)) {
           return {
             block: true,
             reason:
@@ -160,6 +189,18 @@ export default function strictAdditiveWrites(pi: any) {
         "changes, or include the existing content you mean to keep.",
     };
   });
+}
+
+function siblingSwap(oldLine: string, newLine: string): boolean {
+  if (oldLine === newLine) return false;
+  const ids = (l: string) => l.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
+  const skel = (l: string) => l.replace(/[A-Za-z_][A-Za-z0-9_]*/g, "\u0001").replace(/\s+/g, " ").trim();
+  if (skel(oldLine) !== skel(newLine)) return false;
+  const a = ids(oldLine), b = ids(newLine);
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+  return diff >= 2;
 }
 
 function meaningfulLines(content: string): string[] {
