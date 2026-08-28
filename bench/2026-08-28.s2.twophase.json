@@ -1,0 +1,66 @@
+[
+ {
+  "at": "2026-08-28T06:18:03.614Z",
+  "model": "omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 3000,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "phase_walls": [
+   1500,
+   1500
+  ],
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "mlx-community--Qwen3.5-4B-4bit",
+    "mlx-community--Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "mlx-community--Qwen3.6-35B-A3B-5bit",
+   "aux": "mlx-community--Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 10,
+  "expected": 15,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   " M sandbox/backend/tests/conftest.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 1,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 1,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-28T06-43-27-517Z_01a0471b-ec9d-727f-a625-b0fae3c0c7dc.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 21,
+  "tools": {
+   "bash": 22,
+   "read": 43,
+   "glob": 6,
+   "edit": 18,
+   "write": 3
+  },
+  "gate_runs": 0,
+  "first_full_gate_s": null,
+  "first_green_s": null,
+  "no_work": false
+ }
+]

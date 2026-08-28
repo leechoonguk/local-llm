@@ -1,0 +1,60 @@
+[
+ {
+  "at": "2026-08-28T06:06:51.709Z",
+  "model": "anthropic/claude-sonnet-5",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 577,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "phase_walls": [
+   387,
+   189
+  ],
+  "residency": null,
+  "artifacts": 15,
+  "expected": 15,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   " M sandbox/backend/tests/conftest.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/alembic/versions/74_add_notice_table.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py",
+   "?? sandbox/backend/tests/api/test_notice.py",
+   "?? sandbox/backend/tests/repositories/test_notice.py",
+   "?? sandbox/backend/tests/services/test_notice.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-28T06-13-41-626Z_01a04700-ac7a-7016-8d6e-5ab93b9e8d2d.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 0,
+  "tools": {
+   "bash": 7,
+   "glob": 1,
+   "grep": 1
+  },
+  "gate_runs": 2,
+  "first_full_gate_s": 61,
+  "first_green_s": 85,
+  "no_work": true
+ }
+]
