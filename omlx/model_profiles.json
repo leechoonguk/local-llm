@@ -19,9 +19,7 @@
      "enable_thinking": true,
      "vlm_mtp_enabled": true,
      "vlm_mtp_draft_model": "Qwen3.6-35B-A3B-MTP-5bit",
-     "reasoning_parser": "qwen",
-     "thinking_budget_enabled": true,
-     "thinking_budget_tokens": 2048
+     "reasoning_parser": "qwen"
     },
     "source_template": null,
     "expose_as_model": true

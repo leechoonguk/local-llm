@@ -107,6 +107,7 @@ providers:
         # 값 2048 은 2026-08-28 스윕 실측 승자(bench/2026-08-28.s2.thinkbudget.md):
         # 5120 대비 2/2 초록·유일 scored green 38.6m, 1024 는 게이트 회피로 하한 초과.
         # thinking 블록이 절반으로 얇아지고 턴 수로 보상되는 패턴 — 종반 품질 유지에 유리.
-        compat:
-          extraBody:
-            thinking_budget: 2048
+        # 2026-08-28 실험(nobudget): budget 을 빼면 MTP 가 살아난다(75.8 vs 63.7 tok/s).
+        # 무제한 thinking 의 토큰 폭주(간단 과제 8351 토큰 실측) 대비 MTP 17% 이득이
+        # 실제 게이트 성적에서 어느 쪽이 큰지 미검증이라, 셀로 직접 비교한다.
+        # 결과가 나쁘면 이 블록을 되살린다(extraBody thinking_budget: 2048).
