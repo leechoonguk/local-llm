@@ -73,7 +73,6 @@ const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
-const FINISH_CHECK_MAX = 2;          // finish-check re-drives (23.9m finish with 1 incomplete slipped past a single check - measured 2026-08-27)
 const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
@@ -91,11 +90,16 @@ export function registerDiscipline(pi: any): void {
 
   let resets = 0, stallTurns = 0, endGateSends = 0;
   let mutatedEver = false;
-  let firstMutationAt = 0, testNudged = false, finishChecks = 0;
+  let firstMutationAt = 0, testNudged = false;
   let redFirstAt = 0;
   let lastGateAt = 0, lastNoticeAt = 0, gateBlocks = 0, turnCount = 0;
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
+  // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
+  let greenIdle = false, tailNudged = false, steerCount = 0;
+  const readPaths = new Set<string>();
+  const steered = new Set<string>();
+  const truncNudged = new Set<string>();
   const srcWritten = new Set<string>();
   const testWritten = new Set<string>();
   let lastProgressAt = Date.now();
@@ -161,9 +165,26 @@ export function registerDiscipline(pi: any): void {
       const content = contentText(event.content);
       if (event.isError && isPolicyBlock(content)) return;
       const f = failSig(content);
+      let wasFullGate = false;
       // 서 있는 하네스 검사 경고 추적 — backend 스코프 verify 초록 위에서 종료한
       // 실측 셀(1738s)의 가짜완료 메커니즘. finish 시점에 lastGateAt 과 비교한다.
       if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) lastNoticeAt = Date.now();
+      if (/^read/i.test(event.toolName) && event.input?.path) readPaths.add(String(event.input.path));
+      // TRUNC-RECOVERY(사용자 제기): 절단·미완 쓰기는 통째 재시도가 아니라 분할로.
+      if (event.isError && /^(write|edit)/i.test(event.toolName)) {
+        const tp = String(event.input?.path ?? "");
+        if (tp && !truncNudged.has(tp) && /truncat|unterminated|unexpected end|too (long|large)|exceeds/i.test(content)) {
+          truncNudged.add(tp);
+          pi.sendUserMessage(`The write to ${tp} was cut off. Do not retry the whole file — append in chunks (\`cat >> file <<'EOF'\`) or make targeted edits, then re-read the file to confirm it is complete.`);
+          log("TRUNC-RECOVERY sent");
+        }
+      }
+      // 종반 꼬리: 초록 이후 todo 정리 처닝(실측 1.2m)도 같은 윈도에서 1회 안내.
+      if (/^todo/i.test(event.toolName) && greenIdle && !tailNudged) {
+        tailNudged = true;
+        pi.sendUserMessage("The full gate is green and nothing has changed since. Stop here — write the final summary now; do not re-run verification or edit the todo again.");
+        log("TAIL-TRIM sent");
+      }
       if (/^bash/i.test(event.toolName)) {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
@@ -180,18 +201,40 @@ export function registerDiscipline(pi: any): void {
           // 전진 중인데 컷이 원래 시계로 발화했다(토의 2026-08-27).
           else if (f !== redSig) redSince = Math.max(redSince, Date.now() - RED_AGE_MS / 2);
           redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
-        } else if (!event.isError && (fullGate || (!truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5))) {
+        }
+        // 종반 꼬리 트림(실측 3.3~3.5m/셀): 초록 full 게이트 후 변이 없이 또 verify 를
+        // 돌리면 1회만 마감 유도. 변이가 생기면 윈도가 죽고 전부 재무장된다.
+        if (!f && !event.isError && fullGate) {
+          wasFullGate = true;
+          if (greenIdle && !tailNudged) {
+            tailNudged = true;
+            pi.sendUserMessage("The full gate is green and nothing has changed since. Stop here — write the final summary now; do not re-run verification or edit the todo again.");
+            log("TAIL-TRIM sent");
+          }
+          greenIdle = true;
+        }
+        if (!event.isError && (fullGate || (!truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5))) {
+          if (f) { /* red run — not a clear */ } else {
           // 전체 게이트 성공은 가장 강한 초록 증거 — Jaccard 무관 clear.
           // 실측: 성공 셀에서 stale red 가 END-GATE 2발을 소진시켰다(토의 2026-08-27).
           if (redSig) log(fullGate ? "green — red cleared (full-gate success)" : "green — red cleared (same-command success)");
           redSig = null; redCmdTk = null; redSince = 0; redFirstAt = 0; redTurns = 0;
+          }
         }
       }
       if (!f && !event.isError && isMutating(event.toolName)) {
         stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
+        if (!wasFullGate) { greenIdle = false; tailNudged = false; } // 실제 변이는 종반 윈도를 죽인다(초록 게이트 실행 자체는 예외)
         if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); regCheck(path); }
+        // write→edit 유도(3:1 표결 — 메시지형, deny 는 EISDIR 교훈으로 기각):
+        // 세션에서 읽은 적 있는(=기존) 파일을 통째 write 하면 표적 edit 을 1회 권한다.
+        if (/^write/i.test(event.toolName) && path && readPaths.has(path) && !steered.has(path) && steerCount < 2) {
+          steered.add(path); steerCount++;
+          pi.sendUserMessage(`${path} already existed — prefer the edit tool for changes; full rewrites are where registrations and adjacent code get lost.`);
+          log("WRITE-STEER sent");
+        }
         else if (/^bash/i.test(event.toolName)) regCheck(norm(str(event.input)).slice(0, 300));
         // 스키마 무관 백스톱: 패치형 결과는 입력에 path 가 없어도 결과 텍스트에
         // [path#TAG] 로 파일명을 남긴다 — 실셀에서 입력 트리거만으로 env.py
@@ -278,10 +321,6 @@ export function registerDiscipline(pi: any): void {
           if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
           pi.sendUserMessage(bmsg);
           log(`FINISH-BLOCK #${gateBlocks}`);
-        } else if (mutatedEver && finishChecks < FINISH_CHECK_MAX) {
-          finishChecks++;
-          pi.sendUserMessage(`Final check before finishing: run the project's full verification once end-to-end and confirm it is green. A passing subset or an earlier run does not count — the gate needs a fresh full pass. If it fails, finish the remaining failures first.`);
-          log("END-GATE finish-check");
         }
       }
     } catch (e2) { log(`turn_end ERR ${String(e2)}`); }

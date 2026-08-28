@@ -72,7 +72,11 @@ const TASKS: Record<string, Task> = {
    Do not add a new auth mechanism and do not seed a new account.
 5. Deliverables: the five domain layers, the dependency wiring and router registration,
    the Alembic migration for the table, the request file, and the tests the sibling has.
+   The request file must also be listed in tests/core/test_seed_api_actor.py's expected
+   http files — add it alongside the existing entries.
 6. Finish by running \`make verify\` and make it pass.`,
+    // 과제 텍스트 v1.1(2026-08-28 라운드 3): seed_api_actor 기대는 게이트 계약이라 스펙에
+    // 명시(게이트 관점 "spec completeness" 판정, 실측 7.8m/2.5m 소모 — 숨은 게이트였다).
   },
 };
 
@@ -258,13 +262,23 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
   let t0: number | null = null;
   let gateRuns = 0;
   let firstGateS: number | null = null;
+  let firstGreenS: number | null = null;
   const FULL_GATE = /make(?:\\?["'\s][^"]{0,40})?\s*(?:-C\s+\S+\s+)?(?:verify|test)(?!-fast)\b/;
   for (const line of readFileSync(path, "utf-8").split("\n")) {
     const ts = line.match(/"timestamp"\s*:\s*"([^"]+)"/)?.[1];
     if (ts && t0 === null) t0 = Date.parse(ts);
-    if (/"name"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line)) {
+    // dedupe: 도구 호출은 세션에 3중(assistant echo/tool_execution_start/toolResult)으로
+    // 반영되고 continuity 스냅샷이 이력을 재포함한다(실측: writes 723 vs 진짜 26).
+    // toolResult 레코드만, continuity 라인 제외로 계수한다.
+    const isResultLine = /"role"\s*:\s*"toolResult"/.test(line) && !line.includes('"continuity');
+    if (isResultLine && /"toolName"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line)) {
       gateRuns++;
       if (firstGateS === null && ts && t0 !== null) firstGateS = Math.round((Date.parse(ts) - t0) / 1000);
+    }
+    // 첫 full-suite 초록(중앙값 지표의 시각원 — 라운드 3 채점 요건): 커버리지 게이트
+    // 통과 문구는 full 게이트 초록에서만 나온다.
+    if (firstGreenS === null && isResultLine && line.includes("Required test coverage of 100% reached") && ts && t0 !== null) {
+      firstGreenS = Math.round((Date.parse(ts) - t0) / 1000);
     }
     if (line.includes('"continuity')) {
       try {
@@ -280,6 +294,7 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
   m.tools = tools;
   m.gate_runs = gateRuns;            // 계수만 하고 되쓰기를 빠뜨렸던 버그(refrozen 블록 실측) 수정
   m.first_full_gate_s = firstGateS;
+  m.first_green_s = firstGreenS;
   return m;
 }
 
@@ -409,6 +424,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   if (res && res.ok === false) console.error(`  !! residency: loaded_count=${res.loaded_count} (예상 코더+4B aux) — 재시작/역할 고정 확인 후 재실행`);
   const row: Record<string, unknown> = {
     model, task: taskName, mode: task.mode, wall_s: wall, timed_out: timedOut,
+    bundle: process.env.BENCH_BUNDLE ?? null, attempt: Number(process.env.BENCH_ATTEMPT ?? 1),
     residency: res,
     ...grade(task, models, snapshot),
     ...sessionMetrics(newestSessionAfter(started)),
