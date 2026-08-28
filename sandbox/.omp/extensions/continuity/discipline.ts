@@ -73,6 +73,8 @@ const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
+const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
+const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
 const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
@@ -93,6 +95,7 @@ export function registerDiscipline(pi: any): void {
   let firstMutationAt = 0, testNudged = false;
   let redFirstAt = 0;
   let lastGateAt = 0, lastNoticeAt = 0, gateBlocks = 0, turnCount = 0;
+  let lastFastGateAt = 0, lastMutationAt = 0;
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
   // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
@@ -190,6 +193,7 @@ export function registerDiscipline(pi: any): void {
         const cmdTk = tokens(cmdStr);
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
         const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
+        if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
         if (fullGate) {
           lastGateAt = Date.now(); unverified.clear();
           cadenceNudged = false; cadenceEscalated = false;
@@ -230,7 +234,7 @@ export function registerDiscipline(pi: any): void {
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
         if (!wasFullGate) { greenIdle = false; tailNudged = false; } // 실제 변이는 종반 윈도를 죽인다(초록 게이트 실행 자체는 예외)
-        if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); regCheck(path); }
+        if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); lastMutationAt = Date.now(); regCheck(path); }
         // write→edit 유도(3:1 표결 — 메시지형, deny 는 EISDIR 교훈으로 기각):
         // 세션에서 읽은 적 있는(=기존) 파일을 통째 write 하면 표적 edit 을 1회 권한다.
         if (/^write/i.test(event.toolName) && path && readPaths.has(path) && !steered.has(path) && steerCount < 2) {
@@ -316,14 +320,29 @@ export function registerDiscipline(pi: any): void {
           // 하드 finish-block(무제한·멱등): 널 블록에서 full 게이트 무실행 종료와
           // backend 스코프 초록 + 서 있는 check-* 경고 위 종료가 finish-check ×2 를
           // 통과했다(2026-08-28 부검). 게이트의 완료 정의를 기계로 집행한다.
-          gateBlocks++;
-          const why = lastGateAt === 0
-            ? "this session has never run the full verification"
-            : "a harness check notice was raised after your last full verification run";
-          let bmsg = `You are finishing, but ${why}. Run \`make verify\` from the sandbox root end-to-end now, address anything it or a standing system-notice reports, and only then finish.`;
-          if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
-          pi.sendUserMessage(bmsg);
-          log(`FINISH-BLOCK #${gateBlocks}`);
+          // 비례 규칙(2026-08-28): 아직 풀 게이트가 한 번도 안 돈 세션에서 변경이 SMALL_FOOTPRINT 이하이고
+          // 서 있는 check-* 경고가 없으면, 마감 조건은 풀 게이트가 아니라 타깃 검증이다. 프롬프트 단위 작업에서
+          // 한 파일 편집에 40분 셀용 풀 게이트를 물리면 그 프롬프트 시간의 절반 이상이 게이트로 간다(실측 59/104초).
+          // 벤치 셀은 변경이 13~15 파일이라 이 경로로 새지 않는다.
+          const noticeStanding = lastNoticeAt > 0 && lastNoticeAt > lastGateAt;
+          const small = !noticeStanding && lastGateAt === 0 && unverified.size > 0 && unverified.size <= SMALL_FOOTPRINT;
+          if (small && lastFastGateAt > lastMutationAt) {
+            log(`FINISH-OK targeted (${unverified.size} file(s), fast gate after the last edit)`);
+          } else {
+            gateBlocks++;
+            if (small) {
+              pi.sendUserMessage(`You are finishing after changing ${unverified.size} file(s) with nothing verified since. Run the check that covers what you touched — \`make verify-fast\`, or pytest on the touched test file — and fix what it reports before finishing.`);
+              log(`FINISH-BLOCK #${gateBlocks} (targeted, ${unverified.size} file)`);
+            } else {
+              const why = lastGateAt === 0
+                ? "this session has never run the full verification"
+                : "a harness check notice was raised after your last full verification run";
+              let bmsg = `You are finishing, but ${why}. Run \`make verify\` from the sandbox root end-to-end now, address anything it or a standing system-notice reports, and only then finish.`;
+              if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
+              pi.sendUserMessage(bmsg);
+              log(`FINISH-BLOCK #${gateBlocks}`);
+            }
+          }
         }
       }
     } catch (e2) { log(`turn_end ERR ${String(e2)}`); }

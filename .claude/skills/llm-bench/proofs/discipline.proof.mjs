@@ -102,10 +102,45 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 }
 
 { // H: finishing after mutations with no verification observed -> finish-check fires
+  // 기대 변경(2026-08-28): 한 파일 변경은 풀 게이트가 아니라 타깃 검증을 요구한다. 프롬프트 단위 실측에서
+  // 한 줄 docstring 프롬프트가 풀 게이트 3회(321초 중 ~171초)를 먹었다 — 요구를 변경 규모에 비례시켰다.
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx); // prose-only turn = finishing signal
-  check("H: mutated + no gate ever + prose finish -> FINISH-BLOCK", sent.length === 1 && /never run the full verification/.test(sent[0] ?? ""));
+  check("H: 1 file + no gate ever + prose finish -> targeted FINISH-BLOCK", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
+}
+
+{ // H2: 규모가 커지면 예전 그대로 풀 게이트를 요구한다 (벤치 셀은 13~15 파일이라 항상 이 경로)
+  const { handlers, sent } = makePi();
+  now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  handlers.turn_end({}, ctx);
+  check("H2: 3 files + no gate ever -> full-gate FINISH-BLOCK", sent.length === 1 && /never run the full verification/.test(sent[0] ?? ""));
+}
+
+{ // H3: 작은 변경을 타깃 검증으로 덮었으면 마감은 조용하다
+  const { handlers, sent } = makePi();
+  now += 30_000; editOk(handlers);
+  now += 5_000; bash(handlers, "make verify-fast", "3 passed");
+  handlers.turn_end({}, ctx);
+  check("H3: 1 file + fast gate after the edit -> finish is SILENT", sent.length === 0);
+}
+
+{ // H4: 타깃 검증이 편집보다 먼저면 덮은 게 아니다 — 다시 막는다
+  const { handlers, sent } = makePi();
+  bash(handlers, "make verify-fast", "3 passed");
+  now += 30_000; editOk(handlers);
+  handlers.turn_end({}, ctx);
+  check("H4: fast gate BEFORE the edit -> still blocked", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
+}
+
+{ // H5: 서 있는 check-* 경고가 있으면 작은 변경이라도 풀 게이트다
+  const { handlers, sent } = makePi();
+  now += 30_000; editOk(handlers);
+  bash(handlers, "make verify", "green");            // 게이트 1회 (lastGateAt 세팅)
+  now += 5_000; editOk(handlers);
+  bash(handlers, "cat notice", "[check-backend-naming] found 1 issue in app/x.py");
+  handlers.turn_end({}, ctx);
+  check("H5: standing check-* notice -> full-gate FINISH-BLOCK even for 1 file", sent.length === 1 && /harness check notice/.test(sent[0] ?? ""));
 }
 
 { // I: scope green (red cleared by a narrow success) -> finish-check still fires, once
@@ -258,8 +293,9 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 }
 
 { // R1: finish-block is uncapped and releases after a real gate run
+  // 규모 보정(2026-08-28): 풀 게이트 요구는 이제 SMALL_FOOTPRINT 초과에서만 걸리므로 세 파일로 세운다.
   const { handlers, sent } = makePi();
-  editOk(handlers);
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   handlers.turn_end({}, ctx); handlers.turn_end({}, ctx); handlers.turn_end({}, ctx);
   check("R1a: three gate-less finishes -> three blocks, third names the command",
     sent.length === 3 && /never run the full verification/.test(sent[2] ?? "") && /single next action/.test(sent[2] ?? ""));
@@ -306,8 +342,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 }
 
 { // R3: verify-fast green is NOT a full gate — the finish stays blocked
+  // 규모 보정(2026-08-28): 작은 변경(<=SMALL_FOOTPRINT)은 타깃 검증으로 마감할 수 있다(H3).
+  // 이 케이스의 계약은 "규모가 큰 변경에서는 verify-fast 가 풀 게이트를 대신하지 못한다" 이다.
   const { handlers, sent } = makePi();
-  editOk(handlers);
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   now += 10_000; bash(handlers, "make verify-fast", "all green");
   handlers.turn_end({}, ctx);
   check("R3: verify-fast green + prose finish -> FINISH-BLOCK stands",
