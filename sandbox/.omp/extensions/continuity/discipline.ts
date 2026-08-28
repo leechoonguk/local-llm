@@ -96,7 +96,7 @@ export function registerDiscipline(pi: any): void {
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
   // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
-  let greenIdle = false, tailNudged = false, steerCount = 0;
+  let greenIdle = false, tailNudged = false, steerCount = 0, sawRed = false;
   const readPaths = new Set<string>();
   const steered = new Set<string>();
   const truncNudged = new Set<string>();
@@ -200,13 +200,16 @@ export function registerDiscipline(pi: any): void {
           // 연장한다(총상한 RED_TOTAL_MS). 실측: gatefix-a2 에서 4개 시그니처가 12분간
           // 전진 중인데 컷이 원래 시계로 발화했다(토의 2026-08-27).
           else if (f !== redSig) redSince = Math.max(redSince, Date.now() - RED_AGE_MS / 2);
-          redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
+          redSig = f; redCmdTk = cmdTk; sawRed = true; log(`red: ${f.slice(0, 100)}`);
         }
         // 종반 꼬리 트림(실측 3.3~3.5m/셀): 초록 full 게이트 후 변이 없이 또 verify 를
         // 돌리면 1회만 마감 유도. 변이가 생기면 윈도가 죽고 전부 재무장된다.
         if (!f && !event.isError && fullGate) {
           wasFullGate = true;
-          if (greenIdle && !tailNudged) {
+          // sawRed 게이트(실측 2026-08-28): 깨끗한 베이스라인의 초기 verify 는 공허하게
+          // 초록이다 — red 를 한 번도 안 본 세션에서 TAIL-TRIM 이 발화해 피험자가 과제를
+          // 시작도 안 하고 종료했다(424s/산출물 0). 진짜 red→green 사이클 후에만 무장한다.
+          if (sawRed && greenIdle && !tailNudged) {
             tailNudged = true;
             pi.sendUserMessage("The full gate is green and nothing has changed since. Stop here — write the final summary now; do not re-run verification or edit the todo again.");
             log("TAIL-TRIM sent");
