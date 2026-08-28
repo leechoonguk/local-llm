@@ -68,7 +68,7 @@ make preflight && BENCH_BAKED=1 node .claude/skills/llm-bench/runner.ts \
 ## 5. 확정 구성(2026-08-28)
 | 층 | 값 | 근거 |
 |---|---|---|
-| 코더 | `omlx/Qwen3.6-35B-A3B-5bit:mtp`, 창 131072/출력 8192 | MoE 활성 3B — 로컬 최속 손(9B 41-44, 4B+MTP 45.3 tok/s 대비) |
+| 코더 | `omlx/Qwen3.6-35B-A3B-5bit:coder`, 창 131072/출력 8192 | MoE 활성 3B — 로컬 최속 손(9B 41-44, 4B+MTP 45.3 tok/s 대비) |
 | thinking | 서버 `thinking_budget_enabled: true`+`_tokens: 2048`, omp `extraBody.thinking_budget: 2048`(이중 보장) | 스윕 실측(`bench/2026-08-28.s2.thinkbudget.md`): 5120 대비 2/2 초록·유일 scored green 38.6m, 1024 는 하한 초과 |
 | aux(tiny) | `omlx/Qwen3.5-4B-4bit`(창 8192/출력 1024) + MTP 드래프터 | 4B 는 MTP 페어링으로 23.2→45.3 tok/s |
 | compaction | `…:nothink` | 코더와 같은 엔진 슬롯 — 추가 상주 0 |

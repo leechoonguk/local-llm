@@ -9,7 +9,7 @@
 set -uo pipefail
 
 URL=${OMLX_URL:-http://127.0.0.1:9090}
-MODEL=${1:-Qwen3.6-35B-A3B-5bit:mtp}
+MODEL=${1:-Qwen3.6-35B-A3B-5bit:coder}
 BASE=${MODEL%%:*}
 LOG="$HOME/.omlx/logs/server.log"
 
@@ -40,8 +40,8 @@ AFTER=$(grep -c "vlm_mtp stats" "$LOG" 2>/dev/null || echo 0)
 if [ "$AFTER" -gt "$BEFORE" ]; then
   echo "  MTP 발화 ✓ $(grep 'vlm_mtp stats' "$LOG" | tail -1 | grep -o 'accepted=[0-9/]* ([0-9.]*%)')"
 else
-  echo "  MTP 미발화 — thinking_budget 이 걸려 있으면 정상이다(레벨 무관, 2026-08-28 확정: 63.7 vs 75.8 tok/s)."
-  echo "             budget 을 안 쓰는데도 스킵이면 vlm_mtp_enabled·드래프터 페어링·비중립 penalty 를 확인한다."
+  echo "  MTP 미발화 — 코더는 설정으로 꺼 두었다(budget 과 공존 불가, 2026-08-28 A/B: budget 유지가 우세)."
+  echo "             MTP 를 쓰는 모델(4B aux)에서 스킵이면 vlm_mtp_enabled·드래프터 페어링·비중립 penalty·budget 을 확인한다."
 fi
 
 curl -s "$URL/admin/api/models" | python3 -c "

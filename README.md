@@ -61,7 +61,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 메커니즘 자체는 동작한다 — 레벨별로 reasoning_content 문구가 실제로 달라진다(`xhigh`는 "inorder successor/predecessor" 구조를 명시적으로 더 설계하고 들어감, `low`/`medium`은 더 즉흥적). 다만 길이가 레벨과 단조 관계가 아니다(`xhigh`가 가장 짧음) — **n=1, temp 0.6 샘플링 노이즈일 가능성이 높다.** 레벨 간 실제 차이를 확정하려면 반복 실측(n≥3)이 필요하다. 27B dense라 요청당 114~165s로 느리다 — README "선정 근거" 표의 27B prefill 느림 특성과 일치.
 
 **3.6은 `reasoning_effort`가 통째로 no-op이다 (2026-08-24, 실측 정정).** 3.8과 같은 조작을
-3.6(`Qwen3.6-35B-A3B-5bit:mtp`)에 해보면 아무 일도 없다 — seed 고정, 나머지 파라미터 동일,
+3.6(`Qwen3.6-35B-A3B-5bit:coder`)에 해보면 아무 일도 없다 — seed 고정, 나머지 파라미터 동일,
 `/v1/chat/completions`의 `reasoning_effort`와 `/v1/responses`의 `reasoning.effort` 둘 다:
 
 | `reasoning_effort`/`reasoning.effort` | completion/output 토큰 | reasoning 토큰 |
@@ -166,7 +166,7 @@ nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 �
 ### 모델·서빙 매트릭스 (2026-08-24, fast-api-standard 장기 세션 실측)
 
 M4 Pro 64GB, 단일 로드, 창 131072 / 출력 8192, temp 는 각 모델 카드 권장값. thinking은
-Ollama 세 모델은 `medium` 고정(Modelfile), oMLX `Qwen3.6-35B-A3B-5bit:mtp`는 **`medium`이
+Ollama 세 모델은 `medium` 고정(Modelfile), oMLX `Qwen3.6-35B-A3B-5bit:coder`는 **`medium`이
 아니라 무제한** — 아래 "3.6은 `reasoning_effort`가 통째로 no-op이다" 절 참고, 이 표를
 처음 채울 때는 몰랐던 사실이라 여기 정정해 둔다. 셀당 45분 상한. `fast-api-standard` 의
 `make bench-llm`
@@ -181,8 +181,8 @@ Ollama 세 모델은 `medium` 고정(Modelfile), oMLX `Qwen3.6-35B-A3B-5bit:mtp`
 | Ollama `qwen3.6-coder` (35B-A3B nvfp4) | **6/6, 게이트 통과, 19분** | 5/13, FAIL 5, 32분 |
 | Ollama `qwen3-coder` (30B-A3B Q4_K_M, instruct) | 4/6, FAIL 3, 13분 | **12/13, FAIL 1, 18분** |
 | Ollama `qwen3.8-coder` (27.8B dense nvfp4) | 0/6, 45분 타임아웃 | 0/13, 45분 타임아웃 |
-| **oMLX `Qwen3.6-35B-A3B-5bit:mtp`** (thinking 무제한) | **6/6, 게이트 통과, 16분 40초** | 15/13, FAIL 1(`env.py` `User` 등록 삭제 회귀), **45분 타임아웃** |
-| oMLX `Qwen3.6-35B-A3B-5bit:mtp` + `thinking_budget 5120` | 미측정 | 15/13, FAIL 1(미완성 1, **회귀 0**), 43분 52초 자체 종료 |
+| **oMLX `Qwen3.6-35B-A3B-5bit:coder`** (thinking 무제한) | **6/6, 게이트 통과, 16분 40초** | 15/13, FAIL 1(`env.py` `User` 등록 삭제 회귀), **45분 타임아웃** |
+| oMLX `Qwen3.6-35B-A3B-5bit:coder` + `thinking_budget 5120` | 미측정 | 15/13, FAIL 1(미완성 1, **회귀 0**), 43분 52초 자체 종료 |
 | oMLX `Qwen3.8-27B-nvfp4:mtp` + `thinking_budget 2560` | 미측정 | 0/13, 45분 타임아웃 (read 39 / write 0) |
 
 셀별 상세는 `bench/`(캠페인별 기록: `2026-08-23.s2.ollama-manual.md`, `2026-08-24.s2.ollama-matrix.md`,

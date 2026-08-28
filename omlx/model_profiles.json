@@ -2,28 +2,6 @@
  "version": 1,
  "profiles": {
   "Qwen3.6-35B-A3B-5bit": {
-   "mtp": {
-    "name": "mtp",
-    "display_name": "mtp",
-    "api_name": "mtp",
-    "description": "coder 레시피(창 131072/출력 8192, Qwen 권장 샘플링) + VLM MTP speculative decoding. repetition/presence 는 중립값이어야 MTP 경로가 유지된다(비중립이면 BatchGenerator 폴백).",
-    "created_at": "2026-08-24T03:41:45+00:00",
-    "updated_at": "2026-08-24T03:41:45+00:00",
-    "settings": {
-     "max_context_window": 131072,
-     "max_tokens": 8192,
-     "temperature": 0.6,
-     "top_p": 0.95,
-     "top_k": 20,
-     "min_p": 0.0,
-     "enable_thinking": true,
-     "vlm_mtp_enabled": true,
-     "vlm_mtp_draft_model": "Qwen3.6-35B-A3B-MTP-5bit",
-     "reasoning_parser": "qwen"
-    },
-    "source_template": null,
-    "expose_as_model": true
-   },
    "nothink": {
     "name": "nothink",
     "display_name": "nothink",
@@ -39,9 +17,29 @@
      "top_k": 20,
      "min_p": 0.0,
      "enable_thinking": false,
-     "vlm_mtp_enabled": true,
-     "vlm_mtp_draft_model": "Qwen3.6-35B-A3B-MTP-5bit",
      "reasoning_parser": "qwen"
+    },
+    "source_template": null,
+    "expose_as_model": true
+   },
+   "coder": {
+    "name": "coder",
+    "display_name": "coder",
+    "api_name": "coder",
+    "description": "coder 레시피(131072/8192) + thinking budget 2048. MTP 는 budget 과 공존 불가라 끔(2026-08-28 실측).",
+    "created_at": "2026-08-24T03:41:45+00:00",
+    "updated_at": "2026-08-24T03:41:45+00:00",
+    "settings": {
+     "max_context_window": 131072,
+     "max_tokens": 8192,
+     "temperature": 0.6,
+     "top_p": 0.95,
+     "top_k": 20,
+     "min_p": 0.0,
+     "enable_thinking": true,
+     "reasoning_parser": "qwen",
+     "thinking_budget_enabled": true,
+     "thinking_budget_tokens": 2048
     },
     "source_template": null,
     "expose_as_model": true

@@ -47,7 +47,7 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 ### 1. 실행
 ```bash
 node .claude/skills/llm-bench/runner.ts --dry-run                             # 세팅/채점/원복 점검(모델 없음, 두 과제)
-node .claude/skills/llm-bench/runner.ts --model omlx/mlx-community--Qwen3.6-35B-A3B-5bit:mtp --campaign omlx-3.6
+node .claude/skills/llm-bench/runner.ts --model omlx/mlx-community--Qwen3.6-35B-A3B-5bit:coder --campaign omlx-3.6
 node .claude/skills/llm-bench/runner.ts --models a,b --campaign <name> --timeout 2700
 node .claude/skills/llm-bench/runner.ts --matrix                              # DEFAULT_MODELS × 두 과제
 node .claude/skills/llm-bench/runner.ts --revert-only                         # 중단된 셀 뒤처리

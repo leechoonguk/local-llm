@@ -82,7 +82,7 @@ const TASKS: Record<string, Task> = {
 
 /** --matrix 의 기본 후보. 현재 서빙(oMLX)에 등록된 코더 — omp/models.yml 참고. */
 const DEFAULT_MODELS = [
-  "omlx/Qwen3.6-35B-A3B-5bit:mtp",
+  "omlx/Qwen3.6-35B-A3B-5bit:coder",
   "omlx/Qwen3.8-27B-nvfp4:mtp",
 ];
 
