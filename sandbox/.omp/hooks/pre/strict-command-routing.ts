@@ -60,6 +60,13 @@ const denylist: Array<{
     target: "make fix (app/tests 한정)",
   },
   {
+    // 실측(2026-08-28): `python` not found → which python3 → 상대 .venv 경로 실패 →
+    // 절대경로, 0.5m 우회. 어포던스는 있으므로 라우팅으로 바로 안내한다.
+    desc: "bare python/pytest 직접 실행",
+    pattern: new RegExp(`${atCmdStart("(?:python3?|pytest)")}(?:\\s|$)`),
+    target: 'make test-fast t="..." (단발 파이썬은 backend/.venv/bin/python 절대경로)',
+  },
+  {
     desc: "Pytest 직접 실행",
     pattern: new RegExp(`${atCmdStart("\\.venv/bin/pytest")}(?:\\s|$)`),
     target: "make test",

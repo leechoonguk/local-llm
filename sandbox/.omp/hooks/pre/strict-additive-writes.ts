@@ -10,9 +10,20 @@
  * edits — `edit` changes survive, wholesale rewrites forget.
  */
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { resolve } from "node:path";
+
+// 훅은 절대 던지지 않는다 — omp 는 훅 예외를 도구 실패로 승격시켜 edit 자체를
+// 죽인다(실측 2026-08-28: EISDIR 크래시 13/13 로 한 셀의 edit 이 전멸, ~10분 낭비).
+// 읽을 수 없거나 파일이 아니면 null → 검사를 조용히 통과(fail-open).
+function safeRead(p: string): string | null {
+  try {
+    const st = statSync(p);
+    if (!st.isFile()) return null;
+    return readFileSync(p, "utf-8");
+  } catch { return null; }
+}
 
 const MIN_LINES = 12;        // files smaller than this are cheap to rewrite honestly
 const RETAIN_FLOOR = 0.5;    // block when less than half of the existing lines survive
@@ -45,8 +56,9 @@ export default function strictAdditiveWrites(pi: any) {
       const patch = String((event.input as any).input);
       const path = String(event.input.path ?? "");
       const abs = path.startsWith("/") ? path : resolve(process.cwd(), path);
-      if (!existsSync(abs)) return;
-      const fileLines = readFileSync(abs, "utf-8").split("\n");
+      const fileText = safeRead(abs);
+      if (fileText === null) return; // 빈 path→cwd(디렉터리) 등 — EISDIR 클래스 fail-open
+      const fileLines = fileText.split("\n");
       const isImport = (l: string) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l);
       // 의도 프로토콜(사용자 설계 2026-08-28): 차단은 "실수 교체"만 걸러내는 장치다.
       // 진짜 교체 의도는 편집에 `# intent: replace` 마커를 실어 명시하면 통과한다 —
@@ -155,8 +167,9 @@ export default function strictAdditiveWrites(pi: any) {
     const path = String(event.input.path ?? "");
     if (!/\.(?:py|ts|tsx|js|mjs|yml|yaml|toml|json|http)$/.test(path)) return;
     const abs = resolve(process.cwd(), path);
-    if (!existsSync(abs)) return;
-    const oldLines = meaningfulLines(readFileSync(abs, "utf-8"));
+    const fileText = safeRead(abs);
+    if (fileText === null) return;
+    const oldLines = meaningfulLines(fileText);
     if (oldLines.length < MIN_LINES) return;
     const newSet = new Set(meaningfulLines(String(event.input.content ?? event.input.text ?? "")));
     const retained = oldLines.filter((l: string) => newSet.has(l)).length / oldLines.length;

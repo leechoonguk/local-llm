@@ -82,10 +82,10 @@ style: |
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
 <!-- sync: root-makefile.md=7691dca3d8796a13 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
-<!-- sync: strict-additive-writes.ts=dd9ee0cce2db4e08 -->
+<!-- sync: strict-additive-writes.ts=eaf997575b22d615 -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
-<!-- sync: strict-command-routing.ts=6e4cc14b1c2d2469 -->
+<!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
 <!-- sync: strict-no-vcs-publish.ts=724e9d5a9494d647 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
