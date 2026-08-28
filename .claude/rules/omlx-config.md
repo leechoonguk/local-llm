@@ -11,6 +11,7 @@ paths:
 - `version: 1`. `max_context_window`, `max_tokens` 는 정수이고 `max_tokens < max_context_window`.
 - `enable_thinking: true` 면 `reasoning_parser: "qwen"` 필수 — 없으면 thinking 이 content 에 섞인다.
 - **MTP 를 죽이는 값 금지**: `repetition_penalty` 는 1, `presence_penalty` 는 0 만, `guided_grammar` 금지(비중립이면 BatchGenerator 폴백).
+- `thinking_budget*` 도 MTP 를 끈다(레벨 무관, 2026-08-28 실측 75.8→63.7 tok/s) — 금지는 아니고 **의도된 트레이드오프**다(토큰 폭주 억제 우선). 켤 때는 `make smoke` 로 MTP 스킵을 확인하고 기록한다.
 - `vlm_mtp_enabled: true` 면 `vlm_mtp_draft_model` 필수.
 - `is_default: true` 는 정확히 1개. `active_profile_name` 은 실재하는 프로파일.
 

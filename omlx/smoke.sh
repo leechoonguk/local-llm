@@ -40,8 +40,8 @@ AFTER=$(grep -c "vlm_mtp stats" "$LOG" 2>/dev/null || echo 0)
 if [ "$AFTER" -gt "$BEFORE" ]; then
   echo "  MTP 발화 ✓ $(grep 'vlm_mtp stats' "$LOG" | tail -1 | grep -o 'accepted=[0-9/]* ([0-9.]*%)')"
 else
-  echo "  MTP 미발화 — 35B 는 thinking on 이면 정상(2026-08-28 확정: VLMModelAdapter 에서 verify 불가 → 62-65 tok/s)."
-  echo "             그 외 모델이라면 vlm_mtp_enabled·드래프터 페어링·비중립 penalty 를 확인한다."
+  echo "  MTP 미발화 — thinking_budget 이 걸려 있으면 정상이다(레벨 무관, 2026-08-28 확정: 63.7 vs 75.8 tok/s)."
+  echo "             budget 을 안 쓰는데도 스킵이면 vlm_mtp_enabled·드래프터 페어링·비중립 penalty 를 확인한다."
 fi
 
 curl -s "$URL/admin/api/models" | python3 -c "

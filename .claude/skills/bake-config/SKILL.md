@@ -64,7 +64,8 @@ make smoke MODEL=<짧은 id>      # 특정 모델/프로파일
 | 모델 저장소 | oMLX 앱 스토어 `~/.omlx/models`, 짧은 서빙 id. 다운로드는 `POST /admin/api/hf/download` | HF 캐시 폐지(2026-08-28) — 절차는 `/add-model` |
 
 ## 6. 알려진 함정
-- **35B 는 thinking on 이면 MTP 가 항상 스킵된다**(2026-08-28 실측, 이분 탐색으로 확정): `:mtp` 62-65 tok/s / `:nothink` 는 MTP 발화. 로그 사유 = `positioned verify sampling is unavailable on VLMModelAdapter`. 샘플링 파라미터·thinking budget 과는 무관하다. 9B·4B 는 thinking off 라 정상 발화. README 의 75-80 tok/s 는 MTP 가 살아 있던 시절 값이다.
+- **`thinking_budget` 은 MTP 를 끈다 — 레벨 무관**(모델 설정·프로파일·요청 extraBody). 실측 2026-08-28: thinking ON + budget 없음 = MTP 발화 75.8 tok/s / budget 2048 = 스킵 63.7 tok/s. thinking 자체는 무관하다. 현행 구성은 **budget(토큰 폭주 억제)을 택하고 MTP 17% 를 포기**한 것 — 무제한 thinking 이 간단한 과제에 8351 토큰을 쓴 실측이 근거다. 로그 사유 = `positioned verify sampling is unavailable on VLMModelAdapter`.
+  - 교훈: 프로파일 별칭으로 요청하면 **프로파일의 settings 가 적용된다** — base 모델 설정만 바꾸고 이분 탐색하다 1차 결론을 오판했다. 프로파일·base·요청 세 레벨을 모두 확인할 것.
 - 비중립 `repetition_penalty`/`presence_penalty`, `guided_grammar` 는 MTP 를 죽인다 — 중립 유지.
 - oMLX 는 `~/.omlx/settings.json` 에 auth secret 도 저장한다 — 커밋 금지, `install.sh` 가 필요한 키만 patch.
 - `hot_cache_max_size` 는 RAM 티어별(64GB+ 8GB / 48GB 4GB) — 48GB 에서 8GB 를 쓰면 wired 한도(40GB)를 넘긴다.
