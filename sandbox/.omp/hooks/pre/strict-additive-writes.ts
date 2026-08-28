@@ -14,23 +14,6 @@ import { existsSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { resolve } from "node:path";
 
-// ---- WATCH SPEC (data, not engine) -------------------------------------
-// 프로젝트별 배선/등록 관용구는 여기에 데이터로 선언한다. 엔진(패치 파싱·교체/삽입
-// 판별·형제 치환 탐지)은 범용이고, 이 블록만 프로젝트에 맞게 바꾼다.
-const WATCH_SPEC: Array<{ paths: RegExp; lines: RegExp[] }> = [
-  {
-    paths: /backend\/(alembic\/env\.py|tests\/conftest\.py|app\/dependencies\/services\.py|app\/main\.py)$/,
-    lines: [
-      /^(from\s+\S+\s+import\b|import\s+\S)/,
-      /^\w+Dep\s*=\s*Annotated\b/,
-      /\binclude_router\(/,
-    ],
-  },
-];
-const watchedLine = (abs: string, line: string): boolean =>
-  WATCH_SPEC.some((w) => w.paths.test(abs) && w.lines.some((r) => r.test(line)));
-// ------------------------------------------------------------------------
-
 const MIN_LINES = 12;        // files smaller than this are cheap to rewrite honestly
 const RETAIN_FLOOR = 0.5;    // block when less than half of the existing lines survive
 
@@ -91,16 +74,6 @@ export default function strictAdditiveWrites(pi: any) {
               "if you meant to ADD, keep the old line and use the insert form " +
               `(\`PUT ${op[1]}+1@:\`) for the new one. If you truly mean to REPLACE it, resend the same ` +
               "edit with a `# intent: replace` comment line included.",
-          };
-        }
-        if (watchedLine(abs, target)) {
-          return {
-            block: true,
-            reason:
-              `this edit REPLACES a registration/wiring line (\`${target.slice(0, 70)}\`) in a shared file — ` +
-              "add yours ALONGSIDE instead: keep that line and use the insert form " +
-              `(\`PUT ${op[1]}+1@:\`) to put the new line after it. If replacement is truly intended, ` +
-              "resend with a `# intent: replace` comment line.",
           };
         }
         if (isImport(target) && bodyLines.some(isImport)) {
