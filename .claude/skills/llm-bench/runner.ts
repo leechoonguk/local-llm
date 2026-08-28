@@ -225,6 +225,21 @@ function omlxUnloadAll(): void {
   for (const id of omlxLoadedModels()) {
     sh("curl", ["-s", "-o", "/dev/null", "--max-time", "30", "-X", "POST", `${OMLX_ADMIN}/models/${id}/unload`], WORKSPACE, 35_000);
   }
+  // POST 반환은 "언로드 예약"이지 완료가 아니다 — 서버는 스케줄러 작업이 빠질 때까지 큐잉한다.
+  // 실측 2026-08-29: 이 큐가 피험자의 첫 요청을 삼켜(`Request aborted because model … is being unloaded`)
+  // 셀이 17초·writes 0 으로 죽었다. 실제로 비었는지 확인하고 넘어간다.
+  for (let i = 0; i < 40 && omlxLoadedModels().length > 0; i++) sh("sleep", ["1"], WORKSPACE, 2_000);
+  const left = omlxLoadedModels();
+  if (left.length > 0) console.error(`  !! unload 대기 초과 — 여전히 상주: ${left.join(", ")}`);
+}
+
+/** 대상 코더를 미리 올린다 — 첫 요청이 로드(20초+)와 겹치면 세션 초반이 통째로 왜곡된다. */
+function omlxWarm(model: string): void {
+  const id = omlxId(model);
+  const body = JSON.stringify({ model: id, messages: [{ role: "user", content: "OK" }], max_tokens: 1 });
+  const r = sh("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", "--max-time", "180", "-X", "POST",
+    `${OMLX_URL}/v1/chat/completions`, "-H", "Content-Type: application/json", "-d", body], WORKSPACE, 190_000);
+  if (r.out.trim() !== "200") console.error(`  !! warm 실패(http=${r.out.trim()}) — 첫 요청이 로드와 겹칠 수 있다`);
 }
 
 /**
@@ -385,7 +400,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   // 로컬 모델: omlx 는 앱 서버 준비 확인(재시작 안 함 — oMLX 자체 LRU 축출 + residency 검증에 의존),
   // ollama 는 다른 모델 stop. 대상만 상주하는지는 셀 종료 시 residency() 로 검사한다.
   const local = model.startsWith("omlx/") || model.startsWith("ollama/");
-  if (model.startsWith("omlx/")) { ensureServer(); omlxUnloadAll(); } // 앱 서버 확인 + 로드된 모델 전부 언로드(강제 클린 슬레이트)
+  if (model.startsWith("omlx/")) { ensureServer(); omlxUnloadAll(); omlxWarm(model); } // 앱 서버 확인 → 전부 언로드(완료 확인) → 대상만 워밍
   if (model.startsWith("ollama/")) unloadOllama();
 
   // aux 역할 고정: tiny/smol 을 **실제 4B aux 모델**로 고정한다(코더가 아니다 — 실사용 구성으로 검증).
