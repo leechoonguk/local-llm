@@ -32,6 +32,8 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 8. **커밋/푸시는 요청 시에만.** omp 하네스는 훅으로 강제한다 — `sandbox/.omp/hooks/pre/strict-no-vcs-publish.ts` 가 피험자의 git commit/push 를 deny. Claude 쪽 ask 게이트는 승인 부담으로 2026-08-27 제거(행동 규칙으로만 유지). 커밋 메시지는 영어, 본문에 실측 근거를 한 줄 남긴다.
 9. **주석·README는 한국어**, 코드 식별자와 커밋 메시지는 영어. 기존 파일의 말투("~한다" 체)를 따른다.
 10. 실측으로 얻은 숫자(메모리, tok/s, 중단 토큰 수)는 README의 해당 표에 날짜와 함께 기록한다. 추정치는 "추정"이라고 쓴다.
+12. **피험자 하네스는 프롬프트 단위 사용을 1급으로 본다**(2026-08-29 실측, `bench/2026-08-29.s2.promptunit.md`). 네 계약을 지킨다 — 피험자는 `.omp/` 를 못 고친다(`strict-no-harness-edit`, 검사가 틀렸으면 보고만), 마감 요구는 변경 규모에 비례한다(≤2파일·경고 없음이면 `verify-fast`/타깃 pytest), 브리핑·게이트 상태는 `.omp/state/discipline.json` 으로 프롬프트를 넘어 이어진다, 새 post 훅은 `touchesPath`/`touchesStrict` 로 경로를 게이트하거나 `// hook-scope: global — 사유` 를 단다(`check-omp-hooks` 가 강제). 벤치 실행은 베이크 모드가 아니면 `--model` 을 명시한다 — 맨몸 `omp -p` 는 라이브 기본값을 타서 조용히 다른 모델로 돈다(실측 사고 1회).
+
 11. **표준은 `.claude/rules/`, 검증은 `make verify`.** 대상 파일(bench/, ollama/, omlx/, omp/, 문서, 스킬, 하네스)마다 규칙 파일이 있고 같은 이름의 검사(`.claude/hooks/check-<name>.ts`)가 그것을 기계로 확인한다. 편집하면 `PostToolUse` 훅이 해당 검사를 돌려 위반을 돌려주고, 규칙 6·7 의 금지 명령은 `PreToolUse` 훅이 deny 한다. 작업을 마쳤다고 보고하기 전과 커밋 전에 `make verify` 가 초록이어야 한다. 규칙·검사·Makefile 타깃은 한 이름으로 넷을 같이 추가한다(`.claude/rules/harness.md`).
 
 ## 디렉터리

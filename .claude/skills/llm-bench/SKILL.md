@@ -90,6 +90,17 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 
 무거운 integration 서브시스템이 계약 테스트와 강하게 결합돼(테스트가 시드 마이그레이션을 리플레이) sandbox 최소화 때 통째로 뺐다. 다시 하려면: fast-api-standard 에서 integration 관련 파일(models/routers/services/repositories/schemas/core integration, tests/core/test_integration*, fixtures, api/integration*.http, 훅 `check-backend-integration*`, 규칙, ast-grep integration, 시드 마이그레이션)을 sandbox 로 복원하고 포트만 치환한 뒤, `runner.ts` 의 `TASKS` 에 `integration` 셀을 되살린다. 부모 상태 복원(레퍼런스 산출물 삭제 + 역패치)은 `reference/a1aebf3.manifest.json` + `a1aebf3.parent.patch` 로 하고, 시드 마이그레이션이 다시 들어오면 마이그레이션 불변 규칙(`@{upstream}`) 때문에 임시 git 핀이 필요해진다 — 예전 러너 이력(git log)에 그 방식이 있다.
 
+## 프롬프트 단위 사용 (2026-08-29 실측, `bench/2026-08-29.s2.promptunit.md`)
+
+이 하네스의 최종 사용처는 40분 무인 셀이 아니라 사람이 프롬프트를 주는 인터랙티브다. 프롬프트 단위로 재보니 셀 기준 튜닝이 그대로는 안 맞았다 — 그 결과 지금 하네스에 들어간 계약:
+
+- **피험자는 `.omp/` 를 못 고친다**(`strict-no-harness-edit`). 실측에서 모델이 검사 통과를 위해 채점 정규식을 고쳤다. 검사가 틀렸다고 보이면 고치지 말고 답변에 보고한다.
+- **마감 요구는 변경 규모에 비례한다**. 마지막 변경 이후 풀 게이트가 없고 변경이 ≤2파일·서 있는 경고 없음이면 `make verify-fast`/타깃 pytest 로 마감. 3파일 이상·경고 서 있음은 풀 `make verify`. (한 줄 편집에 풀 게이트 3회 → 1회, 321→220초)
+- **상태는 프롬프트 경계를 넘는다**(`.omp/state/discipline.json`, gitignore·러너가 셀마다 삭제). 브리핑 1회, 게이트/경고 시각 유지. 마감 판정은 "게이트를 돌았나"가 아니라 **"마지막 변경 이후에 돌았나"**.
+- **훅은 자기 경로에만 돈다**(`lib/hook-scope.ts` + `check-omp-hooks` 강제). 새 post 훅은 `touchesPath`/`touchesStrict` 를 부르거나 `// hook-scope: global — 사유` 를 단다. 도구 결과 1회 비용 bash 4.89→1.56초.
+- **모델은 항상 명시한다.** 맨몸 `omp -p` 는 라이브 `modelRoles.default` 를 탄다 — 이 실측 1차 시도가 그렇게 조용히 Sonnet 으로 돌았다(세션 jsonl 의 `"model"` 로 사후 확인 필수). 베이크 모드가 아니면 `--model` 을 붙인다.
+- 백그라운드 프로브는 `< /dev/null` 로 stdin 을 닫고(안 닫으면 `readPipedInput` 에서 무한 대기), 세션 인터럽트에 죽지 않게 `nohup … & disown` 으로 띄운다.
+
 ## 운영 교훈 (2026-08-26~28 프로그램 실측)
 
 **셀 운영**

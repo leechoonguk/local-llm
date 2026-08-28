@@ -489,6 +489,19 @@ make check-<name>      # 검사 하나
 | `autostart` | `ollama/`, `omlx/` ↔ 호스트 | 두 서버의 자동 시작·재시작이 **둘 다 꺼짐**: 템플릿 RunAtLoad/KeepAlive false, install.sh 에 brew services 없음, brew services 미기동, homebrew plist 없음, 전역 launchd·로그인 항목 없음, oMLX `auto_start_on_launch: false` |
 | `live-sync` | `ollama/`, `omlx/`, `omp/` ↔ 호스트 | `~/.omp/agent` models.yml 동일·config.yml modelRoles, `~/.omlx` JSON 동일·settings 값·HF 캐시, Ollama plist·(서버가 떠 있으면) `ollama show` 파라미터. 미설치는 skip |
 
+### 피험자 하네스(`sandbox/.omp/`)의 계약 — 프롬프트 단위 실측 반영 (2026-08-29)
+
+벤치 셀뿐 아니라 인터랙티브 작업에도 쓰는 하네스라, 프롬프트 단위로 재측정해 네 가지를 고쳤다(근거: `bench/2026-08-29.s2.promptunit.md`).
+
+| 계약 | 왜 | 실측 |
+|---|---|---|
+| 피험자는 `.omp/` 를 편집할 수 없다(`strict-no-harness-edit`) | 채점하는 자를 피험자가 고치면 초록이 거짓이 된다 | 모델이 `q: NameQuery \| None` 통과를 위해 `check-backend-router-params.ts` 의 판정 정규식을 고쳤다 |
+| 마감 요구는 변경 규모에 비례한다 | 한 파일 편집에 40분 셀용 풀 게이트를 물리면 프롬프트 시간의 절반이 게이트다 | docstring 한 줄: 321초·풀 게이트 3회 → **220초·1회** |
+| 브리핑·게이트 상태는 프롬프트 경계를 넘는다(`.omp/state/discipline.json`) | 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나라 매번 초기화됐다 | 브리핑 4회 반복, p4 가 앞선 게이트 15회를 못 보고 재차단 |
+| post 훅은 자기 경로 이벤트에만 돈다(`lib/hook-scope.ts`) | 도구 결과마다 36개가 돌아 세션 벽시계의 22~36%를 먹었다 | 도구 결과 1회 write 6.8초·bash 4.9초 → **bash 1.56초**, `check-verify` 실패 스로틀 30→90초 |
+
+같은 과제를 프롬프트 하나로 준 셀은 회귀 1·exit 2(43.5분), 사람이 4프롬프트로 쪼갠 세션은 **최종 게이트 초록·회귀 0**(54.3분)이었다(각 n=1).
+
 훅(`.claude/settings.json`): `PreToolUse Bash` 가 금지 명령(brew services 로 Ollama 기동, sudo, ollama pull, hf download, install.sh)을 deny, `PreToolUse Edit|Write` 가 레이아웃 위반(bench/ 하위 디렉터리 등)을 deny, `PostToolUse Edit|Write` 가 편집 파일에 매치되는 규칙의 검사를 돌려 위반을 모델에 돌려준다. 규칙 파일의 `paths` 가 곧 훅의 트리거다.
 
 ## 파일
