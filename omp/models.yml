@@ -85,10 +85,9 @@ providers:
       - id: "Qwen3.6-35B-A3B-5bit:nothink"
         contextWindow: 131072
         maxTokens: 8192
-      - id: "Qwen3.5-4B-4bit"  # aux 겸 실험 코더(2026-08-28 창 확장 — 4B+어드바이저 조합 실험, thinking off·MTP 없음)
-        api: openai-completions
-        contextWindow: 131072
-        maxTokens: 8192
+      - id: "Qwen3.5-4B-4bit"  # aux(tiny). 4B+MTP 드래프터 페어링 유지(45.3 tok/s 실측) — 코더 실험은 2026-08-28 기각
+        contextWindow: 8192
+        maxTokens: 1024
       - id: "Qwen3.5-9B-MLX-4bit"  # 어드바이저 매트릭스 실험 코더 — oMLX 앱 스토어(~/.omlx/models) 관리, 짧은 서빙 id(2026-08-28)
         api: openai-completions  # extraBody(thinking_budget) 오버레이 경로
         contextWindow: 131072
