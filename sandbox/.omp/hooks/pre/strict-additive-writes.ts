@@ -14,17 +14,6 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { resolve } from "node:path";
 
-// 훅은 절대 던지지 않는다 — omp 는 훅 예외를 도구 실패로 승격시켜 edit 자체를
-// 죽인다(실측 2026-08-28: EISDIR 크래시 13/13 로 한 셀의 edit 이 전멸, ~10분 낭비).
-// 읽을 수 없거나 파일이 아니면 null → 검사를 조용히 통과(fail-open).
-function safeRead(p: string): string | null {
-  try {
-    const st = statSync(p);
-    if (!st.isFile()) return null;
-    return readFileSync(p, "utf-8");
-  } catch { return null; }
-}
-
 const MIN_LINES = 12;        // files smaller than this are cheap to rewrite honestly
 const RETAIN_FLOOR = 0.5;    // block when less than half of the existing lines survive
 
@@ -194,6 +183,17 @@ function siblingSwap(oldLine: string, newLine: string): boolean {
   let diff = 0;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
   return diff >= 2;
+}
+
+// 훅은 절대 던지지 않는다 — omp 는 훅 예외를 도구 실패로 승격시켜 edit 자체를
+// 죽인다(실측 2026-08-28: EISDIR 크래시 13/13 로 한 셀의 edit 이 전멸, ~10분 낭비).
+// 읽을 수 없거나 파일이 아니면 null → 검사를 조용히 통과(fail-open).
+function safeRead(p: string): string | null {
+  try {
+    const st = statSync(p);
+    if (!st.isFile()) return null;
+    return readFileSync(p, "utf-8");
+  } catch { return null; }
 }
 
 function meaningfulLines(content: string): string[] {
