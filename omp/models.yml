@@ -99,8 +99,11 @@ providers:
         compactionModel: "omlx/Qwen3.6-35B-A3B-5bit:nothink"
         # 실측(2026-08-24): reasoning_effort는 3.6 template에서 완전 no-op(seed 고정
         # A/B로 확인, low/high 완전 동일). thinking_budget만 실제로 먹는다(64→3000에서
-        # 토큰·시간이 비례 반응). 프로필 파일(model_profiles.json)에는 안 먹혀서
-        # (finish_reason=length로 8192까지 밀림) extraBody로 요청마다 강제한다.
+        # 토큰·시간이 비례 반응). **2026-08-28 정정**: "프로파일 파일엔 안 먹힌다"던 옛
+        # 결론은 키 이름 오류였다 — 요청 레벨 필드는 `thinking_budget`(이 extraBody)지만
+        # 모델 설정/프로파일 레벨은 `thinking_budget_enabled`+`thinking_budget_tokens` 다
+        # (oMLX openapi ModelSettingsRequest). 서버 쪽도 2048 로 맞춰 뒀고(omlx/*.json),
+        # 이 extraBody 는 요청 단위 이중 보장으로 남긴다.
         # 값 2048 은 2026-08-28 스윕 실측 승자(bench/2026-08-28.s2.thinkbudget.md):
         # 5120 대비 2/2 초록·유일 scored green 38.6m, 1024 는 게이트 회피로 하한 초과.
         # thinking 블록이 절반으로 얇아지고 턴 수로 보상되는 패턴 — 종반 품질 유지에 유리.

@@ -14,7 +14,8 @@
    "is_default": true,
    "active_profile_name": "mtp",
    "reasoning_parser": "qwen",
-   "thinking_budget": 2048
+   "thinking_budget_enabled": true,
+   "thinking_budget_tokens": 2048
   },
   "Qwen3.5-4B-4bit": {
    "max_context_window": 8192,
