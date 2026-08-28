@@ -1,0 +1,360 @@
+// Edge proof for the time-only sickness build + the three cut/finish fixes (synthetic events, no GPU).
+// A: red persists 12 fast turns (~1 min) with edits landing -> no checkpoint (red-age turn over-fire, gone).
+// B: red aged past RED_AGE_MS (12 min) with edits landing -> checkpoint (busy-loop still caught).
+// C: 3 giant thinking turns x 3 min, no mutation (9 min) -> stall checkpoint (turn-count build missed this).
+// D: 10 fast turns (~2.5 min) with no mutation -> no checkpoint (stall turn over-fire, gone — measured live).
+// E: red-age checkpoint requested, red clears inside the checkpoint window -> cut CANCELED (no window).
+// F: truncated-pipe success (`... | tail -30`) does NOT clear red (fake-green, measured); untruncated does.
+// G: after a real cut, agent_end releases the window (a finished session is not re-driven).
+// 이 파일은 세션 스크래치가 아니라 레포 자산이다(2026-08-28 이관) — `make check-harness-proofs`.
+// 경로는 이식성을 위해 import.meta.url 과 os.tmpdir() 로 푼다.
+import { tmpdir } from "node:os";
+import { join, resolve, dirname } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const FIXROOT = join(tmpdir(), "llm-bench-proof-fixtures");
+const { registerDiscipline } = await import(pathToFileURL(REPO + "/sandbox/.omp/extensions/continuity/discipline.ts").href);
+
+let now = 1_000_000_000_000;
+Date.now = () => now;
+
+function makePi() {
+  const handlers = {};
+  const sent = [];
+  const pi = { on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) };
+  registerDiscipline(pi);
+  // consume the OPENING-BRIEF (fires on the first turn of every session)
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) });
+  sent.length = 0;
+  return { handlers, sent };
+}
+let ctxTokens = 30_000;
+const ctx = { getContextUsage: () => ({ tokens: ctxTokens }) };
+const bash = (h, command, text, isError = false) =>
+  h.tool_result({ toolName: "bash", isError, input: { command }, content: [{ type: "text", text }] }, ctx);
+const redFail = (h, command = "make verify") => bash(h, command, "FAIL: notice.py: broken thing");
+const editOk = (h, path = "x.py") => h.tool_result({ toolName: "edit", isError: false, input: { path }, content: [{ type: "text", text: "ok" }] }, ctx);
+const turn = (h) => h.turn_end({ toolResults: [{}] }, ctx); // tool-bearing turn: end-gate stays out of the way
+const msgs = (n) => Array.from({ length: n }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: `m${i}` }));
+
+let failures = 0;
+const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); if (!cond) failures++; };
+
+{ // A + B share one instance (A is the prefix of B)
+  const { handlers, sent } = makePi();
+  redFail(handlers);
+  for (let i = 0; i < 12; i++) { now += 5_000; editOk(handlers); turn(handlers); }
+  check("A: 12 fast red turns (1 min) -> no checkpoint", sent.length === 0);
+  let fired = false;
+  for (let i = 0; i < 20; i++) { now += 60_000; editOk(handlers); turn(handlers); if (sent.length > 0) { fired = true; break; } }
+  check("B: red aged past 12 min -> checkpoint fired", fired && /stayed failing/.test(sent[0] ?? ""));
+}
+
+{ // C: slow thinking turns, no mutation at all
+  const { handlers, sent } = makePi();
+  for (let i = 0; i < 3; i++) { now += 180_000; turn(handlers); }
+  check("C: 3 x 3-min turns without mutation (9 min) -> stall checkpoint", sent.length === 1 && /minutes .*no successful change/.test(sent[0] ?? ""));
+}
+
+{ // D: fast read/plan stretch, no mutation, under the time threshold
+  const { handlers, sent } = makePi();
+  for (let i = 0; i < 10; i++) { now += 15_000; turn(handlers); }
+  check("D: 10 fast turns without mutation (2.5 min) -> no checkpoint", sent.length === 0);
+}
+
+{ // E: sickness resolves inside the checkpoint window -> cancel, no cut
+  const { handlers, sent } = makePi();
+  redFail(handlers);
+  let fired = false;
+  for (let i = 0; i < 20 && !fired; i++) { now += 60_000; editOk(handlers); turn(handlers); fired = sent.length > 0; }
+  check("E-pre: red-age checkpoint requested", fired);
+  now += 10_000; bash(handlers, "make verify", "all green, no failures"); // red clears in the window
+  editOk(handlers); turn(handlers);                                        // the would-be arming turn
+  const out = handlers.context({ messages: msgs(30) }, ctx);
+  check("E: cut canceled after recovery -> context untouched", out === undefined && sent.length === 1);
+}
+
+{ // F: truncated pipe never clears red; an untruncated same-command run does
+  const { handlers, sent } = makePi();
+  redFail(handlers, "make verify 2>&1 | tail -30");
+  now += 60_000; bash(handlers, "make verify 2>&1 | tail -30", "========== 34 passed =========="); // fake green
+  let fired = false;
+  for (let i = 0; i < 20 && !fired; i++) { now += 60_000; editOk(handlers); turn(handlers); fired = sent.length > 0; }
+  check("F1: truncated success did not clear red -> red-age still fired", fired);
+  now += 10_000; bash(handlers, "make verify 2>&1", "all green");           // untruncated: clears
+  editOk(handlers); turn(handlers);                                          // checkpoint window -> cancel
+  const out = handlers.context({ messages: msgs(30) }, ctx);
+  check("F2: untruncated same-command success cleared red -> cut canceled", out === undefined && sent.length === 1);
+}
+
+{ // G: a real cut, then agent_end releases the window
+  const { handlers, sent } = makePi();
+  now += 8 * 60_000; turn(handlers);                       // stall (8 min, no mutation) -> checkpoint
+  check("G-pre: stall checkpoint requested", sent.length === 1);
+  now += 10_000; turn(handlers);                           // still stalled -> arms the cut
+  const cut = handlers.context({ messages: msgs(30) }, ctx);
+  check("G-pre: cut window applied", !!cut && Array.isArray(cut.messages) && cut.messages.length < 30);
+  const again = handlers.context({ messages: msgs(32) }, ctx);
+  check("G-pre: window persists on the next call", !!again && Array.isArray(again.messages));
+  handlers.agent_end({ messages: msgs(32) });
+  const released = handlers.context({ messages: msgs(32) }, ctx);
+  check("G: agent_end releases the window", released === undefined);
+}
+
+{ // H: finishing after mutations with no verification observed -> finish-check fires
+  const { handlers, sent } = makePi();
+  now += 30_000; editOk(handlers);
+  handlers.turn_end({}, ctx); // prose-only turn = finishing signal
+  check("H: mutated + no gate ever + prose finish -> FINISH-BLOCK", sent.length === 1 && /never run the full verification/.test(sent[0] ?? ""));
+}
+
+{ // I: scope green (red cleared by a narrow success) -> finish-check still fires, once
+  const { handlers, sent } = makePi();
+  redFail(handlers);
+  now += 30_000; bash(handlers, "make verify", "all green"); editOk(handlers);
+  handlers.turn_end({}, ctx);
+  check("I1: red cleared + gate seen -> prose finish is SILENT (soft check removed)", sent.length === 0);
+  handlers.turn_end({}, ctx);
+  check("I2: repeat finish stays silent", sent.length === 0);
+}
+
+{ // J: finishing while red -> existing red re-drive still fires
+  const { handlers, sent } = makePi();
+  editOk(handlers); redFail(handlers);
+  handlers.turn_end({}, ctx);
+  check("J: prose finish while red -> red re-drive", sent.length === 1 && /verification result was failing/.test(sent[0] ?? ""));
+}
+
+{ // K: 6 distinct unverified files -> cadence nudge; 12 + 3 turns -> one escalation
+  const { handlers, sent } = makePi();
+  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
+  check("K1: 6 distinct unverified files -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+  for (let i = 6; i < 12; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
+  check("K2: 12 unverified + 3 turns -> one escalation, once", sent.length === 2 && /Before your NEXT edit/.test(sent[1] ?? ""));
+  now += 30_000; editOk(handlers, "app/f99.py"); turn(handlers);
+  check("K3: no third cadence message in the window", sent.length === 2);
+  bash(handlers, "make verify", "all green");
+  for (let i = 0; i < 5; i++) { now += 30_000; editOk(handlers, `app/g${i}.py`); turn(handlers); }
+  check("K4: gate run resets the window (5 fresh files -> silent)", sent.length === 2);
+}
+
+{ // L: verification observed early -> no nudge
+  const { handlers, sent } = makePi();
+  editOk(handlers); redFail(handlers);
+  for (let i = 0; i < 10; i++) { now += 60_000; editOk(handlers); turn(handlers); }
+  check("L: red observed early -> no nudge (red-age not yet due)", sent.length === 0);
+}
+
+{ // M: hygiene restored — +55k context growth requests a hygiene checkpoint
+  const { handlers, sent } = makePi();
+  ctxTokens = 25_000;
+  bash(handlers, "make verify", "all green"); // verifySeen — isolate the hygiene signal
+  for (let i = 0; i < 9; i++) { now += 60_000; ctxTokens += 7_000; editOk(handlers); turn(handlers); }
+  check("M: +55k ctx growth with MAX_HYGIENE=3 -> hygiene checkpoint", sent.length === 1 && /context grew/.test(sent[0] ?? ""));
+  ctxTokens = 30_000;
+}
+
+{ // O1: 3 source files, zero tests, 15 min -> one TEST-NUDGE (verify-nudge suppressed via verifySeen)
+  const { handlers, sent } = makePi();
+  redFail(handlers); now += 10_000; bash(handlers, "make verify", "all ok"); // everRed=true, red cleared
+  editOk(handlers, "app/models/a.py"); editOk(handlers, "app/services/b.py"); editOk(handlers, "app/routers/c.py");
+  for (let i = 0; i < 15; i++) { now += 60_000; editOk(handlers, "app/models/a.py"); turn(handlers); }
+  check("O1: 3 src / 0 tests / 15 min -> test nudge", sent.length === 1 && /no test files yet/.test(sent[0] ?? ""));
+  for (let i = 0; i < 3; i++) { now += 60_000; editOk(handlers, "app/models/a.py"); turn(handlers); }
+  check("O2: nudge fires only once", sent.length === 1);
+}
+
+{ // O3: a test file exists early -> no nudge
+  const { handlers, sent } = makePi();
+  redFail(handlers); now += 10_000; bash(handlers, "make verify", "all ok");
+  editOk(handlers, "app/models/a.py"); editOk(handlers, "tests/api/test_a.py"); editOk(handlers, "app/services/b.py"); editOk(handlers, "app/routers/c.py");
+  for (let i = 0; i < 16; i++) { now += 60_000; editOk(handlers, "app/models/a.py"); turn(handlers); }
+  check("O3: tests present -> no test nudge", sent.length === 0);
+}
+
+{ // O4: under the source threshold -> no nudge
+  const { handlers, sent } = makePi();
+  redFail(handlers); now += 10_000; bash(handlers, "make verify", "all ok");
+  editOk(handlers, "app/models/a.py"); editOk(handlers, "app/services/b.py");
+  for (let i = 0; i < 16; i++) { now += 60_000; editOk(handlers, "app/models/a.py"); turn(handlers); }
+  check("O4: 2 src files -> no test nudge", sent.length === 0);
+}
+
+{ // P: REG-WATCH — registration import loss is announced immediately
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const FIX = join(FIXROOT, "regfix");
+  rmSync(FIX, { recursive: true, force: true });
+  mkdirSync(FIX + "/backend/alembic", { recursive: true });
+  mkdirSync(FIX + "/backend/tests", { recursive: true });
+  const ENV = FIX + "/backend/alembic/env.py";
+  writeFileSync(ENV, "from app.models.user import User  # noqa\nfrom app.models.batch import Batch  # noqa\nrun()\n");
+  writeFileSync(FIX + "/backend/tests/conftest.py", "from app.models.batch import Batch  # noqa\n");
+  process.chdir(FIX);
+  const { handlers, sent } = makePi();
+  // cwd stays at the fixture for the whole block — regCheck resolves against cwd
+  // P1: an edit that drops the User import -> immediate message
+  writeFileSync(ENV, "from app.models.batch import Batch  # noqa\nfrom app.models.notice import Notice  # noqa\nrun()\n");
+  handlers.tool_result({ toolName: "edit", isError: false, input: { path: "backend/alembic/env.py" }, content: [{ type: "text", text: "ok" }] }, ctx);
+  check("P1: dropped registration import -> immediate message", sent.length === 1 && /vanished from backend\/alembic\/env\.py/.test(sent[0] ?? "") && /models\.user/.test(sent[0] ?? ""));
+  // P2: same loss again -> no duplicate
+  handlers.tool_result({ toolName: "edit", isError: false, input: { path: "backend/alembic/env.py" }, content: [{ type: "text", text: "ok" }] }, ctx);
+  check("P2: same loss not repeated", sent.length === 1);
+  // P3: unrelated file edit -> silent
+  handlers.tool_result({ toolName: "edit", isError: false, input: { path: "backend/app/models/notice.py" }, content: [{ type: "text", text: "ok" }] }, ctx);
+  check("P3: unrelated edit silent", sent.length === 1);
+  // P4: bash sed touching conftest with a dropped import -> caught via command match
+  writeFileSync(FIX + "/backend/tests/conftest.py", "x = 1\n");
+  handlers.tool_result({ toolName: "bash", isError: false, input: { command: "sed -i '' 'd' backend/tests/conftest.py" }, content: [{ type: "text", text: "ok" }] }, ctx);
+  check("P4: bash sed loss on conftest caught", sent.length === 2 && /conftest\.py/.test(sent[1] ?? ""));
+  process.chdir(REPO);
+}
+
+{ // P5: REG-WATCH content-based trigger — no input path, file named only in the result text
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const FIX = join(FIXROOT, "regfix3");
+  rmSync(FIX, { recursive: true, force: true });
+  mkdirSync(FIX + "/backend/alembic", { recursive: true });
+  mkdirSync(FIX + "/backend/tests", { recursive: true });
+  writeFileSync(FIX + "/backend/alembic/env.py", "from app.models.user import User  # noqa\nrun()\n");
+  writeFileSync(FIX + "/backend/tests/conftest.py", "x = 1\n");
+  process.chdir(FIX);
+  const { handlers, sent } = makePi();
+  writeFileSync(FIX + "/backend/alembic/env.py", "run()\n");
+  handlers.tool_result({ toolName: "edit", isError: false, input: {}, content: [{ type: "text", text: "[backend/alembic/env.py#AB12] applied" }] }, ctx);
+  check("P5: content-only trigger catches the loss", sent.length === 1 && /vanished/.test(sent[0] ?? ""));
+  process.chdir(REPO);
+}
+
+{ // Q1: full-gate success clears red regardless of Jaccard (stale-redSig fix)
+  const { handlers, sent } = makePi();
+  editOk(handlers);
+  redFail(handlers, ".venv/bin/pytest -q tests/core/test_seed_api_actor.py -x");
+  now += 30_000; bash(handlers, "make verify", "all green, 150 passed");
+  handlers.turn_end({}, ctx); // prose finish
+  check("Q1: narrow red + green full gate -> finish is silent (no stale re-drive)",
+    sent.length === 0);
+}
+
+{ // Q2: advancing failure signatures extend the red clock; absolute 20m ceiling backstops
+  const { handlers, sent } = makePi();
+  redFail(handlers); // full-gate red: opens the episode AND sets verifySeen
+  let premature = false;
+  for (let m = 1; m <= 19; m++) {
+    now += 60_000;
+    if (m % 4 === 0) bash(handlers, "pytest -q tests/a.py -x", `FAIL: sig-${m}`); // new signature
+    editOk(handlers); turn(handlers);
+    if (sent.length > 0) premature = true;
+  }
+  check("Q2a: 19 min of ADVANCING signatures -> no checkpoint (clock extended)", !premature);
+  now += 90_000; editOk(handlers); turn(handlers); // past the 20m absolute ceiling
+  check("Q2b: 20m total red -> ceiling checkpoint fired", sent.length === 1 && /stayed failing/.test(sent[0] ?? ""));
+}
+
+{ // Q3: subset runs do not reset the cadence window
+  const { handlers, sent } = makePi();
+  now += 60_000; bash(handlers, ".venv/bin/pytest -q tests/api/test_notice.py", "3 passed");
+  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/s${i}.py`); turn(handlers); }
+  check("Q3: 6 unverified files with only subset greens -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+}
+
+{ // R1: finish-block is uncapped and releases after a real gate run
+  const { handlers, sent } = makePi();
+  editOk(handlers);
+  handlers.turn_end({}, ctx); handlers.turn_end({}, ctx); handlers.turn_end({}, ctx);
+  check("R1a: three gate-less finishes -> three blocks, third names the command",
+    sent.length === 3 && /never run the full verification/.test(sent[2] ?? "") && /single next action/.test(sent[2] ?? ""));
+  now += 10_000; bash(handlers, "make verify", "all green, 150 passed");
+  handlers.turn_end({}, ctx);
+  check("R1b: after a gate run the finish is silent (block released)", sent.length === 3);
+}
+
+{ // R2: a harness notice standing after the last gate run blocks the finish
+  const { handlers, sent } = makePi();
+  editOk(handlers);
+  now += 10_000; bash(handlers, "make verify", "all green");
+  now += 10_000;
+  handlers.tool_result({ toolName: "edit", isError: false, input: { path: "app/models/notice.py" },
+    content: [{ type: "text", text: "wrote ok <system-notice> [check-backend-domain] 3 issue(s): - notice: missing repository file" }] }, ctx);
+  handlers.turn_end({}, ctx);
+  check("R2a: standing check-* notice after the gate -> FINISH-BLOCK",
+    sent.length === 1 && /notice was raised after your last full verification/.test(sent[0] ?? ""));
+  now += 10_000; bash(handlers, "make verify", "all green again");
+  handlers.turn_end({}, ctx);
+  check("R2b: fresh gate after the notice -> finish is silent", sent.length === 1);
+}
+
+{ // P6: a Dep-alias replacement in services.py is announced (non-import wiring line)
+  const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
+  const FIX = join(FIXROOT, "regfix6");
+  rmSync(FIX, { recursive: true, force: true });
+  mkdirSync(FIX + "/backend/app/dependencies", { recursive: true });
+  mkdirSync(FIX + "/backend/alembic", { recursive: true });
+  mkdirSync(FIX + "/backend/tests", { recursive: true });
+  mkdirSync(FIX + "/backend/app", { recursive: true });
+  writeFileSync(FIX + "/backend/alembic/env.py", "from app.models.user import User  # noqa\n");
+  writeFileSync(FIX + "/backend/tests/conftest.py", "x = 1\n");
+  writeFileSync(FIX + "/backend/app/main.py", "app.include_router(user_router)\n");
+  writeFileSync(FIX + "/backend/app/dependencies/services.py",
+    "UserServiceDep = Annotated[UserService, Depends(get_user_service)]\n");
+  process.chdir(FIX);
+  const { handlers, sent } = makePi();
+  writeFileSync(FIX + "/backend/app/dependencies/services.py",
+    "NoticeServiceDep = Annotated[NoticeService, Depends(get_notice_service)]\n");
+  handlers.tool_result({ toolName: "edit", isError: false, input: { path: "backend/app/dependencies/services.py" }, content: [{ type: "text", text: "ok" }] }, ctx);
+  check("P6: Dep-alias replacement in services.py -> announced", sent.length === 1 && /vanished/.test(sent[0] ?? ""));
+  process.chdir(REPO);
+}
+
+{ // R3: verify-fast green is NOT a full gate — the finish stays blocked
+  const { handlers, sent } = makePi();
+  editOk(handlers);
+  now += 10_000; bash(handlers, "make verify-fast", "all green");
+  handlers.turn_end({}, ctx);
+  check("R3: verify-fast green + prose finish -> FINISH-BLOCK stands",
+    sent.length === 1 && /never run the full verification/.test(sent[0] ?? ""));
+}
+
+{ // T1-T2: endgame tail trim — second idle green nudges once; a mutation re-arms the window
+  const { handlers, sent } = makePi();
+  editOk(handlers);
+  redFail(handlers); // 진짜 작업 증거: red 를 본 적이 있어야 꼬리 윈도가 무장된다
+  now += 10_000; bash(handlers, "make verify", "all green");
+  now += 10_000; bash(handlers, "make verify", "all green again");
+  check("T1: red seen + second idle green -> one TAIL-TRIM", sent.length === 1 && /Stop here/.test(sent[0] ?? ""));
+  now += 10_000; bash(handlers, "make verify", "still green");
+  check("T1b: third green -> no second message", sent.length === 1);
+  now += 10_000; editOk(handlers, "app/fix.py");
+  now += 10_000; bash(handlers, "make verify", "green after fix");
+  now += 10_000; bash(handlers, "make verify", "green twice");
+  check("T2: mutation re-armed the window -> tail fires again", sent.length === 2);
+}
+
+{ // T3: write→edit steering — a full write to a previously-read file gets one nudge
+  const { handlers, sent } = makePi();
+  handlers.tool_result({ toolName: "read", isError: false, input: { path: "app/services/old.py" }, content: [{ type: "text", text: "..." }] }, ctx);
+  handlers.tool_result({ toolName: "write", isError: false, input: { path: "app/services/old.py" }, content: [{ type: "text", text: "wrote" }] }, ctx);
+  check("T3: write over a read file -> one WRITE-STEER", sent.length === 1 && /prefer the edit tool/.test(sent[0] ?? ""));
+  handlers.tool_result({ toolName: "write", isError: false, input: { path: "app/services/old.py" }, content: [{ type: "text", text: "wrote" }] }, ctx);
+  check("T3b: same file again -> silent", sent.length === 1);
+  handlers.tool_result({ toolName: "write", isError: false, input: { path: "app/new_file.py" }, content: [{ type: "text", text: "wrote" }] }, ctx);
+  check("T3c: never-read (new) file -> silent", sent.length === 1);
+}
+
+{ // T4: TRUNC-RECOVERY — a truncated write gets chunked-append guidance once
+  const { handlers, sent } = makePi();
+  handlers.tool_result({ toolName: "write", isError: true, input: { path: "tests/api/test_big.py" }, content: [{ type: "text", text: "error: write truncated at 4096 tokens" }] }, ctx);
+  check("T4: truncated write -> TRUNC-RECOVERY", sent.length === 1 && /append in chunks/.test(sent[0] ?? ""));
+  handlers.tool_result({ toolName: "write", isError: true, input: { path: "tests/api/test_big.py" }, content: [{ type: "text", text: "error: write truncated again" }] }, ctx);
+  check("T4b: same file -> once only", sent.length === 1);
+}
+
+{ // T5: baseline-green trap — no red ever, double green -> NO tail trim (measured 424s/0-artifact abort)
+  const { handlers, sent } = makePi();
+  editOk(handlers);
+  now += 10_000; bash(handlers, "make verify", "all green");
+  now += 10_000; bash(handlers, "make verify", "all green again");
+  now += 10_000; bash(handlers, "make verify", "still green");
+  check("T5: never-red session -> tail trim stays silent", sent.length === 0);
+}
+
+process.exit(failures ? 1 : 0);
