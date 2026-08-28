@@ -389,9 +389,13 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   // 이렇게 하면 셀 동안 로드될 수 있는 물리 모델은 {대상 코더(--model), 그 :mtp 드래프터(같은 계열),
   // 4B aux} 로 한정된다 — 깨끗한 재시작(위)과 합쳐 **구성상** 엉뚱한 코더가 상주할 수 없다.
   // 코더 자체 설정(thinking·샘플링)은 불변. compaction 은 models.yml 에서 같은 계열 :nothink.
+  // BENCH_BAKED=1: **라이브 설정만으로** 셀을 돌린다(오버레이·--smol·--model·어드바이저 주입 없음).
+  // 베이크한 구성(modelRoles.default/tiny, models.yml 의 창·extraBody, oMLX settings)이 실제
+  // 실행 경로에서 그대로 먹는지 증명하는 모드 — 실험 스위치들은 이 모드에서 전부 무시된다.
+  const baked = process.env.BENCH_BAKED === "1";
   let overlayDir: string | null = null;
   const extra: string[] = [];
-  if (local) {
+  if (local && !baked) {
     overlayDir = mkdtempSync(join(tmpdir(), "llm-bench-cfg-"));
     // 실험 옵트인: BENCH_ADVISOR=1 이면 벤치 셀에만 advisor 를 켠다(라이브 config 는 불변).
     // BENCH_ADVISOR=<모델id> 면 advisor.model 도 지정 — 예: omlx/…-5bit:nothink 는 코더와 같은
@@ -432,7 +436,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   // 셀은 enabled:false 를 강제해 사용자의 전역(홈) 토글이 암을 오염시키지 않게 한다.
   const projCfg = join(SANDBOX, ".omp", "config.yml");
   const projCfgOrig = readFileSync(projCfg, "utf-8");
-  const advEnv = process.env.BENCH_ADVISOR;
+  const advEnv = baked ? undefined : process.env.BENCH_ADVISOR;
   const advBlock = advEnv && advEnv !== "1"
     ? `\n# bench-advisor (runner-injected)\nmodelRoles:\n  advisor: ${advEnv}\nadvisor:\n  enabled: true\n  immuneTurns: 3\n  syncBacklog: "off"\n`
     : `\n# bench-advisor off (runner-injected)\nadvisor:\n  enabled: false\n`;
@@ -464,7 +468,8 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   const phaseWalls: number[] = [];
   for (const [sessionPrompt, cap] of sessionPlans) {
     const pStart = Date.now();
-    const child = spawn("omp", ["-p", sessionPrompt, "--model", model, ...extra], { cwd: SANDBOX, stdio: "ignore", detached: true });
+    const ompArgs = baked ? ["-p", sessionPrompt] : ["-p", sessionPrompt, "--model", model, ...extra];
+    const child = spawn("omp", ompArgs, { cwd: SANDBOX, stdio: "ignore", detached: true });
     const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };
     await new Promise<void>((resolveP) => {
       const timer = setTimeout(() => {
@@ -486,6 +491,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   const row: Record<string, unknown> = {
     model, task: taskName, mode: task.mode, wall_s: wall, timed_out: timedOut,
     bundle: process.env.BENCH_BUNDLE ?? null, attempt: Number(process.env.BENCH_ATTEMPT ?? 1),
+    baked: baked || undefined,
     ...(phaseWalls.length > 1 ? { phase_walls: phaseWalls } : {}),
     residency: res,
     ...grade(task, models, snapshot),
