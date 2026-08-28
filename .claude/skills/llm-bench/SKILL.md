@@ -34,6 +34,7 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 ### 0. 전제
 - 1단계(`bench-model`) 통과. 거기서 떨어진 모델은 여기서 한 시간을 쓸 자격이 없다.
 - `sandbox/` 준비: `sandbox/SANDBOX.md` 의 설치 절차(uv sync, npm install, `.env` 3개, decks build). `make db-init && make verify` 가 sandbox 에서 **git 없이** exit 0 이어야 한다 — 러너도 셀마다 이걸 baseline 으로 확인하고, 빨가면 `baseline not green` 으로 셀을 버린다.
+- **베이크 모드(`BENCH_BAKED=1`)**: 오버레이·`--model`·`--smol`·어드바이저 주입 없이 **라이브 설정만으로** 셀을 돌린다 — 구성 변경 뒤 "실행 경로에서 정말 먹는가"를 증명하는 용도(절차·확인 항목은 `/bake-config`). 실험 스위치(BENCH_THINKING_BUDGET 등)는 이 모드에서 무시된다.
 - **셀은 무상태로 시작한다(2026-08-28 감사).** `git clean -fdq` 는 무시된 파일을 안 지워서 이전 셀의 정답이 두 곳에 남아 있었다 — `.omp/state/*.continuity.json`(지난 셀의 goal·facts·다음 행동)과 `backend` 각 레이어의 `__pycache__/notice.*.pyc`(파일명만으로 산출물 구조가 드러나고, 역컴파일하면 이전 해답 자체). 러너가 setup·revert 에서 `purgeCellResidue()` 로 지운다 — 손으로 셀을 돌렸다면 같은 정리를 하고 시작한다.
 - 부모 저장소 기준 `sandbox/` 에 미커밋 변경이 없어야 한다(러너가 거부). 원복이 `git checkout -- sandbox && git clean -fdq sandbox` 라 변경이 있으면 지워진다. sandbox 안에 `.git` 이 있으면(예전 실행 잔재) 러너가 거부한다 — `rm -rf sandbox/.git`.
 - **로컬 모델은 대상 모델만 상주해야 한다(러너가 보장·검증).** 세 겹이다:

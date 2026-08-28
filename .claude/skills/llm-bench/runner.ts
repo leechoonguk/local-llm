@@ -277,24 +277,27 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
   // 연속 지표(4자 토의 라운드 2, 2026-08-28): full-gate 실행 횟수·첫 실행 시각 —
   // p̂=12.5% 기준선에서 binary green 은 무력하므로 암 판정은 이 연속 지표로 한다.
   let t0: number | null = null;
-  let gateRuns = 0;
+  const gateCallIds = new Set<string>();
   let firstGateS: number | null = null;
   let firstGreenS: number | null = null;
   const FULL_GATE = /make(?:\\?["'\s][^"]{0,40})?\s*(?:-C\s+\S+\s+)?(?:verify|test)(?!-fast)\b/;
   for (const line of readFileSync(path, "utf-8").split("\n")) {
     const ts = line.match(/"timestamp"\s*:\s*"([^"]+)"/)?.[1];
     if (ts && t0 === null) t0 = Date.parse(ts);
-    // dedupe: 도구 호출은 세션에 3중(assistant echo/tool_execution_start/toolResult)으로
-    // 반영되고 continuity 스냅샷이 이력을 재포함한다(실측: writes 723 vs 진짜 26).
-    // toolResult 레코드만, continuity 라인 제외로 계수한다.
-    const isResultLine = /"role"\s*:\s*"toolResult"/.test(line) && !line.includes('"continuity');
-    if (isResultLine && /"toolName"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line)) {
-      gateRuns++;
-      if (firstGateS === null && ts && t0 !== null) firstGateS = Math.round((Date.parse(ts) - t0) / 1000);
+    // dedupe(2026-08-28 정정): **명령 문자열은 toolCall 레코드에만 있다** — toolResult 는
+    // 출력만 담는다. 그래서 결과 라인에서 게이트를 세면 0 이 나오고(베이크 셀 실측),
+    // 반대로 필터 없이 세면 assistant echo·continuity 스냅샷 재포함으로 부풀었다.
+    // 고유 toolCallId 로 센다.
+    if (/"name"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line) && !line.includes('"continuity')) {
+      const id = (line.match(/"toolCallId"\s*:\s*"([^"]+)"/) ?? line.match(/"id"\s*:\s*"([^"]+)"/))?.[1];
+      if (id && !gateCallIds.has(id)) {
+        gateCallIds.add(id);
+        if (firstGateS === null && ts && t0 !== null) firstGateS = Math.round((Date.parse(ts) - t0) / 1000);
+      }
     }
     // 첫 full-suite 초록(중앙값 지표의 시각원 — 라운드 3 채점 요건): 커버리지 게이트
     // 통과 문구는 full 게이트 초록에서만 나온다.
-    if (firstGreenS === null && isResultLine && line.includes("Required test coverage of 100% reached") && ts && t0 !== null) {
+    if (firstGreenS === null && !line.includes('"continuity') && line.includes("Required test coverage of 100% reached") && ts && t0 !== null) {
       firstGreenS = Math.round((Date.parse(ts) - t0) / 1000);
     }
     if (line.includes('"continuity')) {
@@ -309,7 +312,7 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
   }
   m.writes = (tools.write ?? 0) + (tools.edit ?? 0);
   m.tools = tools;
-  m.gate_runs = gateRuns;            // 계수만 하고 되쓰기를 빠뜨렸던 버그(refrozen 블록 실측) 수정
+  m.gate_runs = gateCallIds.size;            // 계수만 하고 되쓰기를 빠뜨렸던 버그(refrozen 블록 실측) 수정
   m.first_full_gate_s = firstGateS;
   m.first_green_s = firstGreenS;
   return m;
@@ -440,7 +443,8 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   const advBlock = advEnv && advEnv !== "1"
     ? `\n# bench-advisor (runner-injected)\nmodelRoles:\n  advisor: ${advEnv}\nadvisor:\n  enabled: true\n  immuneTurns: 3\n  syncBacklog: "off"\n`
     : `\n# bench-advisor off (runner-injected)\nadvisor:\n  enabled: false\n`;
-  writeFileSync(projCfg, projCfgOrig + advBlock);
+  // 베이크 모드는 **아무것도 주입하지 않는다** — 라이브 설정이 그대로 실행 경로다.
+  if (!baked) writeFileSync(projCfg, projCfgOrig + advBlock);
   // 실동 검증(2026-08-28 미니 프로브): 어드바이저는 WATCHDOG.yml 로스터로 뜬다 —
   // 헤드리스에서 transcript(__advisor.<slug>.jsonl)에 usage 9회 실측. 어드바이저 암은
   // sandbox 루트에 로스터를 놓고(untracked — revert 가 지움) 채점 전 제거한다.
@@ -482,7 +486,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     phaseWalls.push(Math.round((Date.now() - pStart) / 1000));
   }
   const wall = Math.round((Date.now() - started) / 1000);
-  writeFileSync(projCfg, projCfgOrig); // 채점 전에 프로젝트 설정 원문 복원
+  if (!baked) writeFileSync(projCfg, projCfgOrig); // 채점 전에 프로젝트 설정 원문 복원
   rmSync(watchdog, { force: true });
 
   const res = residency(model);

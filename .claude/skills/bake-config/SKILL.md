@@ -40,6 +40,19 @@ make smoke MODEL=<짧은 id>      # 특정 모델/프로파일
 - MTP 는 응답 본문에 흔적이 없다. **서버 로그의 `vlm_mtp stats`(수락률)** 로만 확인된다.
 - 설정 적용 여부는 `GET /admin/api/models` 가 되읽어 주는 값으로 판정한다.
 
+## 3b. 실전 실증 — 베이크 모드 셀(선택, 구성 변경이 클 때)
+스모크는 요청 하나다. **구성이 에이전트 실행 경로 전체에서 먹는지**는 셀로 증명한다:
+```bash
+make preflight && BENCH_BAKED=1 node .claude/skills/llm-bench/runner.ts \
+  --models omlx/<코더 짧은 id> --tasks rest --campaign baked --timeout 3000
+```
+`BENCH_BAKED=1` 은 오버레이·`--model`·`--smol`·어드바이저 주입을 전부 끄고 **라이브 설정만으로** omp 를 띄운다(모델은 `modelRoles.default` 가 정한다). 셀이 도는 동안 확인할 것:
+- 서버 로그의 모델 분포 — 코더와 aux 만 나와야 한다(`grep -oE "model=[^ ,]+" ~/.omlx/logs/server.log | sort | uniq -c`)
+- budget 적용의 지문 — `vlm_mtp routing skipped`(budget 을 쓰면 MTP 는 꺼진다)
+- 주입 부재 — 새 오버레이 디렉터리 없음, `sandbox/WATCHDOG.yml` 없음, `__advisor*.jsonl` 없음
+- 행 지표 — `baked: true`, `gate_runs`/`first_full_gate_s` 가 채워짐
+실측 1회: 16개 항목(역할·창·budget 양쪽 레벨·드래프터·서버 정책·스토어·실제 호출 모델)이 전부 의도와 일치했다(`bench/2026-08-28.s2.baked.md`).
+
 ## 4. 값이 안 먹을 때 — 진단 순서
 1. **키 이름을 스키마로 확인한다.** 레벨마다 이름이 다르다:
    - 요청 레벨: `thinking_budget` (omp `compat.extraBody`)
