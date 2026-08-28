@@ -149,6 +149,7 @@ function snapshotTests(): string {
 
 function setup(task: Task): { baseline: number; baselineOut: string; models: Set<string>; snapshot: string } {
   assertSandboxClean();
+  purgeCellResidue(); // 셀은 무상태로 시작한다(이전 셀 정답 잔재 제거)
   if (task.mode === "A" && task.reference) toParentState(task.reference);
   const snapshot = snapshotTests();
   const models = baselineModels();
@@ -161,7 +162,23 @@ function setup(task: Task): { baseline: number; baselineOut: string; models: Set
 function revert(): void {
   gitWs(["checkout", "--", "sandbox"]);
   gitWs(["clean", "-fdq", "--", "sandbox"]);
+  purgeCellResidue();
   make("db-init");
+}
+
+/**
+ * 셀 간 누출 제거(2026-08-28 감사). `git clean -fdq` 는 **무시된 파일을 지우지 않아서**
+ * 이전 셀의 정답이 두 곳에 남았다:
+ *  - `.omp/state/*.continuity.json` — 지난 셀의 goal·facts·다음 행동(정답 단계 그대로)
+ *  - `backend/<레이어>/__pycache__/notice.*.pyc` — 산출물의 컴파일 잔재(파일명만으로 구조 노출,
+ *    역컴파일하면 이전 해답 자체). 소스가 없으면 import 되지는 않지만 읽을 수는 있다.
+ * 캐시(.pytest_cache/.ruff_cache/.coverage)도 같이 지워 셀을 무상태로 만든다.
+ */
+function purgeCellResidue(): void {
+  sh("bash", ["-c",
+    "rm -rf .omp/state && " +
+    "find backend -type d -name __pycache__ -prune -exec rm -rf {} + 2>/dev/null; " +
+    "rm -rf backend/.pytest_cache backend/.ruff_cache backend/.coverage backend/.coverage.* api/.pytest_cache"], SANDBOX);
 }
 
 // ---------------------------------------------------------------- 모델 상주
