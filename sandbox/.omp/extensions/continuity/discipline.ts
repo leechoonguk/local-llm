@@ -82,11 +82,11 @@ const END_GATE_MAX = 2;              // red-finish re-drives
 // breakage = 만든 것이 깨진 것(테스트 실패·타입/문법 오류·표준 위반). 애매하면 breakage 로 본다.
 const COMPLETENESS_RE = /\bnot imported\b|\bnot included\b|\bis missing\b|\bmissing [A-Za-z]|\bhas no tests\b|Coverage failure: total of \d+ is less than fail-under/i;
 const BREAKAGE_RE = /\bFAILED\s+tests?\/|Traceback|SyntaxError|TypeError|AssertionError|ImportError|NameError|\bis neither a\b|\bE\s+\w+Error\b/;
-const SLICE_FOOTPRINT = 6;           // 이만큼 이하의 변경은 "기능의 한 조각" 으로 본다
+const SLICE_FOOTPRINT = 6;           // 조각의 유일한 크기 기준: 마지막 성공 루트 게이트 이후 변경 파일 1~6 = 조각, 7+ = 기능 전체.
+// 실측 분포에 빈 구간이 있다 — 조각 사례 2·3·5파일, 기능 전체 13~15파일. 6은 그 하단에 이 모델의
+// 상습 초과배달(2파일 요청에 +1계층) 한 칸을 더한 값이다. 세 호출부(마감·범위존중·케이던스)가 이 하나를 쓴다.
 const isCellMode = (): boolean => process.env.BENCH_CELL === "1"; // 벤치 셀: 과제가 언제나 기능 전체다
-const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
 const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
-const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
 const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
@@ -111,6 +111,10 @@ export function registerDiscipline(pi: any): void {
   let scopeAdvised = false;
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
+  // 조각 판정은 한 곳에서만 답한다. "너무 크다" 는 !isSlice() 가 아니라 isWholeFeature() 로 묻는다
+  // (0파일은 둘 다 아니다).
+  const isSlice = (): boolean => unverified.size > 0 && unverified.size <= SLICE_FOOTPRINT;
+  const isWholeFeature = (): boolean => unverified.size > SLICE_FOOTPRINT;
   // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
   let greenIdle = false, tailNudged = false, steerCount = 0, sawRed = false;
   const readPaths = new Set<string>();
@@ -160,7 +164,7 @@ export function registerDiscipline(pi: any): void {
     }
   }
 
-  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} gateCadence=${EDITS_PER_GATE}edits testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
+  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} slice=${SLICE_FOOTPRINT}files testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -250,6 +254,7 @@ export function registerDiscipline(pi: any): void {
         stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
+        if (!path) log(`untracked-mutation ${event.toolName} (no path — unverified/slice size will undercount)`);
         if (!wasFullGate) { greenIdle = false; tailNudged = false; } // 실제 변이는 종반 윈도를 죽인다(초록 게이트 실행 자체는 예외)
         if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); lastMutationAt = Date.now(); regCheck(path); }
         // write→edit 유도(3:1 표결 — 메시지형, deny 는 EISDIR 교훈으로 기각):
@@ -313,13 +318,13 @@ export function registerDiscipline(pi: any): void {
           return;
         }
       }
-      if (phase === "idle" && unverified.size >= EDITS_PER_GATE && !cadenceNudged) {
+      if (phase === "idle" && isWholeFeature() && !cadenceNudged) {
         cadenceNudged = true; turnAtCadenceNudge = turnCount;
         pi.sendUserMessage(`${unverified.size} files have changed since the last full verification run. Run \`make verify\` now — failures found early are cheaper than a pile at the end. Then continue working.`);
         log("GATE-CADENCE nudge");
         return;
       }
-      if (phase === "idle" && cadenceNudged && !cadenceEscalated && unverified.size >= EDITS_PER_GATE * 2 && turnCount - turnAtCadenceNudge >= 3) {
+      if (phase === "idle" && cadenceNudged && !cadenceEscalated && unverified.size > SLICE_FOOTPRINT * 2 && turnCount - turnAtCadenceNudge >= 3) {
         cadenceEscalated = true;
         pi.sendUserMessage(`${unverified.size} files are now unverified and the earlier reminder was not followed. Before your NEXT edit, run \`make verify\` end-to-end and fix what it reports.`);
         log("GATE-CADENCE escalation");
@@ -341,8 +346,7 @@ export function registerDiscipline(pi: any): void {
         // 초록을 강요하지 않는다 — 무엇이 남았는지 보고하고 멈추는 게 사용자의 다음 프롬프트를 살린다.
         if (!isCellMode() && redSig
             && COMPLETENESS_RE.test(redSig) && !BREAKAGE_RE.test(redSig)
-            && srcWritten.size + testWritten.size > 0
-            && srcWritten.size + testWritten.size <= SLICE_FOOTPRINT) {
+            && isSlice()) {
           if (scopeAdvised) { log("SCOPE-RESPECT silent (already advised)"); return; }
           scopeAdvised = true;
           pi.sendUserMessage(`The full gate is red only because the rest of this feature does not exist yet — nothing you wrote is broken. You were asked for part of it, so do not expand the work: run \`make verify-fast\` on what you changed, then finish by listing what the full gate still reports (${redSig.slice(0, 160)}) so the next request can pick it up.`);
@@ -362,7 +366,7 @@ export function registerDiscipline(pi: any): void {
           // 한 파일 편집에 40분 셀용 풀 게이트를 물리면 그 프롬프트 시간의 절반 이상이 게이트로 간다(실측 59/104초).
           // 벤치 셀은 변경이 13~15 파일이라 이 경로로 새지 않는다.
           const noticeStanding = lastNoticeAt > 0 && lastNoticeAt > lastGateAt;
-          const small = !noticeStanding && unverified.size > 0 && unverified.size <= SMALL_FOOTPRINT;
+          const small = !isCellMode() && !noticeStanding && isSlice();
           if (small && lastFastGateAt > lastMutationAt) {
             log(`FINISH-OK targeted (${unverified.size} file(s), fast gate after the last edit)`);
           } else {

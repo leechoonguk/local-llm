@@ -126,10 +126,12 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 }
 
 { // H2: 규모가 커지면 예전 그대로 풀 게이트를 요구한다 (벤치 셀은 13~15 파일이라 항상 이 경로)
+  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일. 풀 게이트 요구는 7파일부터다.
   const { handlers, sent } = makePi();
-  now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  now += 30_000; for (const f of ["a","b","c","d","e","f","g"]) editOk(handlers, `${f}.py`);
+  turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
   handlers.turn_end({}, ctx);
-  check("H2: 3 files + gate older than the change -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
+  check("H2: 7 files + gate older than the change -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // H3: 작은 변경을 타깃 검증으로 덮었으면 마감은 조용하다
@@ -177,10 +179,11 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
 { // K: 6 distinct unverified files -> cadence nudge; 12 + 3 turns -> one escalation
   const { handlers, sent } = makePi();
-  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
-  check("K1: 6 distinct unverified files -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
-  for (let i = 6; i < 12; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
-  check("K2: 12 unverified + 3 turns -> one escalation, once", sent.length === 2 && /Before your NEXT edit/.test(sent[1] ?? ""));
+  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
+  for (let i = 0; i < 7; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
+  check("K1: 7 distinct unverified files -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+  for (let i = 7; i < 13; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
+  check("K2: 13 unverified + 3 turns -> one escalation, once", sent.length === 2 && /Before your NEXT edit/.test(sent[1] ?? ""));
   now += 30_000; editOk(handlers, "app/f99.py"); turn(handlers);
   check("K3: no third cadence message in the window", sent.length === 2);
   bash(handlers, "make verify", "all green");
@@ -303,14 +306,17 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 { // Q3: subset runs do not reset the cadence window
   const { handlers, sent } = makePi();
   now += 60_000; bash(handlers, ".venv/bin/pytest -q tests/api/test_notice.py", "3 passed");
-  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/s${i}.py`); turn(handlers); }
-  check("Q3: 6 unverified files with only subset greens -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
+  for (let i = 0; i < 7; i++) { now += 30_000; editOk(handlers, `app/s${i}.py`); turn(handlers); }
+  check("Q3: 7 unverified files with only subset greens -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
 }
 
 { // R1: finish-block is uncapped and releases after a real gate run
   // 규모 보정(2026-08-28): 풀 게이트 요구는 이제 SMALL_FOOTPRINT 초과에서만 걸리므로 세 파일로 세운다.
+  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
   const { handlers, sent } = makePi();
-  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  for (const f of ["a","b","c","d","e","f","g"]) editOk(handlers, `${f}.py`);
+  turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
   handlers.turn_end({}, ctx); handlers.turn_end({}, ctx); handlers.turn_end({}, ctx);
   check("R1a: three gate-less finishes -> three blocks, third names the command",
     sent.length === 3 && /has not run since your last change/.test(sent[2] ?? "") && /single next action/.test(sent[2] ?? ""));
@@ -359,8 +365,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 { // R3: verify-fast green is NOT a full gate — the finish stays blocked
   // 규모 보정(2026-08-28): 작은 변경(<=SMALL_FOOTPRINT)은 타깃 검증으로 마감할 수 있다(H3).
   // 이 케이스의 계약은 "규모가 큰 변경에서는 verify-fast 가 풀 게이트를 대신하지 못한다" 이다.
+  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
   const { handlers, sent } = makePi();
-  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  for (const f of ["a","b","c","d","e","f","g"]) editOk(handlers, `${f}.py`);
+  turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
   now += 10_000; bash(handlers, "make verify-fast", "all green");
   handlers.turn_end({}, ctx);
   check("R3: verify-fast green + prose finish -> FINISH-BLOCK stands",
@@ -522,7 +530,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   // 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
   { const { handlers, sent } = makePi();
     now += 30_000;
-    for (const f of ["a.py","b.py","c.py"]) editOk(handlers, f);
+    for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
+    turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
     bash(handlers, "cd /Users/x/sandbox/backend && make verify 2>&1", "all green, 150 passed");
     handlers.turn_end({}, ctx);
     check("V1: a backend-scoped gate does not satisfy the finish check",
@@ -537,7 +546,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
   { const { handlers, sent } = makePi();
     now += 30_000;
-    for (const f of ["a.py","b.py","c.py"]) editOk(handlers, f);
+    for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
+    turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
     bash(handlers, "make -C backend verify", "all green");
     handlers.turn_end({}, ctx);
     check("V3: `make -C backend verify` is scoped too",
@@ -549,6 +559,89 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     bash(handlers, "cd /Users/x/sandbox && make verify", "all green, 150 passed");
     handlers.turn_end({}, ctx);
     check("V4: the root gate still clears the finish", sent.length === 0); }
+}
+
+{ // S: 조각(slice)은 하나의 정의다 — 미검증 1~6파일. 세 호출부(마감·범위존중·케이던스)가 같은 경계를 쓴다.
+  const COMPLETE = "FAIL: notice: not imported in alembic/env.py";
+  const editN = (h, n, pre = "f") => { for (let i = 0; i < n; i++) editOk(h, `${pre}${i}.py`); };
+
+  { const { handlers, sent } = makePi();
+    now += 30_000; editN(handlers, 6);
+    handlers.turn_end({}, ctx);
+    check("S1: 6 files (largest slice) -> targeted finish, no root-gate demand",
+      sent.length === 1 && /verify-fast/.test(sent[0] ?? "")); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000; editN(handlers, 7);
+    turn(handlers); sent.length = 0;
+    handlers.turn_end({}, ctx);
+    check("S2: 7 files (whole feature) -> the root gate is demanded",
+      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
+
+  { // 실측 회귀(2026-08-29 slice-a): 3파일 조각에 풀 게이트를 요구해 프롬프트가 부풀었다.
+    const { handlers, sent } = makePi();
+    now += 30_000;
+    editOk(handlers, "app/models/notice.py"); editOk(handlers, "app/schemas/notice.py");
+    editOk(handlers, "app/repositories/notice.py");
+    bash(handlers, "make verify", COMPLETE);
+    handlers.turn_end({}, ctx);
+    check("S3: a 3-file slice with completeness-only red -> scope respect, not a root-gate demand",
+      sent.length === 1 && /rest of this feature does not exist yet/.test(sent[0] ?? "")); }
+
+  { // 임계를 다시 쪼개면 여기서 깨진다: 두 호출부가 모든 n 에서 같은 편에 서야 한다.
+    let mismatch = null;
+    for (let n = 1; n <= 8 && mismatch === null; n++) {
+      const a = makePi();                       // (a) completeness 빨강으로 마감
+      now += 30_000; editN(a.handlers, n, `a${n}_`);
+      if (n > 6) turn(a.handlers);
+      a.sent.length = 0;
+      bash(a.handlers, "make verify", COMPLETE);
+      a.handlers.turn_end({}, ctx);
+      const aSlice = /rest of this feature does not exist yet/.test(a.sent[0] ?? "");
+
+      const b = makePi();                       // (b) 게이트 없이 마감
+      now += 30_000; editN(b.handlers, n, `b${n}_`);
+      if (n > 6) turn(b.handlers);
+      b.sent.length = 0;
+      b.handlers.turn_end({}, ctx);
+      const bSlice = /verify-fast/.test(b.sent[0] ?? "");
+      if (aSlice !== bSlice) mismatch = n;
+    }
+    check("S4: scope respect and the finish check agree at every size (anti-resplit)", mismatch === null); }
+
+  { const { handlers, sent } = makePi();
+    for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `c${i}.py`); turn(handlers); }
+    check("S5a: 6 unverified files -> no cadence nudge", sent.length === 0);
+    now += 30_000; editOk(handlers, "c6.py"); turn(handlers);
+    check("S5b: the 7th flips it -> exactly one nudge",
+      sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? "")); }
+
+  { const { handlers, sent } = makePi();       // 카운터는 누적이 아니라 unverified 다
+    now += 30_000; editN(handlers, 9, "d");
+    turn(handlers); sent.length = 0;
+    bash(handlers, "make verify", "all green, 150 passed");
+    now += 10_000; editOk(handlers, "e0.py"); editOk(handlers, "e1.py");
+    handlers.turn_end({}, ctx);
+    check("S6: a green root gate resets the size -> 2 files left is a slice",
+      sent.length === 1 && /verify-fast/.test(sent[0] ?? "")); }
+
+  { process.env.BENCH_CELL = "1";              // 셀은 타깃 마감 면제를 못 쓴다
+    const { handlers, sent } = makePi();
+    now += 30_000; editOk(handlers, "a.py");
+    now += 5_000; bash(handlers, "make verify-fast", "3 passed");
+    handlers.turn_end({}, ctx);
+    check("S7: a cell never finishes on a targeted run",
+      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
+    delete process.env.BENCH_CELL; }
+
+  { const { handlers, sent } = makePi();       // 서 있는 경고는 크기와 무관하게 이긴다
+    now += 30_000; editOk(handlers, "a.py");
+    bash(handlers, "make verify", "all green");
+    now += 5_000; editOk(handlers, "b.py");
+    bash(handlers, "cat notice", "[check-backend-naming] found 1 issue in app/x.py");
+    handlers.turn_end({}, ctx);
+    check("S9: a standing check notice outranks the slice size",
+      sent.length === 1 && /harness check notice/.test(sent[0] ?? "")); }
 }
 
 process.exit(failures ? 1 : 0);
