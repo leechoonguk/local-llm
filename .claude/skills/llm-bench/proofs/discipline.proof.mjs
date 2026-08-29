@@ -466,8 +466,32 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
     bash(handlers, "make verify", COMPLETE);
     handlers.turn_end({}, ctx);
-    check("Y5: a large change is not a slice -> re-drive",
-      sent.length === 1 && /verification result was failing/.test(sent[0] ?? "")); }
+    // 실패한 게이트는 unverified 를 비우지 않으므로(2026-08-29 수정) 7파일이 그대로 남아
+    // 먼저 게이트 케이던스가 나간다 — 그다음 턴에서 END-GATE 가 나오는 게 맞는 순서다.
+    check("Y5a: a large unverified change first gets the gate cadence",
+      sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+    handlers.turn_end({}, ctx);
+    check("Y5b: then the red finish is re-driven",
+      sent.length === 2 && /verification result was failing/.test(sent[1] ?? "")); }
+}
+
+{ // Z: 실패한 게이트는 "검증됨" 이 아니다.
+  // 실측 2026-08-29(4프롬프트 p4): 게이트 3회 중 마지막이 빨간 채로 세션이 끝났는데 마감 차단이
+  // 침묵했다. lastGateAt 을 종료코드와 무관하게 밀고 있었기 때문이다. 최종 make verify 는
+  // `conftest.py: model "notice" not imported` 한 줄로 exit 2 였다.
+  { const { handlers, sent } = makePi();
+    now += 30_000; editOk(handlers, "a.py");
+    handlers.tool_result({ toolName: "bash", isError: true, input: { command: "make verify" },
+      content: [{ type: "text", text: "make: *** [verify] Error 2" }] }, ctx);
+    handlers.turn_end({}, ctx);
+    check("Z1: a failing gate does not count as verification -> finish still blocked",
+      sent.length === 1 && /verify-fast|make verify/.test(sent[0] ?? "")); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000; editOk(handlers, "a.py");
+    bash(handlers, "make verify", "all green, 150 passed");
+    handlers.turn_end({}, ctx);
+    check("Z2: a passing gate still clears the finish", sent.length === 0); }
 }
 
 process.exit(failures ? 1 : 0);

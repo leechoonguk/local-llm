@@ -202,7 +202,11 @@ export function registerDiscipline(pi: any): void {
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
         const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
         if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
-        if (fullGate) {
+        // 게이트는 **성공했을 때만** "검증됨"으로 센다. 실패한 게이트까지 lastGateAt 을 밀면
+        // 마감 판정("마지막 변경 이후에 게이트가 돌았나")이 참이 되어 차단이 침묵한다 —
+        // 실측 2026-08-29(4프롬프트 p4): 게이트 3회 중 마지막이 빨간 채로 세션이 끝났고
+        // 최종 make verify 는 `conftest.py: model "notice" not imported` 한 줄로 exit 2 였다.
+        if (fullGate && !event.isError && !f) {
           lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
           cadenceNudged = false; cadenceEscalated = false;
         }

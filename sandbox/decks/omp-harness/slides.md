@@ -125,7 +125,7 @@ style: |
 <!-- sync: check-omp-skills.ts=95e200cecf2a1641 -->
 <!-- sync: check-omp-types.ts=8171ad53424a7feb -->
 <!-- sync: check-tooling.ts=10b444f2217c3588 -->
-<!-- sync: check-verify.ts=e21bd6d99ac17ee5 -->
+<!-- sync: check-verify.ts=5a28d5df52b21485 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
 <!-- sync: lib/backend-api-http.ts=c69aea7655bd99b2 -->
@@ -169,7 +169,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=46fb3f8151d6e877 -->
+<!-- sync: extensions/continuity/=424c3d654d028f9d -->
 
 # 우리 하네스 (OMP) 소개
 
