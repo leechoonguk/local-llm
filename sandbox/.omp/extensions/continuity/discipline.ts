@@ -108,7 +108,7 @@ export function registerDiscipline(pi: any): void {
   const persisted = loadPersisted();
   let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
   let lastFastGateAt = 0, lastMutationAt = 0;
-  let scopeAdvised = false;
+  let gateFailedAt = 0; // 마지막으로 실패한 루트 게이트 시각(정체불명 실패 포함)
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
   // 조각 판정은 한 곳에서만 답한다. "너무 크다" 는 !isSlice() 가 아니라 isWholeFeature() 로 묻는다
@@ -188,7 +188,12 @@ export function registerDiscipline(pi: any): void {
       let wasFullGate = false;
       // 서 있는 하네스 검사 경고 추적 — backend 스코프 verify 초록 위에서 종료한
       // 실측 셀(1738s)의 가짜완료 메커니즘. finish 시점에 lastGateAt 과 비교한다.
-      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) { lastNoticeAt = Date.now(); savePersisted({ lastNoticeAt }); }
+      // 서 있는 경고는 "네가 만든 것이 규약을 어겼다" 일 때만이다. 조각 작업 중 나오는
+      // "아직 안 만든 계층" 경고(check-backend-domain 이 backend 쓰기마다 주입한다)를 여기 세면
+      // noticeStanding 이 상시 참이 되어 타깃 마감 경로가 영영 닫힌다(2026-08-29 부검).
+      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content) && !COMPLETENESS_RE.test(content)) {
+        lastNoticeAt = Date.now(); savePersisted({ lastNoticeAt });
+      }
       if (/^read/i.test(event.toolName) && event.input?.path) readPaths.add(String(event.input.path));
       // TRUNC-RECOVERY(사용자 제기): 절단·미완 쓰기는 통째 재시도가 아니라 분할로.
       if (event.isError && /^(write|edit)/i.test(event.toolName)) {
@@ -215,6 +220,10 @@ export function registerDiscipline(pi: any): void {
         // 마감 판정("마지막 변경 이후에 게이트가 돌았나")이 참이 되어 차단이 침묵한다 —
         // 실측 2026-08-29(4프롬프트 p4): 게이트 3회 중 마지막이 빨간 채로 세션이 끝났고
         // 최종 make verify 는 `conftest.py: model "notice" not imported` 한 줄로 exit 2 였다.
+        // 실패한 루트 게이트 시각 — 단, "아직 안 만든 계층"만 지적하는 완성도 실패는 제외한다.
+        // 그건 조각 작업의 정상 상태이지 고장이 아니다(2026-08-29 부검).
+        if (fullGate && (event.isError || f)
+            && !(COMPLETENESS_RE.test(content) && !BREAKAGE_RE.test(content))) gateFailedAt = Date.now();
         if (fullGate && !event.isError && !f) {
           lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
           cadenceNudged = false; cadenceEscalated = false;
@@ -344,13 +353,18 @@ export function registerDiscipline(pi: any): void {
       if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
         // 범위 존중(2026-08-29): 인터랙티브에서 조각 작업의 빨강이 '아직 안 만든 것' 뿐이면
         // 초록을 강요하지 않는다 — 무엇이 남았는지 보고하고 멈추는 게 사용자의 다음 프롬프트를 살린다.
-        if (!isCellMode() && redSig
-            && COMPLETENESS_RE.test(redSig) && !BREAKAGE_RE.test(redSig)
-            && isSlice()) {
-          if (scopeAdvised) { log("SCOPE-RESPECT silent (already advised)"); return; }
-          scopeAdvised = true;
-          pi.sendUserMessage(`The full gate is red only because the rest of this feature does not exist yet — nothing you wrote is broken. You were asked for part of it, so do not expand the work: run \`make verify-fast\` on what you changed, then finish by listing what the full gate still reports (${redSig.slice(0, 160)}) so the next request can pick it up.`);
-          log("SCOPE-RESPECT sent (completeness-only red on a slice)");
+        // 조각 마감(2026-08-29 부검): 실측 3회 모두 모델은 30~60초 만에 요청 범위(2파일)를 정확히
+        // 끝내고 산문으로 마쳤는데, 게이트를 안 돌렸다는 이유로 FINISH-BLOCK 이 나갔고 47~144초 뒤
+        // 범위 밖 파일이 나오기 시작했다. 조언 메시지도 같은 문제다 — sendUserMessage 는 곧 다음 턴이라
+        // "보고하고 끝내라"는 말조차 세션을 이어가게 만든다(SCOPE-RESPECT 는 한 턴 지켜지고 15초 뒤
+        // FINISH-BLOCK 에 뒤집혔다). 고장이 없는 조각의 마감은 **아무 말도 하지 않는 것**이 옳다.
+        // 빨강이 없거나(게이트 미실행) 완성도 계열이면 조각은 끝난 것이다. 정체불명·고장 빨강은
+        // 보수적으로 종전 경로(END-GATE/FINISH-BLOCK)로 보낸다 — 인식 못 한 실패는 고장으로 본다.
+        const redIsCompletenessOnly = !!redSig && COMPLETENESS_RE.test(redSig) && !BREAKAGE_RE.test(redSig);
+        const standingNotice = lastNoticeAt > 0 && lastNoticeAt > lastGateAt; // 규약 위반 경고는 크기와 무관하게 이긴다
+        if (!isCellMode() && isSlice() && !standingNotice && gateFailedAt < lastMutationAt
+            && (!redSig || redIsCompletenessOnly)) {
+          log(`FINISH-OK slice (${unverified.size} file(s), nothing broken)`);
           return;
         }
         if (redSig) {

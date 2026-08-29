@@ -122,7 +122,15 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx); // prose-only turn = finishing signal
-  check("H: 1 file + no gate ever + prose finish -> targeted FINISH-BLOCK", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
+  // 계약 변경(2026-08-29): 인터랙티브에서 고장 없는 조각의 마감은 침묵이다.
+  check("H: 1 file + no gate ever + prose finish -> silent (slice finish)", sent.length === 0);
+  process.env.BENCH_CELL = "1";
+  { const cell = makePi();
+    now += 30_000; editOk(cell.handlers);
+    cell.handlers.turn_end({}, ctx);
+    check("H-cell: the same session inside a bench cell is still blocked",
+      cell.sent.length === 1 && /has not run since your last change/.test(cell.sent[0] ?? "")); }
+  delete process.env.BENCH_CELL;
 }
 
 { // H2: 규모가 커지면 예전 그대로 풀 게이트를 요구한다 (벤치 셀은 13~15 파일이라 항상 이 경로)
@@ -147,7 +155,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   bash(handlers, "make verify-fast", "3 passed");
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx);
-  check("H4: fast gate BEFORE the edit -> still blocked", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
+  // 조각이면 타깃 검증의 선후는 마감을 좌우하지 않는다(침묵). 셀에서는 여전히 막힌다(H-cell).
+  check("H4: fast gate BEFORE the edit -> slice finish is still silent", sent.length === 0);
 }
 
 { // H5: 서 있는 check-* 경고가 있으면 작은 변경이라도 풀 게이트다
@@ -331,7 +340,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   now += 10_000; bash(handlers, "make verify", "all green");
   now += 10_000;
   handlers.tool_result({ toolName: "edit", isError: false, input: { path: "app/models/notice.py" },
-    content: [{ type: "text", text: "wrote ok <system-notice> [check-backend-domain] 3 issue(s): - notice: missing repository file" }] }, ctx);
+    // 규약 위반 경고다. 완성도 경고("missing repository file")는 조각을 막지 않는다 — R2c 참고.
+    content: [{ type: "text", text: "wrote ok <system-notice> [check-backend-naming] 1 issue(s): - app/x.py: bad name" }] }, ctx);
   handlers.turn_end({}, ctx);
   check("R2a: standing check-* notice after the gate -> FINISH-BLOCK",
     sent.length === 1 && /notice was raised after your last full verification/.test(sent[0] ?? ""));
@@ -434,8 +444,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
   now += 30_000; editOk(p2.handlers, "b.py");              // 새 변경
   p2.handlers.turn_end({}, ctx);
-  check("X4: a change after the carried gate -> blocked again",
-    p2.sent.length === 1 && /verify-fast/.test(p2.sent[0] ?? ""));
+  // 이월된 게이트 뒤의 1파일 변경은 조각이다 — 마감은 침묵이고 다음 프롬프트가 이어받는다.
+  check("X4: a 1-file change after the carried gate -> silent", p2.sent.length === 0);
 }
 
 { // Y: 범위 존중 — 사용자가 기능의 한 조각만 시켰을 때 "아직 안 만든 것" 빨강으로 재구동하지 않는다.
@@ -448,10 +458,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     now += 30_000; editOk(handlers, "models/notice.py"); editOk(handlers, "schemas/notice.py");
     bash(handlers, "make verify", COMPLETE);
     handlers.turn_end({}, ctx);
-    check("Y1: completeness-only red on a slice -> report-and-stop advice, not a re-drive",
-      sent.length === 1 && /rest of this feature does not exist yet/.test(sent[0] ?? ""));
+    // 계약 변경(2026-08-29): 고장 없는 조각의 마감은 침묵이다 — 조언 메시지도 다음 턴을 만든다.
+    check("Y1: completeness-only red on a slice -> silent (no re-drive, no advice)", sent.length === 0);
     handlers.turn_end({}, ctx);
-    check("Y2: the advice is sent once", sent.length === 1); }
+    check("Y2: it stays silent on repeat finishes", sent.length === 0); }
 
   { const { handlers, sent } = makePi();          // 고장이 섞이면 종전대로 재구동
     now += 30_000; editOk(handlers, "models/notice.py");
@@ -492,7 +502,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     handlers.tool_result({ toolName: "bash", isError: true, input: { command: "make verify" },
       content: [{ type: "text", text: "make: *** [verify] Error 2" }] }, ctx);
     handlers.turn_end({}, ctx);
-    check("Z1: a failing gate does not count as verification -> finish still blocked",
+    check("Z1: a failing gate (unrecognised red) does not count as verification -> still blocked",
       sent.length === 1 && /verify-fast|make verify/.test(sent[0] ?? "")); }
 
   { const { handlers, sent } = makePi();
@@ -568,8 +578,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   { const { handlers, sent } = makePi();
     now += 30_000; editN(handlers, 6);
     handlers.turn_end({}, ctx);
-    check("S1: 6 files (largest slice) -> targeted finish, no root-gate demand",
-      sent.length === 1 && /verify-fast/.test(sent[0] ?? "")); }
+    check("S1: 6 files (largest slice) -> silent finish, no root-gate demand", sent.length === 0); }
 
   { const { handlers, sent } = makePi();
     now += 30_000; editN(handlers, 7);
@@ -585,8 +594,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     editOk(handlers, "app/repositories/notice.py");
     bash(handlers, "make verify", COMPLETE);
     handlers.turn_end({}, ctx);
-    check("S3: a 3-file slice with completeness-only red -> scope respect, not a root-gate demand",
-      sent.length === 1 && /rest of this feature does not exist yet/.test(sent[0] ?? "")); }
+    check("S3: a 3-file slice with completeness-only red -> silent, no root-gate demand", sent.length === 0); }
 
   { // 임계를 다시 쪼개면 여기서 깨진다: 두 호출부가 모든 n 에서 같은 편에 서야 한다.
     let mismatch = null;
@@ -622,8 +630,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     bash(handlers, "make verify", "all green, 150 passed");
     now += 10_000; editOk(handlers, "e0.py"); editOk(handlers, "e1.py");
     handlers.turn_end({}, ctx);
-    check("S6: a green root gate resets the size -> 2 files left is a slice",
-      sent.length === 1 && /verify-fast/.test(sent[0] ?? "")); }
+    check("S6: a green root gate resets the size -> the 2 files left finish silently", sent.length === 0); }
 
   { process.env.BENCH_CELL = "1";              // 셀은 타깃 마감 면제를 못 쓴다
     const { handlers, sent } = makePi();
