@@ -87,11 +87,11 @@ style: |
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
-<!-- sync: strict-no-vcs-publish.ts=bc1ac6f99b645014 -->
+<!-- sync: strict-no-vcs-publish.ts=93fc9f5746e2c09c -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
 <!-- sync: strict-verified-git.ts=66eeb22752206f71 -->
 <!-- sync: check-ast-rules.ts=4ff5ebb7e669cdcf -->
-<!-- sync: check-backend-api-http.ts=9238ceee921e4a60 -->
+<!-- sync: check-backend-api-http.ts=7d815cf226e74ecc -->
 <!-- sync: check-backend-api-keys.ts=de367c8e35e2a93f -->
 <!-- sync: check-backend-app-setup.ts=f148f00a59aa765d -->
 <!-- sync: check-backend-audit-log.ts=a7cd9c7806dc9ca4 -->
@@ -135,7 +135,7 @@ style: |
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->
 <!-- sync: lib/backend-integration-configuration.ts=4aec5cc8f8f692db -->
-<!-- sync: lib/backend-migration-policy.ts=72a6b943b42e769a -->
+<!-- sync: lib/backend-migration-policy.ts=6d106dc65dfb7eff -->
 <!-- sync: lib/backend-naming.ts=c1ae1ebf7e26e7c9 -->
 <!-- sync: lib/backend-orm-sync.ts=43d591cd8eb0e234 -->
 <!-- sync: lib/harness-env.d.ts=c41ee1561d50960b -->

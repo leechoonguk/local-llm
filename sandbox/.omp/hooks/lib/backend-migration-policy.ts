@@ -276,6 +276,18 @@ export function listMisnamedSeedFiles(): string[] {
     // that are still being written. The identity-keyed reader no longer depends
     // on the name being right, which is what makes grandfathering safe.
     if (isPushedMigration(join("backend", "alembic", "versions", filename))) continue;
+    // 파일명이 지목한 테이블이 네 개 중 하나인지 먼저 본다. 예전에는 임의의 소문자 토큰을 받아서
+    // `…_integration_fields.py`(복수형) 같은 오타가 조용히 통과했다 — 실측 2026-08-30 감사에서 두 셀이
+    // 같은 오타를 냈고 아무 지적도 없었다. 규약은 backend-migrations.md 에 이미 적혀 있다.
+    const INTEGRATION_TABLES = new Set(["provider", "secret", "operation", "field"]);
+    if (!INTEGRATION_TABLES.has(table)) {
+      issues.push(
+        `${filename}: '_integration_${table}' is not one of the four integration tables ` +
+          "(provider, secret, operation, field) — the filename must name the table it seeds",
+      );
+      continue;
+    }
+
     const content = readFileSync(join(versionsDir, filename), "utf-8");
     const operationSeed = OPERATION_SEED.exec(content)?.[1];
     const providerSeed = PROVIDER_SEED.exec(content)?.[1];
@@ -839,7 +851,9 @@ export function checkMigrationPolicy(): string[] {
       issues.push(`${filename}: integration-table migration filename must include _integration_`);
     }
     if (declaresIntegrationMigration && !touchesIntegrationTable) {
-      issues.push(`${filename}: _integration_ filename must target an integration_* table`);
+      issues.push(`${filename}: no integration_* table is resolvable in this file — bind the target as ` +
+          "`x = table(\"integration_operation\")` (lower-case sa.table); the filename says _integration_ " +
+          "but nothing in the body reads as an integration table");
     }
 
     const relativePath = `backend/alembic/versions/${filename}`;

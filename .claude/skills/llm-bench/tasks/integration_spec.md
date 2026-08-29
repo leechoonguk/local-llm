@@ -6,6 +6,8 @@ Do NOT call the live API. Do NOT re-measure.
 ## Provider (already seeded, revision 64)
 
 - provider code: `mfds-food-safety-korea`
+- operation code: `search-barcode-item-info` — 이 오퍼레이션의 정체다. 시드 행, `api/integration.<code>.http`,
+  픽스처 파일, 시드 마이그레이션 파일명이 모두 이 이름을 따른다(규약은 `.omp/rules/backend-migrations.md`).
 - secret name: `service-key` (already seeded; reuse it, do not create a provider or secret)
 - base_url is already on the provider row
 
