@@ -159,7 +159,8 @@ export function registerDiscipline(pi: any): void {
     // 여기에 없는 것은 사라진다. 그래서 형식을 지정해 요구한다.
     pi.sendUserMessage(`[continuity] Checkpoint before a context reset (${reason}). `
       + `The context is about to be cut: after it, the only things left are the last few messages and this todo list, `
-      + `so anything missing from it is gone. Add three items to the EXISTING list now — do not re-initialise it:\n`
+      + `so anything missing from it is gone. Rewrite the list now, carrying EVERY existing item forward with its `
+      + `current state, and append these three (the tool replaces the list, so anything you leave out is deleted):\n`
       + `  1. BLOCKED: paste the current failure line verbatim (e.g. \`FAIL: …\`), or "none" if nothing is failing.\n`
       + `  2. TRIED: what you just attempted for it, in one line.\n`
       + `  3. NEXT: the single next action.\n`

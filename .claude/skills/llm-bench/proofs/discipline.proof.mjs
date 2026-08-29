@@ -432,7 +432,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("CK1: the checkpoint asks for the failure verbatim", /BLOCKED:.*verbatim/s.test(msg));
   check("CK2: it asks what was just tried", /TRIED:/.test(msg));
   check("CK3: it asks for one next action", /NEXT:.*single next action/s.test(msg));
-  check("CK4: it forbids re-initialising the list", /do not re-initialise/i.test(msg));
+  // 이 도구에는 append 가 없다(실사용 op: init/done/view/start) — "다시 깔지 마라"는 지킬 수 없는
+  // 지시였다. 계약은 "전부 이월하고 세 항목을 덧붙여라" 로 바뀐다(2026-08-30).
+  check("CK4: it says the list is replaced and everything must be carried forward",
+    /carrying EVERY existing item forward/.test(msg) && /anything you leave out is deleted/.test(msg));
   check("CK5: it says why — what is missing is lost", /only things left|anything missing from it is gone/i.test(msg));
 }
 

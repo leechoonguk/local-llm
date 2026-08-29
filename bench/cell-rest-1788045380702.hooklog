@@ -1,0 +1,144 @@
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=9.4s ctx=30843
+[continuity] turn dt=21.0s ctx=36030
+[continuity] turn dt=24.8s ctx=40278
+[continuity] turn dt=22.4s ctx=42329
+[continuity] turn dt=19.3s ctx=44869
+[continuity] turn dt=16.2s ctx=48015
+[continuity] turn dt=25.5s ctx=50557
+[continuity] turn dt=20.0s ctx=51384
+[continuity] turn dt=9.7s ctx=52347
+[continuity] turn dt=12.4s ctx=54316
+[continuity] turn dt=20.0s ctx=55289
+[continuity] turn dt=14.7s ctx=56837
+[continuity] turn dt=64.0s ctx=57977
+[continuity] turn dt=42.2s ctx=58774
+[continuity] turn dt=7.5s ctx=59799
+[continuity] turn dt=10.1s ctx=60575
+[continuity] turn dt=12.7s ctx=61534
+[continuity] turn dt=21.9s ctx=62210
+[continuity] turn dt=80.4s ctx=63259
+[continuity] turn dt=25.5s ctx=68867
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=64.0s ctx=70319
+[continuity] turn dt=9.7s ctx=70631
+[continuity] turn dt=6.4s ctx=71271
+[continuity] turn dt=10.3s ctx=71392
+[continuity] turn dt=11.0s ctx=71625
+[continuity] turn dt=9.6s ctx=72260
+[continuity] turn dt=28.5s ctx=72453
+[continuity] turn dt=14.8s ctx=73625
+[continuity] turn dt=22.6s ctx=73875
+[continuity] REG-WATCH backend/alembic/env.py: from app.models.user import User  # noqa: F401 — register mo
+[continuity] turn dt=22.4s ctx=74131
+[continuity] turn dt=5.5s ctx=74780
+[continuity] turn dt=9.8s ctx=75070
+[continuity] turn dt=10.4s ctx=75344
+[continuity] turn dt=11.0s ctx=75629
+[continuity] REG-WATCH backend/app/dependencies/services.py: from app.services.user import UserService
+[continuity] turn dt=11.7s ctx=75843
+[continuity] turn dt=11.0s ctx=76221
+[continuity] turn dt=15.9s ctx=76408
+[continuity] turn dt=15.9s ctx=76719
+[continuity] turn dt=16.7s ctx=77028
+[continuity] REG-WATCH backend/app/main.py: from app.routers import auth, batch, health, integration, us
+[continuity] turn dt=18.0s ctx=77262
+[continuity] turn dt=16.8s ctx=79233
+[continuity] CHECKPOINT requested (the context is at ~60% of the window (~79k tokens))
+[continuity] REG-WATCH backend/app/main.py: api_router.include_router(batch.router)
+[continuity] turn dt=35.6s ctx=79732
+[continuity] RESET window @125/129 (hygiene cut #1)
+[continuity] turn dt=5.7s ctx=23304
+[continuity] turn dt=10.5s ctx=23448
+[continuity] turn dt=8.3s ctx=23729
+[continuity] REG-WATCH backend/app/main.py: api_router.include_router(auth.router)
+[continuity] turn dt=10.7s ctx=24007
+[continuity] turn dt=9.2s ctx=24368
+[continuity] turn dt=11.5s ctx=24586
+[continuity] turn dt=10.6s ctx=24825
+[continuity] turn dt=13.5s ctx=25220
+[continuity] turn dt=9.6s ctx=26220
+[continuity] turn dt=5.1s ctx=26397
+[continuity] turn dt=5.1s ctx=26528
+[continuity] turn dt=6.2s ctx=26615
+[continuity] turn dt=5.9s ctx=26742
+[continuity] turn dt=5.9s ctx=28011
+[continuity] turn dt=10.1s ctx=29987
+[continuity] turn dt=14.5s ctx=30677
+[continuity] turn dt=28.4s ctx=30868
+[continuity] turn dt=10.0s ctx=32160
+[continuity] turn dt=15.5s ctx=32547
+[continuity] turn dt=11.1s ctx=34048
+[continuity] turn dt=34.8s ctx=34168
+[continuity] turn dt=10.8s ctx=35260
+[continuity] turn dt=9.5s ctx=35438
+[continuity] red: FAIL: notice.py:list_notices: limit defaults to 100 — the standard default is settings.items_per_use
+[continuity] turn dt=11.0s ctx=35825
+[continuity] turn dt=11.2s ctx=36272
+[continuity] turn dt=11.2s ctx=36651
+[continuity] turn dt=11.8s ctx=36964
+[continuity] turn dt=17.4s ctx=37112
+[continuity] turn dt=3.0s ctx=37363
+[continuity] turn dt=5.8s ctx=37632
+[continuity] turn dt=6.3s ctx=37944
+[continuity] red: FAIL: conftest.py: model "user" not imported — Base.metadata.create_all() skips its table in the tes
+[continuity] turn dt=7.4s ctx=38559
+[continuity] turn dt=9.0s ctx=38917
+[continuity] turn dt=19.9s ctx=39162
+[continuity] turn dt=20.4s ctx=39841
+[continuity] turn dt=26.4s ctx=40530
+[continuity] turn dt=23.2s ctx=41203
+[continuity] red: FAIL: conftest.py: model "user" not imported — Base.metadata.create_all() skips its table in the tes
+[continuity] turn dt=7.1s ctx=41981
+[continuity] turn dt=7.1s ctx=42680
+[continuity] turn dt=9.5s ctx=42937
+[continuity] red: FAIL: conftest.py: model "notice" not imported — Base.metadata.create_all() skips its table in the t
+[continuity] turn dt=10.1s ctx=43452
+[continuity] turn dt=9.1s ctx=43797
+[continuity] turn dt=13.7s ctx=44009
+[continuity] red: FAIL: domain 'notice' has no tests/api/test_notice.py — add the standard CRUD test file | FAIL: repo
+[continuity] turn dt=15.0s ctx=44645
+[continuity] turn dt=15.4s ctx=47327
