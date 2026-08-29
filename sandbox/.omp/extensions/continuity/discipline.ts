@@ -67,7 +67,12 @@ import { resolve } from "node:path";
 const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
 const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state (same signature)
 const RED_TOTAL_MS = 20 * 60_000;    // absolute ceiling for one red episode even with advancing signatures (debate 2026-08-27)
-const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
+const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/;
+// 하위 디렉터리로 스코프를 좁힌 게이트는 **풀 게이트가 아니다**. 채점은 프로젝트 루트 게이트가 한다.
+// 실측 2026-08-29(4프롬프트 p4): 피험자가 `cd …/sandbox/backend && make verify` 를 11회 돌리고
+// 루트 게이트는 한 번도 안 돌렸는데, 하네스가 그걸 초록으로 세어 TAIL-TRIM 까지 갔다. 최종 루트
+// 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다(가짜 완료).
+const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
 const MAX_RESETS = 6;                // sickness-cut backstop
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
@@ -200,8 +205,8 @@ export function registerDiscipline(pi: any): void {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
-        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
-        if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
+        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr) && !SUBDIR_GATE_RE.test(cmdStr);
+        if (!truncated && !fullGate && !event.isError && (FAST_GATE_RE.test(cmdStr) || SUBDIR_GATE_RE.test(cmdStr))) lastFastGateAt = Date.now();
         // 게이트는 **성공했을 때만** "검증됨"으로 센다. 실패한 게이트까지 lastGateAt 을 밀면
         // 마감 판정("마지막 변경 이후에 게이트가 돌았나")이 참이 되어 차단이 침묵한다 —
         // 실측 2026-08-29(4프롬프트 p4): 게이트 3회 중 마지막이 빨간 채로 세션이 끝났고
@@ -273,7 +278,7 @@ export function registerDiscipline(pi: any): void {
         // 만들어서다. 셀은 과제가 언제나 기능 전체이므로 이 문장은 인터랙티브에서만 붙인다.
         const scopeLine = isCellMode() ? "" :
           `Do what this prompt asks and stop there. If it names part of a feature (one layer, one file, one function), build exactly that, verify it with a targeted run, and end your answer by listing what the full gate will still want — do not start the next layer to make the gate green. `;
-        pi.sendUserMessage(`${scopeLine}Working pattern that finishes tasks like this fastest here (measured): run the project's full verification after each area of work — the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
+        pi.sendUserMessage(`${scopeLine}Working pattern that finishes tasks like this fastest here (measured): run the project's full verification from the project root — a gate run inside a subdirectory (backend/, frontend/) is not it — after each area of work — the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
       stallTurns++; turnCount++;

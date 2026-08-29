@@ -510,4 +510,38 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("W3: both briefs keep the measured working pattern", /Working pattern that finishes/.test(cellBrief));
 }
 
+{ // V: 하위 디렉터리 게이트는 풀 게이트가 아니다(채점은 루트가 한다).
+  // 실측 2026-08-29(4프롬프트 p4): `cd …/sandbox/backend && make verify` 11회로 초록을 봤지만
+  // 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
+  { const { handlers, sent } = makePi();
+    now += 30_000;
+    for (const f of ["a.py","b.py","c.py"]) editOk(handlers, f);
+    bash(handlers, "cd /Users/x/sandbox/backend && make verify 2>&1", "all green, 150 passed");
+    handlers.turn_end({}, ctx);
+    check("V1: a backend-scoped gate does not satisfy the finish check",
+      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000; editOk(handlers, "a.py");
+    now += 5_000;  // 검증은 편집보다 뒤여야 한다(같은 시각이면 덮은 것으로 보지 않는다)
+    bash(handlers, "cd /Users/x/sandbox/backend && make verify 2>&1", "all green");
+    handlers.turn_end({}, ctx);
+    check("V2: but it does count as the targeted run for a small change", sent.length === 0); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000;
+    for (const f of ["a.py","b.py","c.py"]) editOk(handlers, f);
+    bash(handlers, "make -C backend verify", "all green");
+    handlers.turn_end({}, ctx);
+    check("V3: `make -C backend verify` is scoped too",
+      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000;
+    for (const f of ["a.py","b.py","c.py"]) editOk(handlers, f);
+    bash(handlers, "cd /Users/x/sandbox && make verify", "all green, 150 passed");
+    handlers.turn_end({}, ctx);
+    check("V4: the root gate still clears the finish", sent.length === 0); }
+}
+
 process.exit(failures ? 1 : 0);

@@ -296,6 +296,10 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
   let firstGateS: number | null = null;
   let firstGreenS: number | null = null;
   const FULL_GATE = /make(?:\\?["'\s][^"]{0,40})?\s*(?:-C\s+\S+\s+)?(?:verify|test)(?!-fast)\b/;
+  // 채점은 루트 게이트가 한다 — 하위 디렉터리로 좁힌 실행은 gate_runs 에 세지 않는다.
+  // 실측 2026-08-29: 피험자가 `cd …/sandbox/backend && make verify` 만 11회 돌린 셀이 있었고,
+  // 그걸 풀 게이트로 세면 "게이트 11회 초록"처럼 보이지만 루트 게이트는 exit 2 였다.
+  const SUBDIR_GATE = /cd\s+[^\s;&|"]*\/(?:backend|frontend|api|decks)\b|make[^"|;&]{0,20}-C\s+(?:backend|frontend|api|decks)\b/;
   for (const line of readFileSync(path, "utf-8").split("\n")) {
     const ts = line.match(/"timestamp"\s*:\s*"([^"]+)"/)?.[1];
     if (ts && t0 === null) t0 = Date.parse(ts);
@@ -303,7 +307,7 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
     // 출력만 담는다. 그래서 결과 라인에서 게이트를 세면 0 이 나오고(베이크 셀 실측),
     // 반대로 필터 없이 세면 assistant echo·continuity 스냅샷 재포함으로 부풀었다.
     // 고유 toolCallId 로 센다.
-    if (/"name"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line) && !line.includes('"continuity')) {
+    if (/"name"\s*:\s*"bash"/.test(line) && FULL_GATE.test(line) && !SUBDIR_GATE.test(line) && !line.includes('"continuity')) {
       const id = (line.match(/"toolCallId"\s*:\s*"([^"]+)"/) ?? line.match(/"id"\s*:\s*"([^"]+)"/))?.[1];
       if (id && !gateCallIds.has(id)) {
         gateCallIds.add(id);
