@@ -127,7 +127,7 @@ style: |
 <!-- sync: check-backend-router-params.ts=adb1d9fd2598a204 -->
 <!-- sync: check-backend-sse.ts=17f6ff3680a5b31b -->
 <!-- sync: check-backend-table-design.ts=bfb89ad64e391d1d -->
-<!-- sync: check-backend-tests.ts=a3fab82bf6ffb945 -->
+<!-- sync: check-backend-tests.ts=b1604a2072938ec3 -->
 <!-- sync: check-backend-transaction.ts=07d2fdefcd194c6d -->
 <!-- sync: check-code-layout.ts=fe94d9e0982daf36 -->
 <!-- sync: check-decks-sync.ts=d1060909b737414c -->
@@ -142,8 +142,9 @@ style: |
 <!-- sync: check-verify.ts=5a28d5df52b21485 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
-<!-- sync: lib/backend-api-http.ts=c69aea7655bd99b2 -->
+<!-- sync: lib/backend-api-http.ts=bb2f0ef1271159f0 -->
 <!-- sync: lib/backend-auth.ts=a5bca744745861b0 -->
+<!-- sync: lib/backend-domain-layers.ts=2ff2f5555721a967 -->
 <!-- sync: lib/backend-domain-structure.ts=9b2bfb5717d2a8b6 -->
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->

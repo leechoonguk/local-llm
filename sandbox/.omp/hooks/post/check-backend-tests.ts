@@ -21,6 +21,7 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { hasLayer } from "../lib/backend-domain-layers.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
@@ -48,6 +49,8 @@ const FILLER_WORDS: Record<string, true> = {
 };
 const coreTestDir = join(testsDir, "core");
 const modelsDir = join(projectRoot, "backend", "app", "models");
+// 요구 방향(omp-hooks.md): 테스트는 라우터가 선 뒤에 owed 다. 완성의 정의는 한 곳에서 온다.
+
 const API_VERSION_PREFIX = "(?:/api/v\\d+)?";
 
 // Integration configuration has a dedicated aggregate contract and 100%
@@ -64,6 +67,16 @@ const MUTATING_TOOLS = new Set([
 
 
 /** The 10 standard API cases every CRUD domain test file must cover. */
+// 케이스마다 그것을 owed 로 만드는 라우터 메서드를 적는다(요구 방향, 2026-08-30 감사).
+// POST+GET 만 있는 라우터에 update/delete 테스트를 요구하면 존재하지 않는 엔드포인트의 테스트를
+// 요구하는 셈이다 — 실측에서 이 형태로 69건이 나갔다. null 은 메서드와 무관하게 항상 owed.
+const CASE_METHOD: Record<string, RegExp | null> = {
+  create: /@router\.post/, list: /@router\.get/, get: /@router\.get/, "get-404": /@router\.get/,
+  update: /@router\.(put|patch)/, "update-404": /@router\.(put|patch)/,
+  delete: /@router\.delete/, "delete-404": /@router\.delete/,
+  "create-422": /@router\.post/, unauthorized: null,
+};
+
 const API_CASES: [string, RegExp][] = [
   ["create", /def test_create_/],
   ["list", /def test_list_/],
@@ -182,6 +195,10 @@ function checkBackendTestsSync(): string[] {
       if (!f.endsWith(".py") || f === "__init__.py" || f === "base.py") continue;
       const name = f.replace(/\.py$/, "");
       if (SPECIALIZED_AGGREGATE_DOMAINS.has(name)) continue;
+      // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
+      // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
+      // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
+      if (!hasLayer(projectRoot, "router", name)) continue;
       const testFile = `test_${name}.py`;
       if (!apiFiles.has(testFile)) {
         issues.push(`domain '${name}' has no tests/api/test_${name}.py — add the standard CRUD test file`);
@@ -197,9 +214,13 @@ function checkBackendTestsSync(): string[] {
       if (SPECIALIZED_AGGREGATE_DOMAINS.has(name)) continue;
       if (!existsSync(join(modelsDir, `${name}.py`))) continue;
       const content = readFileSync(join(apiDir, f), "utf-8");
+      const routerPath = join(projectRoot, "backend", "app", "routers", `${name}.py`);
+      const routerSrc = existsSync(routerPath) ? readFileSync(routerPath, "utf-8") : "";
       for (const [label, re] of API_CASES) {
+        const method = CASE_METHOD[label];
+        if (method && !method.test(routerSrc)) continue; // 그 엔드포인트가 없으면 그 테스트도 없다
         if (!re.test(content)) {
-          issues.push(`tests/api/${f}: missing standard case '${label}' (${re})`);
+          issues.push(`tests/api/${f}: router declares this endpoint but the standard case '${label}' is missing (${re})`);
         }
       }
       for (const code of API_STATUS_ASSERTIONS) {
@@ -307,6 +328,10 @@ function checkBackendTestsSync(): string[] {
       if (!f.endsWith(".py") || f === "__init__.py") continue;
       const name = f.replace(/\.py$/, "");
       if (SPECIALIZED_AGGREGATE_DOMAINS.has(name)) continue;
+      // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
+      // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
+      // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
+      if (!hasLayer(projectRoot, "router", name)) continue;
       const repoTestPath = join(repositoriesTestDir, `test_${name}.py`);
       if (!existsSync(repoTestPath)) {
         issues.push(`repository module '${name}' has no tests/repositories/test_${name}.py — add repository unit tests`);
@@ -324,6 +349,10 @@ function checkBackendTestsSync(): string[] {
     for (const f of readdirSync(servicesDir)) {
       if (!f.endsWith(".py") || f === "__init__.py") continue;
       const name = f.replace(/\.py$/, "");
+      // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
+      // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
+      // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
+      if (!hasLayer(projectRoot, "router", name)) continue;
       const servicesTestPath = join(servicesTestDir, `test_${name}.py`);
       if (!existsSync(servicesTestPath)) {
         issues.push(`service module '${name}' has no tests/services/test_${name}.py — add service unit tests`);

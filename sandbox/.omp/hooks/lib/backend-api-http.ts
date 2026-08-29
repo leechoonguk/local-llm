@@ -1,5 +1,6 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { isMounted } from "./backend-domain-layers.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import {
@@ -120,9 +121,13 @@ export function checkDomainApiHttp(): string[] {
     const name = file.replace(/\.py$/, "");
     const group = byRouter.get(name);
     if (group?.primary === undefined || group?.primary === null) {
+      // 요구 방향(2026-08-30 감사): `.http` 는 라우터가 **마운트된 뒤**에 owed 다. 라우터 파일이
+      // 막 생긴 시점에 요구하면 배선 전 단계에서 다음 걸음을 요구하게 된다. 마운트되지 않은
+      // 라우터는 check-backend-app-setup 이 "router exists but is never mounted" 로 따로 잡는다.
+      if (!isMounted(projectRoot, name)) continue;
       issues.push(
-        `${name}: router exists but api/${name}.http is missing — ` +
-          "every API router must have a matching .http test file",
+        `${name}: router is mounted in main.py but api/${name}.http is missing — ` +
+          "every mounted API router must have a matching .http test file",
       );
       continue;
     }
