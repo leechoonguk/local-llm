@@ -153,10 +153,17 @@ export function registerDiscipline(pi: any): void {
       + `and the todo list holds the checkpoint you just wrote — read it and continue from there.\n`
       + `Step back, reconsider the approach, and continue the remaining work a different way. `
       + `Re-run the project's verification early to confirm where things stand.`;
+    // 실측 2026-08-30: 이 문구로 받은 투두는 "어디까지 했나"(11단계 계획)만 담고 있었고, 요구한 세
+    // 가지 중 둘(쫓던 실패 인용·직전 시도)이 없었다. 게다가 `op:"init"` 로 목록을 통째로 다시 깔아
+    // 이전 맥락을 덮었다(한 셀에서 3회). 컷 뒤 남는 것은 최근 4개 메시지와 이 투두뿐이므로,
+    // 여기에 없는 것은 사라진다. 그래서 형식을 지정해 요구한다.
     pi.sendUserMessage(`[continuity] Checkpoint before a context reset (${reason}). `
-      + `Update the todo list in detail NOW, while you still have full context: `
-      + `the exact failure you are chasing (quote its message), what you just tried, `
-      + `and the next single step. Then continue.`);
+      + `The context is about to be cut: after it, the only things left are the last few messages and this todo list, `
+      + `so anything missing from it is gone. Add three items to the EXISTING list now — do not re-initialise it:\n`
+      + `  1. BLOCKED: paste the current failure line verbatim (e.g. \`FAIL: …\`), or "none" if nothing is failing.\n`
+      + `  2. TRIED: what you just attempted for it, in one line.\n`
+      + `  3. NEXT: the single next action.\n`
+      + `Then continue working.`);
     log(`CHECKPOINT requested (${reason})`);
   }
 

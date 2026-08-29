@@ -419,4 +419,21 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   delete process.env.BENCH_HYGIENE_CEILING;
 }
 
+{ // CK: 체크포인트는 인수인계 문서를 요구한다 — 컷 뒤 남는 건 최근 몇 메시지와 이 투두뿐이다.
+  // 실측 2026-08-30: 예전 문구로 받은 투두에는 쫓던 실패도 직전 시도도 없었고, op:"init" 로
+  // 목록을 통째로 다시 깔아 맥락을 덮었다(한 셀에서 3회).
+  const handlers = {}; const sent = [];
+  try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+  registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 100_000, contextWindow: 131_072 }) });
+  now += 30_000;
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 101_000, contextWindow: 131_072 }) });
+  const msg = sent[0] ?? "";
+  check("CK1: the checkpoint asks for the failure verbatim", /BLOCKED:.*verbatim/s.test(msg));
+  check("CK2: it asks what was just tried", /TRIED:/.test(msg));
+  check("CK3: it asks for one next action", /NEXT:.*single next action/s.test(msg));
+  check("CK4: it forbids re-initialising the list", /do not re-initialise/i.test(msg));
+  check("CK5: it says why — what is missing is lost", /only things left|anything missing from it is gone/i.test(msg));
+}
+
 process.exit(failures ? 1 : 0);
