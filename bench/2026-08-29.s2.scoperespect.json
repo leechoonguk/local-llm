@@ -1,0 +1,69 @@
+[
+ {
+  "at": "2026-08-28T23:01:58.749Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 2700,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.5-4B-4bit",
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 11,
+  "expected": 6,
+  "files": [
+   "D sandbox/api/integration.search-barcode-item-info.http",
+   " D sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " D sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " D sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/integration.search-barcode-item.http",
+   "?? sandbox/backend/alembic/versions/72_seed_barcode_item_integration_operation.py",
+   "?? sandbox/backend/alembic/versions/73_seed_barcode_item_integration_fields.py",
+   "?? sandbox/backend/tests/core/fixtures/integration/search-barcode-item.json",
+   "?? sandbox/backend/tests/core/fixtures/integration/search-barcode-item.refused.json"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 1,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 1,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-28T23-02-30-524Z_01a04a9c-457c-7626-9cc8-9de4bb154920.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 13,
+  "tools": {
+   "read": 53,
+   "glob": 12,
+   "grep": 16,
+   "bash": 56,
+   "write": 6,
+   "edit": 7
+  },
+  "gate_runs": 5,
+  "first_full_gate_s": 874,
+  "first_green_s": 1698,
+  "no_work": false
+ }
+]

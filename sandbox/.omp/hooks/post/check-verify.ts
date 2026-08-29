@@ -39,10 +39,10 @@ const projectRoot = existsSync(join(cwd, "backend", "app")) && existsSync(join(c
  * no feedback at all, so failure re-checks quickly.
  */
 const THROTTLE_MS = 5 * 60 * 1000;
-const FAILURE_THROTTLE_MS = 30 * 1000; // A/B 되돌림(2026-08-29): 90초로 늘렸더니 integration 셀이 2700초 TIMEOUT 으로 끝났고,
-// 그 셀은 턴 116 동안 자체 게이트 4회·훅 주입 check-verify 6회뿐이었다 — 참조 이름 불일치처럼
-// "게이트가 지적해야 아는" 실패는 피드백 빈도에 직접 걸린다. 비용(1회 1.8~7.7초)보다 발견 지연이
-// 비싸다는 가설로 30초를 복원하고, 같은 과제쌍(integration→rest)으로 단일 변수 비교한다.
+const FAILURE_THROTTLE_MS = 90 * 1000; // A/B 결론(2026-08-29, `bench/2026-08-29.s2.throttle.md`): 스로틀은 이 게이트의 지렛대가 아니다.
+// 30초로 되돌린 셀쌍은 integration TIMEOUT(산출물 8/6, 자체 게이트 3회)·rest TIMEOUT(14/15) 였고,
+// 90초 셀쌍은 integration TIMEOUT(11/6, 게이트 5회)·rest 1461초 15/15(역대 최속) 였다.
+// 즉 30초가 발견을 앞당긴다는 증거가 없고, 비용(1회 1.8~7.7초의 실제 make)만 3배다 — 90초 유지.
 let lastRunAt = 0;
 let lastRunFailed = false;
 

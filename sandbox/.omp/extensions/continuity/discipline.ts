@@ -264,7 +264,7 @@ export function registerDiscipline(pi: any): void {
     try {
       if (!openingSent) {
         openingSent = true; savePersisted({ briefedAt: Date.now() });
-        pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
+        pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification after each area of work — the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
       stallTurns++; turnCount++;
