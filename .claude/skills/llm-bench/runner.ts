@@ -286,7 +286,7 @@ function newestSessionAfter(afterMs: number): string | null {
 
 /** 세션 로그의 turns/toolCalls/loops/compactions/peak, 그리고 툴 종류별 횟수(write/edit 포함). */
 function sessionMetrics(path: string | null): Record<string, unknown> {
-  const m: Record<string, unknown> = { session: path, turns: null, toolCalls: null, loops: null, compactions: null, peak: null, writes: 0, tools: {}, gate_runs: 0, first_full_gate_s: null };
+  const m: Record<string, unknown> = { session: path, turns: null, toolCalls: null, loops: null, compactions: null, peak: null, writes: 0, tools: {}, gate_runs: 0, first_full_gate_s: null, advisory_skips: 0, piped_gates: 0 };
   if (path === null || !existsSync(path)) return m;
   const tools: Record<string, number> = {};
   // 연속 지표(4자 토의 라운드 2, 2026-08-28): full-gate 실행 횟수·첫 실행 시각 —
@@ -489,6 +489,8 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     : [[task.prompt(spec), opts.timeoutS]];
   let timedOut = false;
   const phaseWalls: number[] = [];
+  // 셀 훅로그: 모델·과제·시작시각으로 이름을 만든다(캠페인 stem 은 이 스코프에 없다).
+  const hookLogPath = join(BENCH, `cell-${taskName}-${started}.hooklog`);
   for (const [sessionPrompt, cap] of sessionPlans) {
     const pStart = Date.now();
     const ompArgs = baked ? ["-p", sessionPrompt] : ["-p", sessionPrompt, "--model", model, ...extra];
@@ -496,7 +498,9 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     // 범위 존중 분기(인터랙티브에서 조각 작업의 완성도 빨강을 그대로 두는 규칙)를 끈다.
     const child = spawn("omp", ompArgs, {
       cwd: SANDBOX, stdio: "ignore", detached: true,
-      env: { ...process.env, BENCH_CELL: "1" },
+      // STUCK_RESET_LOG: 셀에도 discipline 훅로그를 남긴다. 이게 없어서 지금까지 셀의 신호를
+      // 사후에 볼 수 없었다(2026-08-29). 행과 같은 stem 의 .hooklog 로 남긴다.
+      env: { ...process.env, BENCH_CELL: "1", STUCK_RESET_LOG: hookLogPath },
     });
     const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };
     await new Promise<void>((resolveP) => {
