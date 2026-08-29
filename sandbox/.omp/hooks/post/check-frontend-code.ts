@@ -73,6 +73,7 @@ function checkFrontendCodeSync(): string[] {
   // --- 1. Required files ---
   for (const required of ["main.tsx", "App.tsx", "styles.css"]) {
     if (!existsSync(join(srcDir, required))) {
+      // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
       issues.push(`missing required file src/${required}`);
     }
   }

@@ -67,6 +67,7 @@ function checkBackendIntegrationSync(): string[] {
 
   // --- 1. IntegrationClient base class ---
   if (!existsSync(integrationPath)) {
+    // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
     issues.push("app/core/integration.py not found — IntegrationClient base class required");
     return issues;
   }
@@ -140,6 +141,7 @@ function checkBackendIntegrationSync(): string[] {
 
   // --- 5. Integration exceptions defined + handled ---
   if (!existsSync(exceptionsPath)) {
+    // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
     issues.push("app/core/exceptions.py not found");
   } else {
     const exceptions = readFileSync(exceptionsPath, "utf-8");
@@ -155,6 +157,7 @@ function checkBackendIntegrationSync(): string[] {
 
   // --- 6. Shared HTTP client DI wiring ---
   if (!existsSync(depsPath)) {
+    // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
     issues.push("app/dependencies/integrations.py not found — IntegrationHttpClientDep required");
   } else {
     const deps = readFileSync(depsPath, "utf-8");
@@ -168,6 +171,7 @@ function checkBackendIntegrationSync(): string[] {
 
   // --- 7. Shared client lifecycle in main.py lifespan ---
   if (!existsSync(mainPath)) {
+    // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
     issues.push("app/main.py not found");
   } else {
     const main = readFileSync(mainPath, "utf-8");

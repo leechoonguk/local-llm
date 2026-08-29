@@ -90,6 +90,7 @@ export function checkOmpSkillsSync(): string[] {
 function readCatalog(issues: string[]): Map<string, CatalogRow> {
   const catalog = new Map<string, CatalogRow>();
   if (!existsSync(catalogPath)) {
+    // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
     issues.push(".omp/rules/omp-skills.md not found");
     return catalog;
   }

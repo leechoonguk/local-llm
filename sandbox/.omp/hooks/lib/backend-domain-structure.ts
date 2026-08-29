@@ -280,6 +280,7 @@ export function checkDomainStructure(): string[] {
     if (existsSync(envPy)) {
       const envContent = readFileSync(envPy, "utf-8");
       if (!new RegExp(`from app\\.models\\.${name} import\\s+\\w+`).test(envContent)) {
+        // premature-ok: autogenerate 는 import 없는 모델을 보지 못한다 — 이 등록은 모델 자체의 속성이다.
         issues.push(`${name}: not imported in alembic/env.py`);
       }
     }
@@ -297,6 +298,7 @@ export function checkDomainStructure(): string[] {
     // Dependencies: 서비스 DI 는 **서비스 파일이 생긴 뒤**에만 요구한다(같은 이유).
     const depsServicesPath = join(base, "dependencies", "services.py");
     if (!existsSync(depsServicesPath)) {
+      // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
       issues.push(`${name}: dependencies/services.py not found`);
     } else if (hasService) {
       const depsContent = readFileSync(depsServicesPath, "utf-8");

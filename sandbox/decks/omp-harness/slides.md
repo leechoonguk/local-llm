@@ -76,7 +76,7 @@ style: |
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
 <!-- sync: omp-conventions.md=1983392cf85dd0da -->
 <!-- sync: omp-hook-crash-guard.md=3813240c3c5ba87d -->
-<!-- sync: omp-hooks.md=1acd0b773b61f2b9 -->
+<!-- sync: omp-hooks.md=0e21beccbf3256b1 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
@@ -93,7 +93,7 @@ style: |
 <!-- sync: check-ast-rules.ts=4ff5ebb7e669cdcf -->
 <!-- sync: check-backend-api-http.ts=9238ceee921e4a60 -->
 <!-- sync: check-backend-api-keys.ts=de367c8e35e2a93f -->
-<!-- sync: check-backend-app-setup.ts=5eba63a489c74ad9 -->
+<!-- sync: check-backend-app-setup.ts=f148f00a59aa765d -->
 <!-- sync: check-backend-audit-log.ts=a7cd9c7806dc9ca4 -->
 <!-- sync: check-backend-auth.ts=ee564bb32028f31d -->
 <!-- sync: check-backend-background-tasks.ts=9f072eb78d6c9cb6 -->
@@ -103,8 +103,8 @@ style: |
 <!-- sync: check-backend-exceptions.ts=4ec4128348117404 -->
 <!-- sync: check-backend-file-upload.ts=521ff1840bf25dc0 -->
 <!-- sync: check-backend-integration-configuration.ts=9f98d6294c9ca098 -->
-<!-- sync: check-backend-integration.ts=013e31b8c9fb9cbe -->
-<!-- sync: check-backend-middleware.ts=4039019adcd34d04 -->
+<!-- sync: check-backend-integration.ts=8dd61d7853ac5af9 -->
+<!-- sync: check-backend-middleware.ts=977ded202191eaa4 -->
 <!-- sync: check-backend-migrations.ts=b43ada85e0680807 -->
 <!-- sync: check-backend-naming.ts=6ac63ba3b8457d64 -->
 <!-- sync: check-backend-ownership.ts=48fb2c0f86301d00 -->
@@ -117,12 +117,12 @@ style: |
 <!-- sync: check-backend-transaction.ts=07d2fdefcd194c6d -->
 <!-- sync: check-code-layout.ts=fe94d9e0982daf36 -->
 <!-- sync: check-decks-sync.ts=d1060909b737414c -->
-<!-- sync: check-environment.ts=7ea2d5d378647caa -->
-<!-- sync: check-frontend-code.ts=8964ff0d766d695c -->
+<!-- sync: check-environment.ts=06cbda65a3995f6e -->
+<!-- sync: check-frontend-code.ts=8d2638d68947d133 -->
 <!-- sync: check-makefiles.ts=a232a657107e6577 -->
-<!-- sync: check-omp-hooks.ts=c78b2d25f12999ed -->
+<!-- sync: check-omp-hooks.ts=f8f0babf0477a9ce -->
 <!-- sync: check-omp-rules.ts=385339b1dd762c2f -->
-<!-- sync: check-omp-skills.ts=95e200cecf2a1641 -->
+<!-- sync: check-omp-skills.ts=67831f31a4b0b420 -->
 <!-- sync: check-omp-types.ts=8171ad53424a7feb -->
 <!-- sync: check-tooling.ts=10b444f2217c3588 -->
 <!-- sync: check-verify.ts=5a28d5df52b21485 -->
@@ -130,7 +130,7 @@ style: |
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
 <!-- sync: lib/backend-api-http.ts=c69aea7655bd99b2 -->
 <!-- sync: lib/backend-auth.ts=a5bca744745861b0 -->
-<!-- sync: lib/backend-domain-structure.ts=284601471f8ba608 -->
+<!-- sync: lib/backend-domain-structure.ts=9b2bfb5717d2a8b6 -->
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->
 <!-- sync: lib/backend-integration-configuration.ts=4aec5cc8f8f692db -->

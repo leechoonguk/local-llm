@@ -497,6 +497,22 @@ such as `lib/backend-integration-configuration.ts`. Prefix-less hooks are cross-
    tool result cost 6.8s across the 36 post hooks (write) and 4.9s (bash), and
    3.3s of that was harness meta checks firing on a `backend/` edit.
 
+### Demand direction (요구는 의존 방향으로)
+
+검사는 **존재하는 하류가 상류를 요구**한다. 작업의 첫 걸음에서 마지막 걸음을 요구하지 않는다.
+실측 2026-08-29: `app/models/x.py` 하나가 생기는 순간 schema/repository/service 누락과 라우터 미등록·
+DI 미배선까지 5건이 한 번에 나갔고, 이 지적들은 매 변이 도구 결과에 주입되므로 로컬 모델이 그 목록을
+작업 큐로 읽어("첫 실패 수정 완료. 다음: missing service file") 한 계층만 요청한 프롬프트를 기능 전체로
+부풀렸다.
+
+파일이나 등록의 **부재**를 지적하는 문장은 둘 중 하나여야 한다 — `check-omp-hooks` 가 강제한다:
+
+- **앵커 명시**: 무엇 때문에 요구가 생겼는지 메시지가 밝힌다(`routers/x.py exists but service file is missing`).
+- **`// premature-ok: <사유>`**: 어느 단계에서든 참인 요구다. 예: 프로젝트 기반 파일의 부재(설정 결함이지
+  작업 순서가 아니다), `alembic/env.py` 등록(autogenerate 는 import 없는 모델을 보지 못하므로 모델 자체의 속성).
+
+내용 검사(클래스·메서드·필드 부재)는 대상이 아니다 — 이미 존재하는 파일의 속성이기 때문이다.
+
 ```ts
 const warning = buildSafeWarning(
   event.toolName,

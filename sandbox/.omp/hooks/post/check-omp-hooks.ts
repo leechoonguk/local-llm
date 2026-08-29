@@ -122,6 +122,7 @@ function checkOmpHooksSync(): string[] {
 
   // Check omp-hooks.md exists
   if (!existsSync(ompHooksMdPath)) {
+    // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
     issues.push(".omp/rules/omp-hooks.md not found");
     return issues;
   }
@@ -301,6 +302,7 @@ function checkOmpHooksSync(): string[] {
       }
       issues.push(...checkWarningCallShape(actual, fileName, hookContent));
       issues.push(...checkCrashGuard(actual, fileName, hookContent));
+      issues.push(...checkDemandDirection(actual, hookContent));
       issues.push(...checkScopeGate(actual, fileName, hookContent));
       if (
         actual !== "post/check-omp-hooks.ts" &&
@@ -541,6 +543,33 @@ function checkScopeGate(actual: string, _fileName: string, hookContent: string):
     `${actual}: declares no path scope — gate the handler with touchesPath()/touchesStrict() ` +
       "from lib/hook-scope.ts, or state `// hook-scope: global — <reason>` (omp-hooks.md, Path gate)",
   ];
+}
+
+/**
+ * 요구 방향 계약 — 검사는 **존재하는 하류가 상류를 요구**한다. 작업의 첫 걸음에서 마지막 걸음을
+ * 요구하면 안 된다.
+ *
+ * 근거(2026-08-29 실측): `app/models/x.py` 하나가 생기는 순간 schema/repository/service 누락과
+ * 라우터 미등록·DI 미배선까지 5건이 한꺼번에 나갔다. 이 지적들은 매 변이 도구 결과에 주입되고,
+ * 로컬 모델은 목록을 작업 큐로 읽는다("첫 실패 수정 완료. 다음: missing service file") — 한 계층만
+ * 요청한 프롬프트가 기능 전체로 부풀었다.
+ *
+ * 기계 판정: 파일/등록의 **부재**를 지적하는 문장은 둘 중 하나여야 한다.
+ *  (a) 무엇 때문에 요구가 발생했는지 메시지가 밝힌다 — `… exists but …` 형태(앵커 명시), 또는
+ *  (b) 그 줄 위 5줄 안에 `// premature-ok: <사유>` 가 있다(어느 단계에서든 참인 요구).
+ * 내용 검사(클래스·메서드·필드 부재)는 대상이 아니다 — 그건 이미 존재하는 파일의 속성이다.
+ */
+function checkDemandDirection(actual: string, hookContent: string): string[] {
+  const EXISTENCE = /(missing \w+ file|file is missing|not included in|not imported in|[\w./-]+\.(?:py|http|md|ts)\)? not found)/i;
+  const lines = hookContent.split("\n");
+  const issues: string[] = [];
+  lines.forEach((line, i) => {
+    if (!/issues\.push\(/.test(line) || !EXISTENCE.test(line)) return;
+    const near = lines.slice(Math.max(0, i - 5), i + 1).join("\n");
+    if (line.includes(" exists") || /premature-ok:\s*\S/.test(near)) return;
+    issues.push(`${actual}:${i + 1}: 존재 요구가 앵커를 밝히지 않는다 — \`… exists but …\` 로 무엇 때문에 요구가 생겼는지 적거나, 어느 단계에서든 참이면 \`// premature-ok: <사유>\` 를 단다 (omp-hooks.md, Demand direction)`);
+  });
+  return issues;
 }
 
 function checkCrashGuard(actual: string, fileName: string, hookContent: string): string[] {
