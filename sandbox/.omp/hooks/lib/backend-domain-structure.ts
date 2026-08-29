@@ -100,18 +100,37 @@ export function checkDomainStructure(): string[] {
     // deleting a sample domain silently empties this check.
     if (name === "base" || name === "integration") continue;
 
-    // Data chain is mandatory: model → schema → repository → service.
-    // Router is OPTIONAL — a domain may be internal-only (batch jobs) or
-    // exposed via a custom router (auth). When a router exists, its content
-    // is validated below.
-    if (!existsSync(join(schemaDir, `${name}.py`))) {
-      issues.push(`${name}: missing schema file (schemas/${name}.py)`);
-    }
-    if (!existsSync(join(repoDir, `${name}.py`))) {
-      issues.push(`${name}: missing repository file (repositories/${name}.py)`);
-    }
-    if (!existsSync(join(serviceDir, `${name}.py`))) {
-      issues.push(`${name}: missing service file (services/${name}.py)`);
+    // 완성도 요구는 **의존 방향으로만** 건다(2026-08-29 사용자 지적 + 실측).
+    // 예전에는 모델 파일 하나가 생기는 순간 schema/repository/service 누락 3건을 지적했다 —
+    // 즉 작업의 첫 걸음에서 마지막 걸음을 요구한 셈이다. 실측에서 이 목록이 모델에게 작업 큐로
+    // 읽혔고("첫 실패 수정 완료. 다음: missing service file"), 사용자가 한 계층만 요청한
+    // 프롬프트를 기능 전체로 부풀리는 주된 압력이었다.
+    //
+    // 새 규칙: 존재하는 **가장 하류 계층**이 그 상류를 요구한다. 라우터가 있으면 서비스·리포지토리·
+    // 스키마가 있어야 하고, 서비스가 있으면 리포지토리·스키마가, 리포지토리가 있으면 스키마가
+    // 있어야 한다. 모델만(또는 모델+스키마만) 있는 상태는 완성 전 단계이지 위반이 아니다.
+    // 완성 시점의 계약은 그대로다 — 라우터가 서면 5계층이 전부 강제된다.
+    const hasSchema = existsSync(join(schemaDir, `${name}.py`));
+    const hasRepo = existsSync(join(repoDir, `${name}.py`));
+    const hasService = existsSync(join(serviceDir, `${name}.py`));
+    const hasRouter = existsSync(join(routerDir, `${name}.py`));
+    const required = hasRouter
+      ? ["schema", "repository", "service"]
+      : hasService
+        ? ["schema", "repository"]
+        : hasRepo
+          ? ["schema"]
+          : [];
+    const anchor = hasRouter ? "routers" : hasService ? "services" : "repositories";
+    for (const layer of required) {
+      const [dir, present] = layer === "schema"
+        ? [schemaDir, hasSchema]
+        : layer === "repository"
+          ? [repoDir, hasRepo]
+          : [serviceDir, hasService];
+      if (!present) {
+        issues.push(`${name}: ${anchor}/${name}.py exists but ${layer} file is missing (${(dir as string).split("/").pop()}/${name}.py)`);
+      }
     }
 
     // --- Validate file contents ---
@@ -265,8 +284,9 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Main: router must be included, optionally with a FastAPI prefix.
-    if (existsSync(mainPy)) {
+    // Main: 라우터 등록은 **라우터 파일이 생긴 뒤**에만 요구한다(2026-08-29).
+    // 모델만 만든 상태에서 "router not included" 를 띄우는 것은 첫 걸음에서 마지막 걸음을 요구하는 것이다.
+    if (hasRouter && existsSync(mainPy)) {
       const mainContent = readFileSync(mainPy, "utf-8");
       const routerRegistration = new RegExp(`include_router\\(${name}\\.router(?:,|\\))`);
       if (!routerRegistration.test(mainContent)) {
@@ -274,9 +294,11 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Dependencies: service DI must exist (SessionDep → ServiceDep)
+    // Dependencies: 서비스 DI 는 **서비스 파일이 생긴 뒤**에만 요구한다(같은 이유).
     const depsServicesPath = join(base, "dependencies", "services.py");
-    if (existsSync(depsServicesPath)) {
+    if (!existsSync(depsServicesPath)) {
+      issues.push(`${name}: dependencies/services.py not found`);
+    } else if (hasService) {
       const depsContent = readFileSync(depsServicesPath, "utf-8");
       if (!depsContent.includes(`get_${name}_service`)) {
         issues.push(`${name}: missing get_${name}_service in dependencies/services.py`);
@@ -284,8 +306,6 @@ export function checkDomainStructure(): string[] {
       if (!new RegExp(`${cls}ServiceDep\\s*=\\s*Annotated\\[${cls}Service`).test(depsContent)) {
         issues.push(`${name}: missing ${cls}ServiceDep Annotated DI in dependencies/services.py`);
       }
-    } else {
-      issues.push(`${name}: dependencies/services.py not found`);
     }
   }
 

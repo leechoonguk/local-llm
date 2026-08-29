@@ -457,3 +457,14 @@ Reads therefore eager-load what they return: `select(...).options(selectinload(.
 - Missing `from_attributes=True` on Read schemas
 - Missing `extra="forbid"` on any schema
 - `int` primary keys — ids are `UUID` (`Mapped[uuid.UUID]`, `default=uuid4`)
+
+## 완성도 요구는 의존 방향으로만 (2026-08-29)
+
+검사는 **존재하는 가장 하류 계층이 그 상류를 요구**한다. 라우터가 있으면 서비스·리포지토리·스키마를,
+서비스가 있으면 리포지토리·스키마를, 리포지토리가 있으면 스키마를 요구한다. 모델만 있는 상태는
+작업 중이지 위반이 아니다 — 예전에는 모델 파일 하나에 누락 5건을 지적했고, 그 목록이 모델에게
+작업 큐로 읽혀("첫 실패 수정 완료. 다음: missing service file") 한 계층만 요청한 프롬프트를 기능
+전체로 부풀렸다. 배선 요구도 같은 규칙이다: 라우터 등록은 `routers/<name>.py` 가, 서비스 DI 별칭은
+`services/<name>.py` 가 있을 때만 요구한다. **완성 시점의 계약은 그대로다** — 라우터가 서면 5계층이
+전부 강제된다. 예외는 `alembic/env.py` 등록이다: autogenerate 가 import 없는 모델을 보지 못하므로
+모델 자체의 속성으로 남긴다.

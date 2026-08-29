@@ -62,7 +62,7 @@ style: |
 <!-- sync: backend-batch.md=65c45b90acb2340f -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-core-config.md=dcd8e7bc6c1cbf9f -->
-<!-- sync: backend-domain.md=08f0cfacffbae337 -->
+<!-- sync: backend-domain.md=d368ab5b67238481 -->
 <!-- sync: backend-exceptions.md=d36379949336814d -->
 <!-- sync: backend-file-upload.md=417dc0174bf98a36 -->
 <!-- sync: backend-identity-tokens.md=dc89bdba3680fdd8 -->
@@ -144,7 +144,7 @@ style: |
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
 <!-- sync: lib/backend-api-http.ts=c69aea7655bd99b2 -->
 <!-- sync: lib/backend-auth.ts=a5bca744745861b0 -->
-<!-- sync: lib/backend-domain-structure.ts=db718fdf2b64f9ff -->
+<!-- sync: lib/backend-domain-structure.ts=284601471f8ba608 -->
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->
 <!-- sync: lib/backend-integration-configuration.ts=4aec5cc8f8f692db -->
