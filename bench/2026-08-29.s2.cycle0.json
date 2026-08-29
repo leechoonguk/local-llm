@@ -1,0 +1,56 @@
+[
+ {
+  "at": "2026-08-29T13:00:32.131Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 1800,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 4,
+  "expected": 15,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   "?? sandbox/backend/tests/api/test_notice.py",
+   "?? sandbox/backend/tests/repositories/test_notice.py",
+   "?? sandbox/backend/tests/services/test_notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 1,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 1,
+  "asserts_removed": 0,
+  "omp_touched": 1,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-29T13-01-07-916Z_01a04d9c-0dcc-73b8-93fd-efaed4cc0e59.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 30,
+  "tools": {
+   "read": 41,
+   "grep": 14,
+   "write": 10,
+   "edit": 20,
+   "bash": 20
+  },
+  "gate_runs": 8,
+  "first_full_gate_s": 495,
+  "first_green_s": null,
+  "no_work": false,
+  "invalid": "omp_touched"
+ }
+]

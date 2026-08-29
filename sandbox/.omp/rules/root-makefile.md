@@ -102,8 +102,6 @@ Run from the project root.
 | `make check-makefiles` | `node .omp/hooks/post/check-makefiles.ts` | Check Makefile targets consistency |
 | `make check-decks-sync` | `node .omp/hooks/post/check-decks-sync.ts` | Check decks mention all rules/hooks/AST dirs |
 | `make check-api-flow` | `node .omp/hooks/lib/backend-api-flow.ts` | Run every `api/*.http` against the running stack (proves state neutrality) |
-| `make continuity-selftest` | `node .omp/extensions/continuity/selftest.ts` | Drive the continuity extension against a fake host |
-| `make continuity-report` | `node .omp/extensions/continuity/report.ts` | Report whether continuity interventions broke their loops |
 | `make hook-report` | `node .omp/hooks/lib/hook-metrics.ts` | Report what the post hooks cost per run and which ones never warned |
 | `make check-api-flow-verbose` | `node .omp/hooks/lib/backend-api-flow.ts --verbose` | Same, printing every block's declared vs actual status |
 | `make probe-external-api` | `node .omp/hooks/lib/backend-external-api-probe.ts` | Measure a provider before integrating it — `url='…/{start}/{end}'`, optional `filter=`, `since=`, `root=` |

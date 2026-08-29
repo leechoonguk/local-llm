@@ -64,24 +64,17 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 // @ts-expect-error — Node builtin, not project-compiled
 import { resolve } from "node:path";
 
-const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
-const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state (same signature)
-const RED_TOTAL_MS = 20 * 60_000;    // absolute ceiling for one red episode even with advancing signatures (debate 2026-08-27)
 const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/;
 // 하위 디렉터리로 좁힌 게이트는 풀 게이트가 아니다. 실측 2026-08-29: 피험자가
 // `cd …/sandbox/backend && make verify` 를 11회 돌리고 루트 게이트는 0회였는데 하네스가 초록으로
 // 셌고, 최종 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
 const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
-const MAX_RESETS = 6;                // sickness-cut backstop
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
 const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
 const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
-const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
-const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
-const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
 const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
   "backend/alembic/env.py",
   "backend/tests/conftest.py",
@@ -94,28 +87,17 @@ export function registerDiscipline(pi: any): void {
   const logPath = process.env.STUCK_RESET_LOG || "";
   const log = (s: string) => { if (logPath) { try { appendFileSync(logPath, `[continuity] ${s}\n`); } catch {} } };
 
-  let resets = 0, stallTurns = 0, endGateSends = 0;
+  let endGateSends = 0;
   let mutatedEver = false;
-  let firstMutationAt = 0, testNudged = false;
-  let redFirstAt = 0;
   const persisted = loadPersisted();
   let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
   let lastFastGateAt = 0, lastMutationAt = 0;
-  let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
-  // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
-  let greenIdle = false, tailNudged = false, steerCount = 0, sawRed = false;
-  const readPaths = new Set<string>();
-  const steered = new Set<string>();
-  const truncNudged = new Set<string>();
   const srcWritten = new Set<string>();
   const testWritten = new Set<string>();
-  let lastProgressAt = Date.now();
   let redSig: string | null = null;
   let redCmdTk: Set<string> | null = null;
-  let redSince = 0, redTurns = 0;
   let phase: "idle" | "checkpoint" | "cutting" = "idle";
-  let cutKind: "sick" | "hygiene" = "sick";
   let cutIndex = -1;
   let cutBootstrap: string | null = null;
   let hygieneCuts = 0;
@@ -152,11 +134,10 @@ export function registerDiscipline(pi: any): void {
     }
   }
 
-  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} gateCadence=${EDITS_PER_GATE}edits testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
+  log(`loaded discipline. hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} regWatch=${regSnapshot.size}files`);
 
-  function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
-    cutKind = kind;
-    phase = "checkpoint";
+  function beginCheckpoint(reason: string) {
+        phase = "checkpoint";
     bootstrap = `[continuity] Context was cleared because ${reason}. The system prompt is unchanged, `
       + `and the todo list holds the checkpoint you just wrote — read it and continue from there.\n`
       + `Step back, reconsider the approach, and continue the remaining work a different way. `
@@ -173,26 +154,9 @@ export function registerDiscipline(pi: any): void {
       const content = contentText(event.content);
       if (event.isError && isPolicyBlock(content)) return;
       const f = failSig(content);
-      let wasFullGate = false;
       // 서 있는 하네스 검사 경고 추적 — backend 스코프 verify 초록 위에서 종료한
       // 실측 셀(1738s)의 가짜완료 메커니즘. finish 시점에 lastGateAt 과 비교한다.
       if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) { lastNoticeAt = Date.now(); savePersisted({ lastNoticeAt }); }
-      if (/^read/i.test(event.toolName) && event.input?.path) readPaths.add(String(event.input.path));
-      // TRUNC-RECOVERY(사용자 제기): 절단·미완 쓰기는 통째 재시도가 아니라 분할로.
-      if (event.isError && /^(write|edit)/i.test(event.toolName)) {
-        const tp = String(event.input?.path ?? "");
-        if (tp && !truncNudged.has(tp) && /truncat|unterminated|unexpected end|too (long|large)|exceeds/i.test(content)) {
-          truncNudged.add(tp);
-          pi.sendUserMessage(`The write to ${tp} was cut off. Do not retry the whole file — append in chunks (\`cat >> file <<'EOF'\`) or make targeted edits, then re-read the file to confirm it is complete.`);
-          log("TRUNC-RECOVERY sent");
-        }
-      }
-      // 종반 꼬리: 초록 이후 todo 정리 처닝(실측 1.2m)도 같은 윈도에서 1회 안내.
-      if (/^todo/i.test(event.toolName) && greenIdle && !tailNudged) {
-        tailNudged = true;
-        pi.sendUserMessage("The full gate is green and nothing has changed since. Stop here — write the final summary now; do not re-run verification or edit the todo again.");
-        log("TAIL-TRIM sent");
-      }
       if (/^bash/i.test(event.toolName)) {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
@@ -201,7 +165,7 @@ export function registerDiscipline(pi: any): void {
         if (!event.isError) {
           for (const wp of shellWritePaths(cmdStr)) {
             (/(^|\/)tests?\//.test(wp) ? testWritten : srcWritten).add(wp);
-            unverified.add(wp); mutatedEver = true; regCheck(wp);
+            unverified.add(wp); mutatedEver = true; lastMutationAt = Date.now(); regCheck(wp);
           }
         }
         if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
@@ -209,52 +173,26 @@ export function registerDiscipline(pi: any): void {
         // (2026-08-29 실측: 마지막 게이트가 빨간 채 종료, 최종 루트 게이트 exit 2).
         if (fullGate && !event.isError && !f) {
           lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
-          cadenceNudged = false; cadenceEscalated = false;
         }
         if (f) {
-          if (!redSig) { redSince = Date.now(); redFirstAt = Date.now(); redTurns = 0; }
           // 시그니처 교체 = 다른 실패로 전진 중 — same-signature 시계를 절반만 남기고
           // 연장한다(총상한 RED_TOTAL_MS). 실측: gatefix-a2 에서 4개 시그니처가 12분간
           // 전진 중인데 컷이 원래 시계로 발화했다(토의 2026-08-27).
-          else if (f !== redSig) redSince = Math.max(redSince, Date.now() - RED_AGE_MS / 2);
-          redSig = f; redCmdTk = cmdTk; sawRed = true; log(`red: ${f.slice(0, 100)}`);
-        }
-        // 종반 꼬리 트림(실측 3.3~3.5m/셀): 초록 full 게이트 후 변이 없이 또 verify 를
-        // 돌리면 1회만 마감 유도. 변이가 생기면 윈도가 죽고 전부 재무장된다.
-        if (!f && !event.isError && fullGate) {
-          wasFullGate = true;
-          // sawRed 게이트(실측 2026-08-28): 깨끗한 베이스라인의 초기 verify 는 공허하게
-          // 초록이다 — red 를 한 번도 안 본 세션에서 TAIL-TRIM 이 발화해 피험자가 과제를
-          // 시작도 안 하고 종료했다(424s/산출물 0). 진짜 red→green 사이클 후에만 무장한다.
-          if (sawRed && greenIdle && !tailNudged) {
-            tailNudged = true;
-            pi.sendUserMessage("The full gate is green and nothing has changed since. Stop here — write the final summary now; do not re-run verification or edit the todo again.");
-            log("TAIL-TRIM sent");
-          }
-          greenIdle = true;
+          redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
         }
         if (!event.isError && (fullGate || (!truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5))) {
           if (f) { /* red run — not a clear */ } else {
           // 전체 게이트 성공은 가장 강한 초록 증거 — Jaccard 무관 clear.
           // 실측: 성공 셀에서 stale red 가 END-GATE 2발을 소진시켰다(토의 2026-08-27).
           if (redSig) log(fullGate ? "green — red cleared (full-gate success)" : "green — red cleared (same-command success)");
-          redSig = null; redCmdTk = null; redSince = 0; redFirstAt = 0; redTurns = 0;
+          redSig = null; redCmdTk = null;
           }
         }
       }
       if (!f && !event.isError && isMutating(event.toolName)) {
-        stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
-        if (!firstMutationAt) firstMutationAt = Date.now();
+        mutatedEver = true;
         const path = String(event.input?.path ?? "");
-        if (!wasFullGate) { greenIdle = false; tailNudged = false; } // 실제 변이는 종반 윈도를 죽인다(초록 게이트 실행 자체는 예외)
         if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); lastMutationAt = Date.now(); regCheck(path); }
-        // write→edit 유도(3:1 표결 — 메시지형, deny 는 EISDIR 교훈으로 기각):
-        // 세션에서 읽은 적 있는(=기존) 파일을 통째 write 하면 표적 edit 을 1회 권한다.
-        if (/^write/i.test(event.toolName) && path && readPaths.has(path) && !steered.has(path) && steerCount < 2) {
-          steered.add(path); steerCount++;
-          pi.sendUserMessage(`${path} already existed — prefer the edit tool for changes; full rewrites are where registrations and adjacent code get lost.`);
-          log("WRITE-STEER sent");
-        }
         else if (/^bash/i.test(event.toolName)) regCheck(norm(str(event.input)).slice(0, 300));
         // 스키마 무관 백스톱: 패치형 결과는 입력에 path 가 없어도 결과 텍스트에
         // [path#TAG] 로 파일명을 남긴다 — 실셀에서 입력 트리거만으로 env.py
@@ -264,16 +202,9 @@ export function registerDiscipline(pi: any): void {
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
   });
 
-  let openingSent = (persisted.briefedAt ?? 0) > 0; // 프롬프트마다 다시 보내지 않는다(실측: 4프롬프트에 4회)
   pi.on("turn_end", (e: any, ctx: any) => {
     try {
-      if (!openingSent) {
-        openingSent = true; savePersisted({ briefedAt: Date.now() });
-        pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
-        log("OPENING-BRIEF sent");
-      }
-      stallTurns++; turnCount++;
-      if (redSig) redTurns++;
+      turnCount++;
       const now = Date.now();
       const used = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
       log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);
@@ -281,46 +212,11 @@ export function registerDiscipline(pi: any): void {
       if (tokensAtCut === 0 && used > 0) tokensAtCut = used;
 
       if (phase === "checkpoint") {
-        if (cutKind === "sick" && redSig === null && now - lastProgressAt < STALL_MS) {
-          phase = "idle"; bootstrap = null;
-          log("CHECKPOINT canceled (recovered before the cut)");
-          return;
-        }
         phase = "cutting"; armed = true;
         return;
       }
-      if (phase === "idle" && resets < MAX_RESETS) {
-        const stalled = now - lastProgressAt >= STALL_MS;
-        const redAged = redSig !== null && ((redSince > 0 && now - redSince >= RED_AGE_MS) || (redFirstAt > 0 && now - redFirstAt >= RED_TOTAL_MS));
-        if (redAged) {
-          beginCheckpoint(`the verification has stayed failing for ${redTurns} turns / ${Math.round((now - redSince) / 60000)} minutes while edits kept landing`);
-          return;
-        }
-        if (stalled) {
-          beginCheckpoint(`${Math.round((now - lastProgressAt) / 60000)} minutes (${stallTurns} turns) passed with no successful change`);
-          return;
-        }
-      }
-      if (phase === "idle" && unverified.size >= EDITS_PER_GATE && !cadenceNudged) {
-        cadenceNudged = true; turnAtCadenceNudge = turnCount;
-        pi.sendUserMessage(`${unverified.size} files have changed since the last full verification run. Run \`make verify\` now — failures found early are cheaper than a pile at the end. Then continue working.`);
-        log("GATE-CADENCE nudge");
-        return;
-      }
-      if (phase === "idle" && cadenceNudged && !cadenceEscalated && unverified.size >= EDITS_PER_GATE * 2 && turnCount - turnAtCadenceNudge >= 3) {
-        cadenceEscalated = true;
-        pi.sendUserMessage(`${unverified.size} files are now unverified and the earlier reminder was not followed. Before your NEXT edit, run \`make verify\` end-to-end and fix what it reports.`);
-        log("GATE-CADENCE escalation");
-        return;
-      }
-      if (phase === "idle" && !testNudged && srcWritten.size >= SRC_BEFORE_TESTS && testWritten.size === 0 && firstMutationAt > 0 && now - firstMutationAt >= TEST_NUDGE_MS) {
-        testNudged = true;
-        pi.sendUserMessage(`You have written ${srcWritten.size} source files and no test files yet. Tests are part of the deliverable and the gate requires them at full coverage — write the sibling tests for what already exists NOW, before adding more source. A test written next to fresh code does not guess at names that do not exist.`);
-        log("TEST-NUDGE sent");
-        return;
-      }
       if (phase === "idle" && hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET) {
-        beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`, "hygiene");
+        beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`);
         return;
       }
       const prose = !(e.toolResults && e.toolResults.length);
@@ -368,12 +264,10 @@ export function registerDiscipline(pi: any): void {
         armed = false;
         cutIndex = Math.max(0, msgs.length - KEEP_RECENT);
         cutBootstrap = bootstrap;
-        if (cutKind === "hygiene") hygieneCuts++; else resets++;
+        hygieneCuts++;
         tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
         phase = "idle";
-        stallTurns = 0; lastProgressAt = Date.now();
-        if (redSig) { redSince = Date.now(); redFirstAt = Date.now(); redTurns = 0; }
-        log(`RESET window @${cutIndex}/${msgs.length} (${cutKind} cut, sick#${resets} hyg#${hygieneCuts}, after checkpoint)`);
+        log(`RESET window @${cutIndex}/${msgs.length} (hygiene cut #${hygieneCuts})`);
       }
       if (cutIndex < 0) return undefined;
       if (cutIndex > msgs.length) { cutIndex = -1; return undefined; }
@@ -386,7 +280,7 @@ export function registerDiscipline(pi: any): void {
   });
 
   pi.on("agent_end", (e: any) => {
-    log(`agent_end msgs=${(e.messages||[]).length} resets=${resets} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`);
+    log(`agent_end msgs=${(e.messages||[]).length} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`);
     cutIndex = -1; cutBootstrap = null; phase = "idle"; armed = false; bootstrap = null;
     // A released window means a revived session returns at FULL size (125k
     // measured) while the hygiene baseline still points at the cut-time value,

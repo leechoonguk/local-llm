@@ -588,12 +588,11 @@ These exist because the harness's own measurements say each class can grow. From
 | Every post hook gates on `MUTATING_TOOLS` | a check that runs after a read spends context on a turn that changed nothing | 36/36 already comply — this holds the line |
 | Every post hook declares a path scope (`touchesPath`/`touchesStrict`) or a `// hook-scope: global — <reason>` | a check that runs on events outside its domain spends the agent's wall clock, not just context | one write cost 6.8s of hook time; the meta checks in it (2.7s `check-omp-hooks`, 0.4s `check-omp-types`) had nothing to do with the edited file (2026-08-29) |
 | Only `post/check-verify.ts` may execute the project gate (`make`, `pytest`, `ruff`, `pyright`, `npm`, `uv`) | the gate is 54% of all hook time (1,120s of 2,058s) and a second runner races the agent's own `make` | one owner today |
-| Every `LoopKind` the continuity extension declares must be emitted by a detector | a kind nothing emits still ships in the state blob and the report vocabulary | `oscillation` was emitted but judged by nobody |
-| Every declared `LoopKind` must be **driven by a self-test case** | grepping the self-test for a kind's name proves someone typed it, not that a case exercises it | measured by the run itself: `oscillation` and `errorLoop` had no case until the claim said so |
 
-The last one is deliberately not a static check: `make continuity-selftest`
-records the kinds its own cases produce and fails on any declared kind that never
-fired. A threshold nobody can drive is a threshold nobody can change safely.
+마지막 항목은 2026-08-29 축소로 사라졌다: 루프 감지기(`LoopKind`)와 자기검사(`continuity-selftest`)는
+확장과 함께 제거됐다 — 개입이 도구 호출 2,266건을 취소했고, rung-1 증거의 1,075건이 그 취소로
+재발행된 호출이었다(자기 피해를 루프로 읽었다). 남은 신호의 경계는 `.claude/skills/llm-bench/proofs/`
+의 합성 프루프가 고정한다.
 
 ## Never Do These
 

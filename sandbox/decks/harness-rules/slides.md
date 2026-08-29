@@ -90,11 +90,11 @@ style: |
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
 <!-- sync: omp-conventions.md=1983392cf85dd0da -->
 <!-- sync: omp-hook-crash-guard.md=3813240c3c5ba87d -->
-<!-- sync: omp-hooks.md=9b582cafcd651bdc -->
+<!-- sync: omp-hooks.md=1acd0b773b61f2b9 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
 <!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
-<!-- sync: root-makefile.md=7691dca3d8796a13 -->
+<!-- sync: root-makefile.md=4a23bf9dbf49bc3d -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
 <!-- sync: strict-additive-writes.ts=610acc3152e012cb -->
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
@@ -183,7 +183,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=347886178da9adca -->
+<!-- sync: extensions/continuity/=a1ffbf6dda48db3b -->
 
 # 하네스 룰 & 훅 아키텍처
 

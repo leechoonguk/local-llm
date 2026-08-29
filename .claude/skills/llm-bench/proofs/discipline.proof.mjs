@@ -1,4 +1,6 @@
-// Edge proof for the time-only sickness build + the three cut/finish fixes (synthetic events, no GPU).
+// 축소판(2026-08-29) 계약 프루프 — 남은 신호는 셋뿐이다: REG-WATCH(배선 방어), 마감 게이트
+// (가짜 완료 방어), 하이진 컷(컨텍스트 초기화). 루프 감지·질병 컷·TAIL-TRIM·WRITE-STEER·
+// GATE-CADENCE·TEST-NUDGE·TRUNC-RECOVERY 의 케이스는 그 신호와 함께 삭제했다(발화 0 또는 유해 실측).
 // A: red persists 12 fast turns (~1 min) with edits landing -> no checkpoint (red-age turn over-fire, gone).
 // B: red aged past RED_AGE_MS (12 min) with edits landing -> checkpoint (busy-loop still caught).
 // C: 3 giant thinking turns x 3 min, no mutation (9 min) -> stall checkpoint (turn-count build missed this).
@@ -27,7 +29,7 @@ function makePiKeepState() {
   const handlers = {};
   const sent = [];
   registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) }); // 첫 턴 — 브리핑이 다시 나오면 여기서 잡힌다
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) }); // 첫 턴
   return { handlers, sent };
 }
 
@@ -38,9 +40,8 @@ function makePi() {
   const sent = [];
   const pi = { on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) };
   registerDiscipline(pi);
-  // consume the OPENING-BRIEF (fires on the first turn of every session)
+  // 축소판에는 소비할 브리핑이 없다(RULES.md 로 이동). 첫 턴만 흘려 시계를 맞춘다.
   handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) });
-  sent.length = 0;
   return { handlers, sent };
 }
 let ctxTokens = 30_000;
@@ -55,66 +56,11 @@ const msgs = (n) => Array.from({ length: n }, (_, i) => ({ role: i % 2 ? "assist
 let failures = 0;
 const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`); if (!cond) failures++; };
 
-{ // A + B share one instance (A is the prefix of B)
-  const { handlers, sent } = makePi();
-  redFail(handlers);
-  for (let i = 0; i < 12; i++) { now += 5_000; editOk(handlers); turn(handlers); }
-  check("A: 12 fast red turns (1 min) -> no checkpoint", sent.length === 0);
-  let fired = false;
-  for (let i = 0; i < 20; i++) { now += 60_000; editOk(handlers); turn(handlers); if (sent.length > 0) { fired = true; break; } }
-  check("B: red aged past 12 min -> checkpoint fired", fired && /stayed failing/.test(sent[0] ?? ""));
-}
 
-{ // C: slow thinking turns, no mutation at all
-  const { handlers, sent } = makePi();
-  for (let i = 0; i < 3; i++) { now += 180_000; turn(handlers); }
-  check("C: 3 x 3-min turns without mutation (9 min) -> stall checkpoint", sent.length === 1 && /minutes .*no successful change/.test(sent[0] ?? ""));
-}
 
-{ // D: fast read/plan stretch, no mutation, under the time threshold
-  const { handlers, sent } = makePi();
-  for (let i = 0; i < 10; i++) { now += 15_000; turn(handlers); }
-  check("D: 10 fast turns without mutation (2.5 min) -> no checkpoint", sent.length === 0);
-}
 
-{ // E: sickness resolves inside the checkpoint window -> cancel, no cut
-  const { handlers, sent } = makePi();
-  redFail(handlers);
-  let fired = false;
-  for (let i = 0; i < 20 && !fired; i++) { now += 60_000; editOk(handlers); turn(handlers); fired = sent.length > 0; }
-  check("E-pre: red-age checkpoint requested", fired);
-  now += 10_000; bash(handlers, "make verify", "all green, no failures"); // red clears in the window
-  editOk(handlers); turn(handlers);                                        // the would-be arming turn
-  const out = handlers.context({ messages: msgs(30) }, ctx);
-  check("E: cut canceled after recovery -> context untouched", out === undefined && sent.length === 1);
-}
 
-{ // F: truncated pipe never clears red; an untruncated same-command run does
-  const { handlers, sent } = makePi();
-  redFail(handlers, "make verify 2>&1 | tail -30");
-  now += 60_000; bash(handlers, "make verify 2>&1 | tail -30", "========== 34 passed =========="); // fake green
-  let fired = false;
-  for (let i = 0; i < 20 && !fired; i++) { now += 60_000; editOk(handlers); turn(handlers); fired = sent.length > 0; }
-  check("F1: truncated success did not clear red -> red-age still fired", fired);
-  now += 10_000; bash(handlers, "make verify 2>&1", "all green");           // untruncated: clears
-  editOk(handlers); turn(handlers);                                          // checkpoint window -> cancel
-  const out = handlers.context({ messages: msgs(30) }, ctx);
-  check("F2: untruncated same-command success cleared red -> cut canceled", out === undefined && sent.length === 1);
-}
 
-{ // G: a real cut, then agent_end releases the window
-  const { handlers, sent } = makePi();
-  now += 8 * 60_000; turn(handlers);                       // stall (8 min, no mutation) -> checkpoint
-  check("G-pre: stall checkpoint requested", sent.length === 1);
-  now += 10_000; turn(handlers);                           // still stalled -> arms the cut
-  const cut = handlers.context({ messages: msgs(30) }, ctx);
-  check("G-pre: cut window applied", !!cut && Array.isArray(cut.messages) && cut.messages.length < 30);
-  const again = handlers.context({ messages: msgs(32) }, ctx);
-  check("G-pre: window persists on the next call", !!again && Array.isArray(again.messages));
-  handlers.agent_end({ messages: msgs(32) });
-  const released = handlers.context({ messages: msgs(32) }, ctx);
-  check("G: agent_end releases the window", released === undefined);
-}
 
 { // H: finishing after mutations with no verification observed -> finish-check fires
   // 기대 변경(2026-08-28): 한 파일 변경은 풀 게이트가 아니라 타깃 검증을 요구한다. 프롬프트 단위 실측에서
@@ -175,25 +121,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("J: prose finish while red -> red re-drive", sent.length === 1 && /verification result was failing/.test(sent[0] ?? ""));
 }
 
-{ // K: 6 distinct unverified files -> cadence nudge; 12 + 3 turns -> one escalation
-  const { handlers, sent } = makePi();
-  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
-  check("K1: 6 distinct unverified files -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
-  for (let i = 6; i < 12; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
-  check("K2: 12 unverified + 3 turns -> one escalation, once", sent.length === 2 && /Before your NEXT edit/.test(sent[1] ?? ""));
-  now += 30_000; editOk(handlers, "app/f99.py"); turn(handlers);
-  check("K3: no third cadence message in the window", sent.length === 2);
-  bash(handlers, "make verify", "all green");
-  for (let i = 0; i < 5; i++) { now += 30_000; editOk(handlers, `app/g${i}.py`); turn(handlers); }
-  check("K4: gate run resets the window (5 fresh files -> silent)", sent.length === 2);
-}
 
-{ // L: verification observed early -> no nudge
-  const { handlers, sent } = makePi();
-  editOk(handlers); redFail(handlers);
-  for (let i = 0; i < 10; i++) { now += 60_000; editOk(handlers); turn(handlers); }
-  check("L: red observed early -> no nudge (red-age not yet due)", sent.length === 0);
-}
 
 { // M: hygiene restored — +55k context growth requests a hygiene checkpoint
   const { handlers, sent } = makePi();
@@ -204,15 +132,6 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   ctxTokens = 30_000;
 }
 
-{ // O1: 3 source files, zero tests, 15 min -> one TEST-NUDGE (verify-nudge suppressed via verifySeen)
-  const { handlers, sent } = makePi();
-  redFail(handlers); now += 10_000; bash(handlers, "make verify", "all ok"); // everRed=true, red cleared
-  editOk(handlers, "app/models/a.py"); editOk(handlers, "app/services/b.py"); editOk(handlers, "app/routers/c.py");
-  for (let i = 0; i < 15; i++) { now += 60_000; editOk(handlers, "app/models/a.py"); turn(handlers); }
-  check("O1: 3 src / 0 tests / 15 min -> test nudge", sent.length === 1 && /no test files yet/.test(sent[0] ?? ""));
-  for (let i = 0; i < 3; i++) { now += 60_000; editOk(handlers, "app/models/a.py"); turn(handlers); }
-  check("O2: nudge fires only once", sent.length === 1);
-}
 
 { // O3: a test file exists early -> no nudge
   const { handlers, sent } = makePi();
@@ -285,27 +204,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     sent.length === 0);
 }
 
-{ // Q2: advancing failure signatures extend the red clock; absolute 20m ceiling backstops
-  const { handlers, sent } = makePi();
-  redFail(handlers); // full-gate red: opens the episode AND sets verifySeen
-  let premature = false;
-  for (let m = 1; m <= 19; m++) {
-    now += 60_000;
-    if (m % 4 === 0) bash(handlers, "pytest -q tests/a.py -x", `FAIL: sig-${m}`); // new signature
-    editOk(handlers); turn(handlers);
-    if (sent.length > 0) premature = true;
-  }
-  check("Q2a: 19 min of ADVANCING signatures -> no checkpoint (clock extended)", !premature);
-  now += 90_000; editOk(handlers); turn(handlers); // past the 20m absolute ceiling
-  check("Q2b: 20m total red -> ceiling checkpoint fired", sent.length === 1 && /stayed failing/.test(sent[0] ?? ""));
-}
 
-{ // Q3: subset runs do not reset the cadence window
-  const { handlers, sent } = makePi();
-  now += 60_000; bash(handlers, ".venv/bin/pytest -q tests/api/test_notice.py", "3 passed");
-  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/s${i}.py`); turn(handlers); }
-  check("Q3: 6 unverified files with only subset greens -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
-}
 
 { // R1: finish-block is uncapped and releases after a real gate run
   // 규모 보정(2026-08-28): 풀 게이트 요구는 이제 SMALL_FOOTPRINT 초과에서만 걸리므로 세 파일로 세운다.
@@ -367,48 +266,9 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
-{ // T1-T2: endgame tail trim — second idle green nudges once; a mutation re-arms the window
-  const { handlers, sent } = makePi();
-  editOk(handlers);
-  redFail(handlers); // 진짜 작업 증거: red 를 본 적이 있어야 꼬리 윈도가 무장된다
-  now += 10_000; bash(handlers, "make verify", "all green");
-  now += 10_000; bash(handlers, "make verify", "all green again");
-  check("T1: red seen + second idle green -> one TAIL-TRIM", sent.length === 1 && /Stop here/.test(sent[0] ?? ""));
-  now += 10_000; bash(handlers, "make verify", "still green");
-  check("T1b: third green -> no second message", sent.length === 1);
-  now += 10_000; editOk(handlers, "app/fix.py");
-  now += 10_000; bash(handlers, "make verify", "green after fix");
-  now += 10_000; bash(handlers, "make verify", "green twice");
-  check("T2: mutation re-armed the window -> tail fires again", sent.length === 2);
-}
 
-{ // T3: write→edit steering — a full write to a previously-read file gets one nudge
-  const { handlers, sent } = makePi();
-  handlers.tool_result({ toolName: "read", isError: false, input: { path: "app/services/old.py" }, content: [{ type: "text", text: "..." }] }, ctx);
-  handlers.tool_result({ toolName: "write", isError: false, input: { path: "app/services/old.py" }, content: [{ type: "text", text: "wrote" }] }, ctx);
-  check("T3: write over a read file -> one WRITE-STEER", sent.length === 1 && /prefer the edit tool/.test(sent[0] ?? ""));
-  handlers.tool_result({ toolName: "write", isError: false, input: { path: "app/services/old.py" }, content: [{ type: "text", text: "wrote" }] }, ctx);
-  check("T3b: same file again -> silent", sent.length === 1);
-  handlers.tool_result({ toolName: "write", isError: false, input: { path: "app/new_file.py" }, content: [{ type: "text", text: "wrote" }] }, ctx);
-  check("T3c: never-read (new) file -> silent", sent.length === 1);
-}
 
-{ // T4: TRUNC-RECOVERY — a truncated write gets chunked-append guidance once
-  const { handlers, sent } = makePi();
-  handlers.tool_result({ toolName: "write", isError: true, input: { path: "tests/api/test_big.py" }, content: [{ type: "text", text: "error: write truncated at 4096 tokens" }] }, ctx);
-  check("T4: truncated write -> TRUNC-RECOVERY", sent.length === 1 && /append in chunks/.test(sent[0] ?? ""));
-  handlers.tool_result({ toolName: "write", isError: true, input: { path: "tests/api/test_big.py" }, content: [{ type: "text", text: "error: write truncated again" }] }, ctx);
-  check("T4b: same file -> once only", sent.length === 1);
-}
 
-{ // T5: baseline-green trap — no red ever, double green -> NO tail trim (measured 424s/0-artifact abort)
-  const { handlers, sent } = makePi();
-  editOk(handlers);
-  now += 10_000; bash(handlers, "make verify", "all green");
-  now += 10_000; bash(handlers, "make verify", "all green again");
-  now += 10_000; bash(handlers, "make verify", "still green");
-  check("T5: never-red session -> tail trim stays silent", sent.length === 0);
-}
 
 { // X: 프롬프트 간 상태 — 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나다.
   // 실측(2026-08-29 4프롬프트 세션): 브리핑이 4회 반복됐고, p2·p3 가 게이트를 15회 돌았는데
@@ -462,15 +322,46 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     handlers.turn_end({}, ctx);
     check("M5: the root gate still clears the finish", sent.length === 0); }
 
-  { const { handlers, sent } = makePi();          // 셸 쓰기도 변경으로 센다
-    for (let i = 0; i < 6; i++) { now += 30_000; bash(handlers, `cat > app/f${i}.py <<'PY'\nx\nPY`, ""); turn(handlers); }
-    check("M6: six heredoc writes reach the gate cadence",
-      sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? "")); }
+  { const { handlers, sent } = makePi();          // 셸 쓰기도 변경으로 센다(케이던스는 삭제됐다)
+    now += 30_000;
+    for (let i = 0; i < 6; i++) bash(handlers, `cat > app/f${i}.py <<'PY'\nx\nPY`, "");
+    handlers.turn_end({}, ctx);
+    check("M6: heredoc writes count as changes -> the finish gate demands verification",
+      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
 
   { const { handlers, sent } = makePi();
     now += 30_000; bash(handlers, "ruff check app | tee /tmp/out.txt", "All checks passed");
     handlers.turn_end({}, ctx);
     check("M7: a tee into /tmp is not a change", sent.length === 0); }
+}
+
+{ // N: 축소판의 계약(2026-08-29). 남은 신호는 셋뿐이고, 건강한 세션은 아무 말도 듣지 않는다.
+  { const handlers = {}; const sent = []; const steers = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({
+      on: (e, h) => { handlers[e] = h; },
+      sendUserMessage: (m) => sent.push(m),
+      // steer 채널을 쓰면 실패한다 — 이 채널이 도구 호출 2,266건을 취소했다(코퍼스 부검).
+      sendMessage: (...a) => { steers.push(a); },
+    });
+    now += 10_000; handlers.turn_end({ toolResults: [{}] }, ctx);
+    check("N1: registering the extension sends nothing (no opening brief)", sent.length === 0);
+    check("N2: the steer channel is never used", steers.length === 0);
+
+    now += 30_000;
+    for (let i = 0; i < 6; i++) editOk(handlers, `app/f${i}.py`);
+    bash(handlers, "make verify", "all green, 150 passed");
+    handlers.turn_end({}, ctx);
+    check("N3: a healthy cell — six writes, a green root gate, a prose finish — receives zero messages",
+      sent.length === 0 && steers.length === 0); }
+
+  { const { handlers, sent } = makePi();   // 하이진 컷만이 컨텍스트를 다시 쓴다
+    ctxTokens = 30_000; handlers.turn_end({ toolResults: [{}] }, ctx);
+    for (let i = 0; i < 4; i++) { now += 600_000; handlers.turn_end({ toolResults: [{}] }, ctx); }
+    check("N4: a stalled session with no context growth is never cut", handlers.context({ messages: msgs(30) }, ctx) === undefined);
+    ctxTokens = 30_000 + 55_000; now += 30_000; handlers.turn_end({ toolResults: [{}] }, ctx);
+    check("N5: +55k growth still checkpoints (the one context job)", sent.length === 1 && /Checkpoint before a context reset/.test(sent[0] ?? ""));
+    ctxTokens = 30_000; }
 }
 
 process.exit(failures ? 1 : 0);
