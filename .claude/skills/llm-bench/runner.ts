@@ -530,6 +530,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
       cwd: SANDBOX, stdio: "ignore", detached: true,
       // STUCK_RESET_LOG: 셀에도 discipline 훅로그를 남긴다. 이게 없어서 지금까지 셀의 신호를
       // 사후에 볼 수 없었다(2026-08-29). 행과 같은 stem 의 .hooklog 로 남긴다.
+      // BENCH_HYGIENE_CEILING 은 셀 환경에서 그대로 전달된다(설정 시) — 상한 켜고 끄는 두 팔 비교용.
       env: { ...process.env, BENCH_CELL: "1", STUCK_RESET_LOG: hookLogPath },
     });
     const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };

@@ -407,4 +407,16 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("HC6: fraction under the ceiling stays silent", fire({ tokens: 40_000, contextWindow: 131_072 }).length === 0);
 }
 
+{ // HC7: 상한은 셀마다 끌 수 있다(BENCH_HYGIENE_CEILING=0) — 두 팔 비교용 노브.
+  process.env.BENCH_HYGIENE_CEILING = "0";
+  const handlers = {}; const sent = [];
+  try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+  registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 120_000, contextWindow: 131_072 }) });
+  now += 30_000;
+  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 121_000, contextWindow: 131_072 }) });
+  check("HC7: ceiling 0 disables the absolute cut (growth budget still applies)", sent.length === 0);
+  delete process.env.BENCH_HYGIENE_CEILING;
+}
+
 process.exit(failures ? 1 : 0);
