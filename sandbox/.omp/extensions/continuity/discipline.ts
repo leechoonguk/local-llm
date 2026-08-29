@@ -73,7 +73,9 @@ const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 // 절대 상한(2026-08-30): 성장 기반 예산만으로는 **정체된 세션**을 못 잡는다 — 축소판 첫 셀에서
 // ctx 96,074·턴 183초까지 갔는데 컷이 한 번도 안 걸렸다(증가폭이 예산에 못 미쳐서다).
 // 질병 컷을 되살리지 않고 같은 구멍을 막는 최소 장치다. 창을 모르면(0) 적용하지 않는다.
-const HYGIENE_CEILING = 0.7;         // 창의 70% 를 넘으면 성장과 무관하게 컷
+const HYGIENE_CEILING = 0.6;         // 창의 60% 를 넘으면 성장과 무관하게 컷
+// 70% 는 실측에서 아슬하게 안 걸렸다(2026-08-30 두 셀: ctx 최대 82.8k·88.8k vs 131k 창의 70%=91.7k)
+// — 그 사이 턴은 224초까지 늘어져 있었다. 60%(78.6k)면 두 셀 모두에서 걸렸을 자리다.
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives

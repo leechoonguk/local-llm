@@ -369,10 +369,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   { const handlers = {}; const sent = [];
     try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
     registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(90_000, 131_072));   // 첫 턴이 기준선을 잡는다
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(80_000, 131_072));   // 첫 턴이 기준선을 잡는다
     now += 30_000;
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(92_000, 131_072));   // 성장 2k — 예산에 한참 못 미친다
-    check("HC1: past 70% of the window, a barely-growing session is still cut",
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(82_000, 131_072));   // 성장 2k — 예산에 한참 못 미친다
+    check("HC1: past 60% of the window, a barely-growing session is still cut",
       sent.length === 1 && /of a ~131k window/.test(sent[0] ?? "")); }
 
   { const handlers = {}; const sent = [];
@@ -380,7 +380,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
     handlers.turn_end({ toolResults: [{}] }, ctxWin(40_000, 131_072));
     now += 30_000;
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(45_000, 131_072));
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(45_000, 131_072));  // 34% — 상한 아래
     check("HC2: below the ceiling with small growth -> silent", sent.length === 0); }
 
   { const handlers = {}; const sent = [];

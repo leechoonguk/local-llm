@@ -1,0 +1,119 @@
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=9.4s ctx=30843
+[continuity] turn dt=32.4s ctx=38234
+[continuity] turn dt=31.6s ctx=43490
+[continuity] turn dt=26.7s ctx=50597
+[continuity] turn dt=34.8s ctx=53759
+[continuity] turn dt=18.8s ctx=55478
+[continuity] turn dt=11.2s ctx=56876
+[continuity] turn dt=50.7s ctx=57576
+[continuity] turn dt=204.5s ctx=59921
+[continuity] red: FAIL: notice: missing NoticeServiceDep Annotated DI in dependencies/services.py | FAIL: notice: miss
+[continuity] red: FAIL: conftest.py: model "notice" not imported — Base.metadata.create_all() skips its table in the t
+[continuity] turn dt=27.5s ctx=62643
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=54.9s ctx=63461
+[continuity] turn dt=9.4s ctx=64443
+[continuity] turn dt=30.0s ctx=64603
+[continuity] turn dt=16.5s ctx=65304
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=18.4s ctx=65456
+[continuity] red: FAIL: notice: missing NoticeServiceDep Annotated DI in dependencies/services.py | FAIL: notice: miss
+[continuity] turn dt=17.6s ctx=65680
+[continuity] turn dt=27.4s ctx=66166
+[continuity] REG-WATCH backend/app/main.py: from app.routers import auth, batch, health, integration, us
+[continuity] turn dt=17.0s ctx=67065
+[continuity] turn dt=9.5s ctx=67581
+[continuity] turn dt=10.2s ctx=68049
+[continuity] turn dt=14.9s ctx=68244
+[continuity] turn dt=12.9s ctx=68552
+[continuity] turn dt=15.0s ctx=68803
+[continuity] turn dt=15.0s ctx=69634
+[continuity] turn dt=21.8s ctx=70023
+[continuity] turn dt=19.4s ctx=70323
+[continuity] turn dt=7.7s ctx=70511
+[continuity] turn dt=5.7s ctx=71350
+[continuity] turn dt=24.1s ctx=71457
+[continuity] turn dt=224.0s ctx=72790
+[continuity] turn dt=88.4s ctx=78962
+[continuity] turn dt=8.5s ctx=82091
+[continuity] CHECKPOINT requested (the context grew by ~51k tokens since the last cut)
+[continuity] turn dt=27.9s ctx=82827
+[continuity] RESET window @114/118 (hygiene cut #1)
+[continuity] turn dt=13.3s ctx=25997
+[continuity] turn dt=55.6s ctx=28890
+[continuity] turn dt=40.5s ctx=29480
+[continuity] turn dt=5.5s ctx=30004
+[continuity] turn dt=8.4s ctx=30159
+[continuity] turn dt=7.7s ctx=30429
+[continuity] turn dt=6.6s ctx=31060
+[continuity] turn dt=7.9s ctx=31659
+[continuity] turn dt=8.9s ctx=32237
+[continuity] turn dt=10.0s ctx=32783
+[continuity] turn dt=11.7s ctx=33304
+[continuity] turn dt=13.0s ctx=33821
+[continuity] turn dt=4.3s ctx=34302
+[continuity] turn dt=5.4s ctx=34769
+[continuity] turn dt=6.4s ctx=35218
+[continuity] turn dt=7.4s ctx=35650
+[continuity] turn dt=8.7s ctx=36064
+[continuity] turn dt=9.4s ctx=36465
+[continuity] red: FAIL: notice: router missing GET endpoint
+[continuity] turn dt=12.2s ctx=36663
+[continuity] turn dt=12.5s ctx=42531
+[continuity] turn dt=34.8s ctx=42841
+[continuity] turn dt=10.5s ctx=43304
+[continuity] turn dt=9.0s ctx=44052
+[continuity] turn dt=10.3s ctx=44373
+[continuity] turn dt=12.3s ctx=45200
+[continuity] turn dt=15.5s ctx=46052
+[continuity] turn dt=8.9s ctx=46231
+[continuity] turn dt=8.9s ctx=46531
+[continuity] turn dt=9.0s ctx=46836
+[continuity] red: FAIL: ORM/DB out of sync — run 'make migrate-gen m="..."' then 'make migrate' (alembic check: FAILED
+[continuity] turn dt=87.8s ctx=47309
+[continuity] turn dt=19.7s ctx=47395
+[continuity] agent_end msgs=189 endGate=0 red=YES phase=idle
