@@ -222,6 +222,13 @@ export function registerDiscipline(pi: any): void {
         // 최종 make verify 는 `conftest.py: model "notice" not imported` 한 줄로 exit 2 였다.
         // 실패한 루트 게이트 시각 — 단, "아직 안 만든 계층"만 지적하는 완성도 실패는 제외한다.
         // 그건 조각 작업의 정상 상태이지 고장이 아니다(2026-08-29 부검).
+        if (!event.isError) {
+          for (const wp of shellWritePaths(cmdStr)) {
+            (/(^|\/)tests?\//.test(wp) ? testWritten : srcWritten).add(wp);
+            unverified.add(wp); lastMutationAt = Date.now(); mutatedEver = true;
+            regCheck(wp);
+          }
+        }
         if (fullGate && (event.isError || f)
             && !(COMPLETENESS_RE.test(content) && !BREAKAGE_RE.test(content))) gateFailedAt = Date.now();
         if (fullGate && !event.isError && !f) {
@@ -263,7 +270,9 @@ export function registerDiscipline(pi: any): void {
         stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
-        if (!path) log(`untracked-mutation ${event.toolName} (no path — unverified/slice size will undercount)`);
+        if (!path && !(/^bash|^eval/i.test(String(event.toolName)) && shellWritePaths(norm(str(event.input))).length > 0)) {
+          log(`untracked-mutation ${event.toolName} (no path — unverified/slice size will undercount)`);
+        }
         if (!wasFullGate) { greenIdle = false; tailNudged = false; } // 실제 변이는 종반 윈도를 죽인다(초록 게이트 실행 자체는 예외)
         if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); lastMutationAt = Date.now(); regCheck(path); }
         // write→edit 유도(3:1 표결 — 메시지형, deny 는 EISDIR 교훈으로 기각):
@@ -470,6 +479,20 @@ function savePersisted(patch: Persisted): void {
   } catch { /* 훅·확장은 절대 던지지 않는다 */ }
 }
 
+
+// 셸로 만든 파일도 변경이다. 실측 2026-08-29: 한 조각 프롬프트에서 `untracked-mutation` 이 11회
+// 찍혔다 — 모델이 edit/write 도구 대신 `cat > path <<'EOF'` 로 쓰기 때문이다. 그러면 unverified 가
+// 0 으로 남아 조각 판정이 성립하지 않고, 마감이 다시 풀 게이트 요구로 빠진다.
+const SHELL_WRITE_RE = /(?:>>?|\btee\b\s+(?:-a\s+)?)\s*(["']?)([\w./@-]+\.[A-Za-z0-9]+)\1/g;
+function shellWritePaths(cmd: string): string[] {
+  const out: string[] = [];
+  for (const m of cmd.matchAll(SHELL_WRITE_RE)) {
+    const p = m[2];
+    if (!p || /^\/dev\//.test(p) || /^\/tmp\//.test(p)) continue;
+    out.push(p.replace(/^\.\//, ""));
+  }
+  return out;
+}
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
 const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));

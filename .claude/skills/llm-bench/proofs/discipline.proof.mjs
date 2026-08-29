@@ -651,4 +651,36 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
       sent.length === 1 && /harness check notice/.test(sent[0] ?? "")); }
 }
 
+{ // SH: 셸로 만든 파일도 조각 크기에 들어간다.
+  // 실측 2026-08-29(slice-b): 조각 프롬프트 하나에서 `untracked-mutation` 이 11회 찍혔다 —
+  // 모델이 edit/write 도구 대신 heredoc 으로 쓴다. 집계에서 빠지면 조각 판정이 성립하지 않아
+  // 마감이 다시 풀 게이트 요구로 빠진다.
+  { const { handlers, sent } = makePi();
+    now += 30_000;
+    bash(handlers, "cat > backend/app/models/notice.py <<'PY'\nx\nPY", "");
+    bash(handlers, "cat > backend/app/schemas/notice.py <<'PY'\nx\nPY", "");
+    handlers.turn_end({}, ctx);
+    check("SH1: two heredoc writes count as a 2-file slice -> silent finish", sent.length === 0); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000;
+    for (let i = 0; i < 7; i++) bash(handlers, `cat > backend/app/f${i}.py <<'PY'\nx\nPY`, "");
+    turn(handlers); sent.length = 0;
+    handlers.turn_end({}, ctx);
+    check("SH2: seven heredoc writes cross the slice boundary -> root gate demanded",
+      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000; bash(handlers, "echo hi >> backend/app/models/notice.py", "");
+    now += 5_000; bash(handlers, "ruff check backend/app | tee /tmp/out.txt", "All checks passed");
+    handlers.turn_end({}, ctx);
+    check("SH3: appends count, and a tee into /tmp does not", sent.length === 0); }
+
+  { const { handlers, sent } = makePi();
+    now += 30_000;
+    bash(handlers, "cat > backend/app/models/notice.py <<'PY'\nx\nPY", "", true); // 실패한 명령
+    handlers.turn_end({}, ctx);
+    check("SH4: a failed shell write changes nothing", sent.length === 0 || !/verify/.test(sent[0] ?? "")); }
+}
+
 process.exit(failures ? 1 : 0);
