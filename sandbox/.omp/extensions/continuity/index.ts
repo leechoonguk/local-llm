@@ -649,6 +649,9 @@ export default function continuity(pi: ExtensionHost): void {
     };
   }
 
+  // 이미 보낸 rung-1 증거 문자열(중복 발화 방지).
+  const sentDetails = new Set<string>();
+
   function escalate(ctx: HandlerContext, evidence: LoopEvidence[], midLoop: boolean): void {
     if (state.turns - lastInterventionTurn < INTERVENTION_COOLDOWN_TURNS) return;
     if (state.escalation >= MAX_ESCALATION) return;
@@ -662,11 +665,16 @@ export default function continuity(pi: ExtensionHost): void {
 
     if (state.escalation === 1) {
       const details = evidence.map((item) => item.detail).join("\n- ");
-      send("Loop detected:\n- " + details + "\nThat path is exhausted. Take one different action.");
+      // 같은 증거로 같은 말을 반복하지 않는다(실측: 최고 성적 셀에서도 12회 재발화).
+      if (sentDetails.has(details)) { state.escalation -= 1; return; }
+      sentDetails.add(details);
+      send("Loop detected:\n- " + details + "\nThat path is exhausted. Take one different action.",
+        midLoop ? "nextTurn" : "steer");
       return;
     }
     if (state.escalation === 2) {
-      send(renderGoalCard(state) + "\nRe-read the card above. Do not repeat a listed attempt.");
+      send(renderGoalCard(state) + "\nRe-read the card above. Do not repeat a listed attempt.",
+        midLoop ? "nextTurn" : "steer");
       return;
     }
     // The third rung compacts, and compacting while the agent loop still holds a
@@ -838,14 +846,14 @@ export default function continuity(pi: ExtensionHost): void {
     }
   }
 
-  function send(text: string): void {
+  function send(text: string, mode: "steer" | "nextTurn" = "steer"): void {
     deliver(
       {
         customType: "continuity",
         content: "<continuity-intervention>\n" + text + "\n</continuity-intervention>",
         display: true,
       },
-      { deliverAs: "steer" },
+      { deliverAs: mode },
     );
   }
 
