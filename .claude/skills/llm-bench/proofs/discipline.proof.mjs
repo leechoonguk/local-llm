@@ -502,12 +502,19 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) });
     return sent[0] ?? "";
   };
-  check("W1: interactive brief tells the model to stay in scope", /stop there|do not start the next layer/.test(brief()));
+  const inter = brief();
   process.env.BENCH_CELL = "1";
   const cellBrief = brief();
   delete process.env.BENCH_CELL;
-  check("W2: the cell brief carries no scope clause", !/stop there|do not start the next layer/.test(cellBrief));
-  check("W3: both briefs keep the measured working pattern", /Working pattern that finishes/.test(cellBrief));
+  check("W1: interactive brief tells the model to stay in scope", /stop there/.test(inter));
+  check("W2: the cell brief carries no scope clause", !/stop there/.test(cellBrief));
+  check("W3: the cell brief keeps the measured working pattern", /Working pattern that finishes/.test(cellBrief));
+  // 모순 제거(2026-08-29): 인터랙티브 브리핑은 조각 작업에 루트 게이트를 요구하지 않는다.
+  // 조각 상태의 루트 게이트는 원래 빨갛고, 초록을 요구하면 범위를 넘게 된다(p2 212초 -> 2867초).
+  check("W4: interactive brief asks for a targeted run, not the root gate after each area",
+    /verify-fast/.test(inter) && /root gate stays red/.test(inter) && !/after each area of work/.test(inter));
+  check("W5: both briefs still forbid replacing a wiring line",
+    /never replace an existing line/.test(inter) && /never replace an existing line/.test(cellBrief));
 }
 
 { // V: 하위 디렉터리 게이트는 풀 게이트가 아니다(채점은 루트가 한다).

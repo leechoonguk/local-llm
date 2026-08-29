@@ -183,7 +183,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=18dd5acf835c4552 -->
+<!-- sync: extensions/continuity/=654f7f7211674fd5 -->
 
 # 하네스 룰 & 훅 아키텍처
 

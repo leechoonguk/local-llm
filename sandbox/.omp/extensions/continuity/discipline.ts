@@ -273,12 +273,15 @@ export function registerDiscipline(pi: any): void {
     try {
       if (!openingSent) {
         openingSent = true; savePersisted({ briefedAt: Date.now() });
-        // 범위 확장 억제(2026-08-29 실측): "모델과 스키마만" 으로 좁힌 프롬프트가 34분·123턴으로
-        // 부풀었다. 빨강 재구동 탓이 아니라(그 셀은 빨강 없이 끝났다) 모델이 스스로 다음 계층까지
-        // 만들어서다. 셀은 과제가 언제나 기능 전체이므로 이 문장은 인터랙티브에서만 붙인다.
-        const scopeLine = isCellMode() ? "" :
-          `Do what this prompt asks and stop there. If it names part of a feature (one layer, one file, one function), build exactly that, verify it with a targeted run, and end your answer by listing what the full gate will still want — do not start the next layer to make the gate green. `;
-        pi.sendUserMessage(`${scopeLine}Working pattern that finishes tasks like this fastest here (measured): run the project's full verification from the project root — a gate run inside a subdirectory (backend/, frontend/) is not it — after each area of work — the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
+        // 브리핑은 모드별로 다르다(2026-08-29 실측). 셀의 과제는 언제나 기능 전체라 루트 게이트를
+        // 매 영역마다 요구하는 게 맞지만, 인터랙티브에서 같은 문장을 쓰면 "조각만 만들어라"와
+        // 정면으로 충돌한다 — 조각 상태의 루트 게이트는 원래 빨갛고, 그걸 초록으로 만들려면
+        // 범위를 넘어야 한다. 실측: 범위 문장만 넣었을 때 p2 가 2035초→212초였는데, 루트 게이트
+        // 요구를 같이 넣자 2867초로 되돌아갔다.
+        const brief = isCellMode()
+          ? `Working pattern that finishes tasks like this fastest here (measured): run the project's full verification from the project root — a gate run inside a subdirectory (backend/, frontend/) is not it — after each area of work, the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`
+          : `Do what this prompt asks and stop there. If it names part of a feature (one layer, one file, one function), build exactly that and verify it with a targeted run — \`make verify-fast\`, or the tests covering what you touched. The project's root gate stays red while a feature is only half-built; that is expected, so end your answer by listing what it still wants instead of building more to turn it green. Run the root gate (\`make verify\` at the project root — a run inside backend/ or frontend/ is not it) when a whole feature is done. Write each layer's test right beside that code; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line.`;
+        pi.sendUserMessage(brief);
         log("OPENING-BRIEF sent");
       }
       stallTurns++; turnCount++;
