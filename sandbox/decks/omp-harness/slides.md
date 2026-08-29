@@ -125,7 +125,7 @@ style: |
 <!-- sync: check-omp-skills.ts=95e200cecf2a1641 -->
 <!-- sync: check-omp-types.ts=8171ad53424a7feb -->
 <!-- sync: check-tooling.ts=10b444f2217c3588 -->
-<!-- sync: check-verify.ts=50d60ebabdb6eda6 -->
+<!-- sync: check-verify.ts=e21bd6d99ac17ee5 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
 <!-- sync: lib/backend-api-http.ts=c69aea7655bd99b2 -->
