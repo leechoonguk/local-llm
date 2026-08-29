@@ -373,7 +373,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     now += 30_000;
     handlers.turn_end({ toolResults: [{}] }, ctxWin(82_000, 131_072));   // 성장 2k — 예산에 한참 못 미친다
     check("HC1: past 60% of the window, a barely-growing session is still cut",
-      sent.length === 1 && /of a ~131k window/.test(sent[0] ?? "")); }
+      sent.length === 1 && /% of the window/.test(sent[0] ?? "")); }
 
   { const handlers = {}; const sent = [];
     try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
@@ -390,6 +390,21 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     now += 30_000;
     handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 101_000 }) });
     check("HC3: with no window reported, the ceiling never fires", sent.length === 0); }
+}
+
+{ // HC4-6: 런타임이 사용률을 알려주는 세 가지 모양을 모두 읽는다(2026-08-30: window 만 보다 놓쳤다).
+  const fire = (usage) => {
+    const handlers = {}; const sent = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => usage });
+    now += 30_000;
+    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => usage });
+    return sent;
+  };
+  check("HC4: contextWindow key", fire({ tokens: 100_000, contextWindow: 131_072 }).length === 1);
+  check("HC5: percentage key", fire({ tokens: 0, percentage: 76 }).length === 1);
+  check("HC6: fraction under the ceiling stays silent", fire({ tokens: 40_000, contextWindow: 131_072 }).length === 0);
 }
 
 process.exit(failures ? 1 : 0);

@@ -221,11 +221,24 @@ export function registerDiscipline(pi: any): void {
         phase = "cutting"; armed = true;
         return;
       }
-      const windowTokens = (() => { try { return ctx.getContextUsage?.()?.window ?? ctx.getContextUsage?.()?.max ?? 0; } catch { return 0; } })();
-      const overCeiling = windowTokens > 0 && used >= windowTokens * HYGIENE_CEILING;
+      // 런타임이 사용률을 알려주는 방식이 여러 가지다 — 예전 profile.ts 가 쓰던 키 목록을 그대로 따른다.
+      // 실측 2026-08-30: `window`/`max` 만 보다가 ctx 99,993 에서도 상한이 발화하지 못했다(창 미상 처리).
+      const frac = (() => {
+        try {
+          const u = (ctx.getContextUsage?.() ?? {}) as Record<string, unknown>;
+          for (const k of ["percentage", "percent", "usedPercent"]) {
+            const v = Number(u[k]);
+            if (Number.isFinite(v) && v > 0) return v > 1 ? v / 100 : v;
+          }
+          const t = Number(u.tokens ?? u.used);
+          const w = Number(u.contextWindow ?? u.window ?? u.max);
+          return Number.isFinite(t) && Number.isFinite(w) && w > 0 ? t / w : 0;
+        } catch { return 0; }
+      })();
+      const overCeiling = frac >= HYGIENE_CEILING;
       if (phase === "idle" && (overCeiling || (hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET))) {
         beginCheckpoint(overCeiling
-          ? `the context is at ~${Math.round(used / 1000)}k of a ~${Math.round(windowTokens / 1000)}k window`
+          ? `the context is at ~${Math.round(frac * 100)}% of the window (~${Math.round(used / 1000)}k tokens)`
           : `the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`);
         return;
       }
