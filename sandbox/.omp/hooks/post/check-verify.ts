@@ -39,9 +39,10 @@ const projectRoot = existsSync(join(cwd, "backend", "app")) && existsSync(join(c
  * no feedback at all, so failure re-checks quickly.
  */
 const THROTTLE_MS = 5 * 60 * 1000;
-const FAILURE_THROTTLE_MS = 90 * 1000; // 실측 2026-08-29: 이 훅 1회가 1.8~7.7초(실제 make 실행)다.
-// 30초 스로틀은 빨간 구간(셀 벽시계의 절반)에 게이트를 40회까지 밀어 넣어 모델이 가장 바쁠 때
-// 하네스가 가장 무거워졌다. 90초면 같은 구간에서 13회 안팎 — 조기 발견은 남기고 증폭만 깎는다.
+const FAILURE_THROTTLE_MS = 30 * 1000; // A/B 되돌림(2026-08-29): 90초로 늘렸더니 integration 셀이 2700초 TIMEOUT 으로 끝났고,
+// 그 셀은 턴 116 동안 자체 게이트 4회·훅 주입 check-verify 6회뿐이었다 — 참조 이름 불일치처럼
+// "게이트가 지적해야 아는" 실패는 피드백 빈도에 직접 걸린다. 비용(1회 1.8~7.7초)보다 발견 지연이
+// 비싸다는 가설로 30초를 복원하고, 같은 과제쌍(integration→rest)으로 단일 변수 비교한다.
 let lastRunAt = 0;
 let lastRunFailed = false;
 

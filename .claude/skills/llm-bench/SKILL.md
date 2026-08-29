@@ -107,6 +107,8 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 - 발진 전 `make preflight` — 셀 부재(pgrep)·sandbox 타입체크·decks 동기·루트 verify 를 한 번에 본다. 이걸 안 해서 무효 스텁이 4회 났다(TS6133, 미문서 make 타깃, decks 해시, 코드 레이아웃).
 - **하네스 수정은 즉시 커밋**한 뒤 발진한다 — 미커밋 수정은 셀 경계 원복(`git checkout -- sandbox`)이 지운다(사고 2회). 원복·clean 은 **repo 루트에서** 실행한다(cwd=sandbox 면 no-op).
 - 셀이 도는 중에는 하네스·설정·서버를 건드리지 않는다(스택 모호 → 셀 무효).
+- **`pkill` 직후 발진 금지.** 프로세스 정리는 즉시 끝나지 않는다 — `pgrep -f "omp -p"` 가 0 이 되는 걸 확인하고 `make preflight` 가 exit 0 일 때만 띄운다. 2026-08-29 에 잔여 피험자가 살아 있는 채로 셀을 띄워 한 번 버렸다(preflight 는 정확히 그걸 경고했는데 무시했다).
+- **`runner.ts --dry-run` 도 `sandbox/` 를 원복한다.** 문법 확인 용도로 부르면 미커밋 하네스 수정이 사라진다(2026-08-29 에 두 번 밟았다). 러너 문법은 사본(`cp … /tmp/x.mts && node --check`)으로 보고, dry-run 은 트리가 커밋된 상태에서만 쓴다.
 - 훅로그는 셀마다 `cp` 로 보존한 뒤 비운다(로테이트 없이 지워 1회 소실).
 - 검증은 **실제 종료코드**로 — `| tail`·`grep -q` 로 끝만 보면 뒤쪽 검사 실패가 묻힌다.
 
