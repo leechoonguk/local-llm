@@ -15,7 +15,6 @@ from app.models.integration import (
     IntegrationSecret,  # noqa: F401 — register model on metadata
 )
 from app.models.user import User  # noqa: F401 — register model on metadata
-from app.models.notice import Notice  # noqa: F401 — register model on metadata
 
 
 config = context.config
