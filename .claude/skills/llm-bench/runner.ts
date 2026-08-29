@@ -311,6 +311,9 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
       const id = (line.match(/"toolCallId"\s*:\s*"([^"]+)"/) ?? line.match(/"id"\s*:\s*"([^"]+)"/))?.[1];
       if (id && !gateCallIds.has(id)) {
         gateCallIds.add(id);
+        // 파이프로 자른 게이트는 파이프의 종료코드를 돌려준다 — 빨간 게이트가 초록으로 읽힌다.
+        // 실측 2026-08-29: 기록된 게이트 호출 765건 중 407건(53%)이 head/tail/grep 로 잘려 있었다.
+        if (/\|\s*(head|tail|grep|sed|awk|wc)\b/.test(line)) m.piped_gates = (m.piped_gates as number) + 1;
         if (firstGateS === null && ts && t0 !== null) firstGateS = Math.round((Date.parse(ts) - t0) / 1000);
       }
     }

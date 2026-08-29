@@ -1,0 +1,57 @@
+[
+ {
+  "at": "2026-08-29T11:46:01.428Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 2700,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 2,
+  "expected": 6,
+  "files": [
+   "M sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " M sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-29T11-46-34-282Z_01a04d57-caaa-7660-8a8a-012e220f4bff.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 10,
+  "tools": {
+   "read": 21,
+   "glob": 10,
+   "grep": 2,
+   "bash": 67,
+   "write": 8,
+   "edit": 2
+  },
+  "gate_runs": 9,
+  "first_full_gate_s": 781,
+  "first_green_s": null,
+  "no_work": false
+ }
+]
