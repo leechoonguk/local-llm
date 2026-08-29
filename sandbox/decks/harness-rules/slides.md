@@ -101,7 +101,7 @@ style: |
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
 <!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
-<!-- sync: strict-no-vcs-publish.ts=724e9d5a9494d647 -->
+<!-- sync: strict-no-vcs-publish.ts=bc1ac6f99b645014 -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
 <!-- sync: strict-verified-git.ts=66eeb22752206f71 -->
 <!-- sync: check-ast-rules.ts=4ff5ebb7e669cdcf -->
@@ -183,7 +183,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=dc7a30edd2cb7193 -->
+<!-- sync: extensions/continuity/=7e2f308a3d8f208d -->
 
 # 하네스 룰 & 훅 아키텍처
 
@@ -340,7 +340,7 @@ flowchart LR
 | `strict-backend-app-structure.ts` | backend | 문서화된 backend/ 구조 밖 write 차단 (app/ 신규 디렉토리, app 루트 스트레이 파일, 비표준 backend/ 위치) |
 | `strict-backend-migrations.ts` | backend | upstream에 존재하는 마이그레이션 파일 수정 차단 + 리비전 파일 손수 생성 차단 (`make migrate-gen`으로 번호 자동 증가) — `backend-migrations` TTSR은 `tool:bash`만 보므로 직접 write는 여기서 잡는다 |
 | `strict-no-subagents.ts` | **cross-cutting** | `task` 도구로 서브에이전트 생성 차단 (agent 타입 6종) |
-| `strict-no-vcs-publish.ts` | **cross-cutting** | `git commit`/`git push` 자체를 차단 — VCS 는 사용자 소관(RULES.md Session Safety). 이 피험자 트리는 바깥 레포가 추적하므로 피험자의 커밋/푸시는 바깥 레포를 건드린다 |
+| `strict-no-vcs-publish.ts` | **cross-cutting** | `git commit`/`git push` 자체를 차단 — VCS 는 사용자 소관(RULES.md Session Safety). 이 피험자 트리는 바깥 레포가 추적하므로 피험자의 커밋/푸시는 바깥 레포를 건드린다 | 벤치 셀(`BENCH_CELL=1`)에서는 `git checkout/restore/stash/revert/reset` 도 차단한다 — 지워진 참조 구현을 VCS 에서 되살리는 것은 구현이 아니다(2026-08-29 실측: 그렇게 1248초·writes 2·산출물 0/6 으로 '초록' 이 나왔다). 인터랙티브에서는 허용 |
 | `lib/hook-scope.ts` | **cross-cutting** | 훅의 경로 게이트 — `touchesPath`(경로 있는 이벤트만) / `touchesStrict`(셸 명령까지). 실측 2026-08-29: 변이 도구 결과 1회에 post 훅 36개가 write 6.8초·bash 4.9초를 썼고 그중 3.3초가 무관한 메타 검사였다. 게이트 후 bash 1.56초 |
 | `strict-verified-git.ts` | **cross-cutting** | `git commit`/`git push` 직전에 `make verify` 실행; 실패하면 차단. **커밋은 검증된 트리여야 한다** — unstaged/untracked가 남아 있으면 `make verify`가 읽은 트리 ≠ 커밋될 트리이므로 차단(`git add -A` 또는 `git stash -k` 안내). 미추적 새 모듈을 추적 파일들이 import하던 케이스가 실제로 있었다 |
 | `strict-tooling.ts` | **cross-cutting** | 파이썬/셸 스크립트 및 루트 `scripts|tools|bin|utils/` 생성 차단 — 스크립트성 코드는 `.omp/hooks/` TypeScript |

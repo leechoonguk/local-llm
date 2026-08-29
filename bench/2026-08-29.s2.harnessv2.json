@@ -1,0 +1,51 @@
+[
+ {
+  "at": "2026-08-29T09:35:08.046Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 1248,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.5-4B-4bit",
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 0,
+  "expected": 6,
+  "files": [],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-29T09-35-43-826Z_01a04ce0-00d2-712d-9405-46f90db0e75c.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 2,
+  "tools": {
+   "read": 34,
+   "glob": 7,
+   "grep": 3,
+   "bash": 14,
+   "write": 2
+  },
+  "gate_runs": 3,
+  "first_full_gate_s": 1125,
+  "first_green_s": null,
+  "no_work": false
+ }
+]

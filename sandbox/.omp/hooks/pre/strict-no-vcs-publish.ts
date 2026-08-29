@@ -12,10 +12,24 @@
 
 const GIT_PUBLISH = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:commit|push)\b/;
 
+// 벤치 셀에서는 VCS 로 과제 산출물을 **되살리는** 것도 막는다. 실측 2026-08-29(harnessv2 integration):
+// 피험자가 Mode A 로 지워진 참조 구현을 `git checkout HEAD -- …` 로 복원하고 "make verify 통과"로
+// 마쳤다 — 1248초, writes 2, 산출물 0/6. 게이트는 초록이었지만 측정된 것은 아무것도 없다.
+// 인터랙티브에서는 정당한 작업이므로 셀 모드에서만 막는다(BENCH_CELL=1, 러너가 주입).
+const GIT_RESTORE = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:checkout|restore|stash|revert|reset)\b/;
+
 export default function strictNoVcsPublish(pi: any) {
   pi.on("tool_call", (event: { toolName?: string; input?: Record<string, unknown> }, _ctx: unknown) => {
     if (event.toolName !== "bash" && event.toolName !== "eval") return;
     const command = String(event.input?.command ?? event.input?.code ?? "");
+    if (process.env.BENCH_CELL === "1" && GIT_RESTORE.test(command)) {
+      return {
+        block: true,
+        reason:
+          "이 세션은 벤치 셀이다 — 과제 산출물을 VCS 에서 되살리는 것은 구현이 아니다. " +
+          "지워진 파일은 명세와 남아 있는 코드의 규약을 보고 직접 만들어야 한다.",
+      };
+    }
     if (!GIT_PUBLISH.test(command)) return;
     return {
       block: true,

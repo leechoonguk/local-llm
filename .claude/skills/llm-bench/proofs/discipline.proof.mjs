@@ -122,24 +122,14 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx); // prose-only turn = finishing signal
-  // 계약 변경(2026-08-29): 인터랙티브에서 고장 없는 조각의 마감은 침묵이다.
-  check("H: 1 file + no gate ever + prose finish -> silent (slice finish)", sent.length === 0);
-  process.env.BENCH_CELL = "1";
-  { const cell = makePi();
-    now += 30_000; editOk(cell.handlers);
-    cell.handlers.turn_end({}, ctx);
-    check("H-cell: the same session inside a bench cell is still blocked",
-      cell.sent.length === 1 && /has not run since your last change/.test(cell.sent[0] ?? "")); }
-  delete process.env.BENCH_CELL;
+  check("H: 1 file + no gate ever + prose finish -> targeted FINISH-BLOCK", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
 }
 
 { // H2: 규모가 커지면 예전 그대로 풀 게이트를 요구한다 (벤치 셀은 13~15 파일이라 항상 이 경로)
-  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일. 풀 게이트 요구는 7파일부터다.
   const { handlers, sent } = makePi();
-  now += 30_000; for (const f of ["a","b","c","d","e","f","g"]) editOk(handlers, `${f}.py`);
-  turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
+  now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   handlers.turn_end({}, ctx);
-  check("H2: 7 files + gate older than the change -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
+  check("H2: 3 files + gate older than the change -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // H3: 작은 변경을 타깃 검증으로 덮었으면 마감은 조용하다
@@ -155,8 +145,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   bash(handlers, "make verify-fast", "3 passed");
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx);
-  // 조각이면 타깃 검증의 선후는 마감을 좌우하지 않는다(침묵). 셀에서는 여전히 막힌다(H-cell).
-  check("H4: fast gate BEFORE the edit -> slice finish is still silent", sent.length === 0);
+  check("H4: fast gate BEFORE the edit -> still blocked", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
 }
 
 { // H5: 서 있는 check-* 경고가 있으면 작은 변경이라도 풀 게이트다
@@ -188,11 +177,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
 { // K: 6 distinct unverified files -> cadence nudge; 12 + 3 turns -> one escalation
   const { handlers, sent } = makePi();
-  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
-  for (let i = 0; i < 7; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
-  check("K1: 7 distinct unverified files -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
-  for (let i = 7; i < 13; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
-  check("K2: 13 unverified + 3 turns -> one escalation, once", sent.length === 2 && /Before your NEXT edit/.test(sent[1] ?? ""));
+  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
+  check("K1: 6 distinct unverified files -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+  for (let i = 6; i < 12; i++) { now += 30_000; editOk(handlers, `app/f${i}.py`); turn(handlers); }
+  check("K2: 12 unverified + 3 turns -> one escalation, once", sent.length === 2 && /Before your NEXT edit/.test(sent[1] ?? ""));
   now += 30_000; editOk(handlers, "app/f99.py"); turn(handlers);
   check("K3: no third cadence message in the window", sent.length === 2);
   bash(handlers, "make verify", "all green");
@@ -315,17 +303,14 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 { // Q3: subset runs do not reset the cadence window
   const { handlers, sent } = makePi();
   now += 60_000; bash(handlers, ".venv/bin/pytest -q tests/api/test_notice.py", "3 passed");
-  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
-  for (let i = 0; i < 7; i++) { now += 30_000; editOk(handlers, `app/s${i}.py`); turn(handlers); }
-  check("Q3: 7 unverified files with only subset greens -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
+  for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `app/s${i}.py`); turn(handlers); }
+  check("Q3: 6 unverified files with only subset greens -> cadence nudge", sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
 }
 
 { // R1: finish-block is uncapped and releases after a real gate run
   // 규모 보정(2026-08-28): 풀 게이트 요구는 이제 SMALL_FOOTPRINT 초과에서만 걸리므로 세 파일로 세운다.
-  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
   const { handlers, sent } = makePi();
-  for (const f of ["a","b","c","d","e","f","g"]) editOk(handlers, `${f}.py`);
-  turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   handlers.turn_end({}, ctx); handlers.turn_end({}, ctx); handlers.turn_end({}, ctx);
   check("R1a: three gate-less finishes -> three blocks, third names the command",
     sent.length === 3 && /has not run since your last change/.test(sent[2] ?? "") && /single next action/.test(sent[2] ?? ""));
@@ -340,8 +325,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   now += 10_000; bash(handlers, "make verify", "all green");
   now += 10_000;
   handlers.tool_result({ toolName: "edit", isError: false, input: { path: "app/models/notice.py" },
-    // 규약 위반 경고다. 완성도 경고("missing repository file")는 조각을 막지 않는다 — R2c 참고.
-    content: [{ type: "text", text: "wrote ok <system-notice> [check-backend-naming] 1 issue(s): - app/x.py: bad name" }] }, ctx);
+    content: [{ type: "text", text: "wrote ok <system-notice> [check-backend-domain] 3 issue(s): - notice: missing repository file" }] }, ctx);
   handlers.turn_end({}, ctx);
   check("R2a: standing check-* notice after the gate -> FINISH-BLOCK",
     sent.length === 1 && /notice was raised after your last full verification/.test(sent[0] ?? ""));
@@ -375,10 +359,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 { // R3: verify-fast green is NOT a full gate — the finish stays blocked
   // 규모 보정(2026-08-28): 작은 변경(<=SMALL_FOOTPRINT)은 타깃 검증으로 마감할 수 있다(H3).
   // 이 케이스의 계약은 "규모가 큰 변경에서는 verify-fast 가 풀 게이트를 대신하지 못한다" 이다.
-  // 경계 보정(2026-08-29 임계 통일): 조각 = 미검증 1~6파일, 7부터 기능 전체.
   const { handlers, sent } = makePi();
-  for (const f of ["a","b","c","d","e","f","g"]) editOk(handlers, `${f}.py`);
-  turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
   now += 10_000; bash(handlers, "make verify-fast", "all green");
   handlers.turn_end({}, ctx);
   check("R3: verify-fast green + prose finish -> FINISH-BLOCK stands",
@@ -444,243 +426,51 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
   now += 30_000; editOk(p2.handlers, "b.py");              // 새 변경
   p2.handlers.turn_end({}, ctx);
-  // 이월된 게이트 뒤의 1파일 변경은 조각이다 — 마감은 침묵이고 다음 프롬프트가 이어받는다.
-  check("X4: a 1-file change after the carried gate -> silent", p2.sent.length === 0);
+  check("X4: a change after the carried gate -> blocked again",
+    p2.sent.length === 1 && /verify-fast/.test(p2.sent[0] ?? ""));
 }
 
-{ // Y: 범위 존중 — 사용자가 기능의 한 조각만 시켰을 때 "아직 안 만든 것" 빨강으로 재구동하지 않는다.
-  // 실측(2026-08-29): "모델과 스키마만" 프롬프트가 37.7분·123턴으로 부풀었다. 이 게이트는 도메인
-  // 5계층·커버리지 100%를 요구하므로 조각 작업은 원리상 초록이 될 수 없다.
-  const COMPLETE = "FAIL: notice: not imported in alembic/env.py | FAIL: notice: router not included in main.py";
-  const BROKEN = "FAILED tests/api/test_notice.py::test_create - TypeError: 'NoneType' object";
-
-  { const { handlers, sent } = makePi();          // 인터랙티브(BENCH_CELL 없음)
-    now += 30_000; editOk(handlers, "models/notice.py"); editOk(handlers, "schemas/notice.py");
-    bash(handlers, "make verify", COMPLETE);
-    handlers.turn_end({}, ctx);
-    // 계약 변경(2026-08-29): 고장 없는 조각의 마감은 침묵이다 — 조언 메시지도 다음 턴을 만든다.
-    check("Y1: completeness-only red on a slice -> silent (no re-drive, no advice)", sent.length === 0);
-    handlers.turn_end({}, ctx);
-    check("Y2: it stays silent on repeat finishes", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();          // 고장이 섞이면 종전대로 재구동
-    now += 30_000; editOk(handlers, "models/notice.py");
-    bash(handlers, "make verify", `${COMPLETE}\n${BROKEN}`);
-    handlers.turn_end({}, ctx);
-    check("Y3: red with real breakage -> the END-GATE re-drive still fires",
-      sent.length === 1 && /verification result was failing/.test(sent[0] ?? "")); }
-
-  { process.env.BENCH_CELL = "1";                 // 벤치 셀: 과제가 언제나 기능 전체다
-    const { handlers, sent } = makePi();
-    now += 30_000; editOk(handlers, "models/notice.py");
-    bash(handlers, "make verify", COMPLETE);
-    handlers.turn_end({}, ctx);
-    check("Y4: cell mode is unchanged (completeness red still re-drives)",
-      sent.length === 1 && /verification result was failing/.test(sent[0] ?? ""));
-    delete process.env.BENCH_CELL; }
-
-  { const { handlers, sent } = makePi();          // 조각이 아니면(대형 변경) 종전대로
-    now += 30_000;
-    for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
-    bash(handlers, "make verify", COMPLETE);
-    handlers.turn_end({}, ctx);
-    // 실패한 게이트는 unverified 를 비우지 않으므로(2026-08-29 수정) 7파일이 그대로 남아
-    // 먼저 게이트 케이던스가 나간다 — 그다음 턴에서 END-GATE 가 나오는 게 맞는 순서다.
-    check("Y5a: a large unverified change first gets the gate cadence",
-      sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? ""));
-    handlers.turn_end({}, ctx);
-    check("Y5b: then the red finish is re-driven",
-      sent.length === 2 && /verification result was failing/.test(sent[1] ?? "")); }
-}
-
-{ // Z: 실패한 게이트는 "검증됨" 이 아니다.
-  // 실측 2026-08-29(4프롬프트 p4): 게이트 3회 중 마지막이 빨간 채로 세션이 끝났는데 마감 차단이
-  // 침묵했다. lastGateAt 을 종료코드와 무관하게 밀고 있었기 때문이다. 최종 make verify 는
-  // `conftest.py: model "notice" not imported` 한 줄로 exit 2 였다.
-  { const { handlers, sent } = makePi();
+{ // M: 측정 정확도 3종(2026-08-29) — 롤백 엔진 위에 얹은 수정들.
+  { const { handlers, sent } = makePi();          // 실패한 게이트는 검증이 아니다
     now += 30_000; editOk(handlers, "a.py");
     handlers.tool_result({ toolName: "bash", isError: true, input: { command: "make verify" },
       content: [{ type: "text", text: "make: *** [verify] Error 2" }] }, ctx);
     handlers.turn_end({}, ctx);
-    check("Z1: a failing gate (unrecognised red) does not count as verification -> still blocked",
-      sent.length === 1 && /verify-fast|make verify/.test(sent[0] ?? "")); }
+    check("M1: a failing root gate does not satisfy the finish check", sent.length === 1); }
 
   { const { handlers, sent } = makePi();
     now += 30_000; editOk(handlers, "a.py");
     bash(handlers, "make verify", "all green, 150 passed");
     handlers.turn_end({}, ctx);
-    check("Z2: a passing gate still clears the finish", sent.length === 0); }
-}
+    check("M2: a passing root gate still clears it", sent.length === 0); }
 
-{ // W: 브리핑의 범위 문장은 인터랙티브에만 붙는다(셀의 과제는 언제나 기능 전체다).
-  const brief = () => {
-    const handlers = {}; const sent = [];
-    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) });
-    return sent[0] ?? "";
-  };
-  const inter = brief();
-  process.env.BENCH_CELL = "1";
-  const cellBrief = brief();
-  delete process.env.BENCH_CELL;
-  check("W1: interactive brief tells the model to stay in scope", /stop there/.test(inter));
-  check("W2: the cell brief carries no scope clause", !/stop there/.test(cellBrief));
-  check("W3: the cell brief keeps the measured working pattern", /Working pattern that finishes/.test(cellBrief));
-  // 모순 제거(2026-08-29): 인터랙티브 브리핑은 조각 작업에 루트 게이트를 요구하지 않는다.
-  // 조각 상태의 루트 게이트는 원래 빨갛고, 초록을 요구하면 범위를 넘게 된다(p2 212초 -> 2867초).
-  check("W4: interactive brief asks for a targeted run, not the root gate after each area",
-    /verify-fast/.test(inter) && /root gate stays red/.test(inter) && !/after each area of work/.test(inter));
-  check("W5: both briefs still forbid replacing a wiring line",
-    /never replace an existing line/.test(inter) && /never replace an existing line/.test(cellBrief));
-}
-
-{ // V: 하위 디렉터리 게이트는 풀 게이트가 아니다(채점은 루트가 한다).
-  // 실측 2026-08-29(4프롬프트 p4): `cd …/sandbox/backend && make verify` 11회로 초록을 봤지만
-  // 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
-  { const { handlers, sent } = makePi();
-    now += 30_000;
-    for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
-    turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
+  { const { handlers, sent } = makePi();          // 하위 디렉터리 게이트는 루트 게이트가 아니다
+    now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
     bash(handlers, "cd /Users/x/sandbox/backend && make verify 2>&1", "all green, 150 passed");
     handlers.turn_end({}, ctx);
-    check("V1: a backend-scoped gate does not satisfy the finish check",
-      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
+    check("M3: a backend-scoped gate does not satisfy the finish check", sent.length === 1); }
 
   { const { handlers, sent } = makePi();
-    now += 30_000; editOk(handlers, "a.py");
-    now += 5_000;  // 검증은 편집보다 뒤여야 한다(같은 시각이면 덮은 것으로 보지 않는다)
-    bash(handlers, "cd /Users/x/sandbox/backend && make verify 2>&1", "all green");
-    handlers.turn_end({}, ctx);
-    check("V2: but it does count as the targeted run for a small change", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000;
-    for (const f of ["a.py","b.py","c.py","d.py","e.py","f.py","g.py"]) editOk(handlers, f);
-    turn(handlers); sent.length = 0; // 7파일이면 게이트 케이던스가 먼저 1회 나간다 — 소비하고 마감을 본다
+    now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
     bash(handlers, "make -C backend verify", "all green");
     handlers.turn_end({}, ctx);
-    check("V3: `make -C backend verify` is scoped too",
-      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
+    check("M4: `make -C backend verify` is scoped too", sent.length === 1); }
 
   { const { handlers, sent } = makePi();
-    now += 30_000;
-    for (const f of ["a.py","b.py","c.py"]) editOk(handlers, f);
+    now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
     bash(handlers, "cd /Users/x/sandbox && make verify", "all green, 150 passed");
     handlers.turn_end({}, ctx);
-    check("V4: the root gate still clears the finish", sent.length === 0); }
-}
+    check("M5: the root gate still clears the finish", sent.length === 0); }
 
-{ // S: 조각(slice)은 하나의 정의다 — 미검증 1~6파일. 세 호출부(마감·범위존중·케이던스)가 같은 경계를 쓴다.
-  const COMPLETE = "FAIL: notice: not imported in alembic/env.py";
-  const editN = (h, n, pre = "f") => { for (let i = 0; i < n; i++) editOk(h, `${pre}${i}.py`); };
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; editN(handlers, 6);
-    handlers.turn_end({}, ctx);
-    check("S1: 6 files (largest slice) -> silent finish, no root-gate demand", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; editN(handlers, 7);
-    turn(handlers); sent.length = 0;
-    handlers.turn_end({}, ctx);
-    check("S2: 7 files (whole feature) -> the root gate is demanded",
-      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
-
-  { // 실측 회귀(2026-08-29 slice-a): 3파일 조각에 풀 게이트를 요구해 프롬프트가 부풀었다.
-    const { handlers, sent } = makePi();
-    now += 30_000;
-    editOk(handlers, "app/models/notice.py"); editOk(handlers, "app/schemas/notice.py");
-    editOk(handlers, "app/repositories/notice.py");
-    bash(handlers, "make verify", COMPLETE);
-    handlers.turn_end({}, ctx);
-    check("S3: a 3-file slice with completeness-only red -> silent, no root-gate demand", sent.length === 0); }
-
-  { // 임계를 다시 쪼개면 여기서 깨진다: 두 호출부가 모든 n 에서 같은 편에 서야 한다.
-    let mismatch = null;
-    for (let n = 1; n <= 8 && mismatch === null; n++) {
-      const a = makePi();                       // (a) completeness 빨강으로 마감
-      now += 30_000; editN(a.handlers, n, `a${n}_`);
-      if (n > 6) turn(a.handlers);
-      a.sent.length = 0;
-      bash(a.handlers, "make verify", COMPLETE);
-      a.handlers.turn_end({}, ctx);
-      const aSlice = /rest of this feature does not exist yet/.test(a.sent[0] ?? "");
-
-      const b = makePi();                       // (b) 게이트 없이 마감
-      now += 30_000; editN(b.handlers, n, `b${n}_`);
-      if (n > 6) turn(b.handlers);
-      b.sent.length = 0;
-      b.handlers.turn_end({}, ctx);
-      const bSlice = /verify-fast/.test(b.sent[0] ?? "");
-      if (aSlice !== bSlice) mismatch = n;
-    }
-    check("S4: scope respect and the finish check agree at every size (anti-resplit)", mismatch === null); }
-
-  { const { handlers, sent } = makePi();
-    for (let i = 0; i < 6; i++) { now += 30_000; editOk(handlers, `c${i}.py`); turn(handlers); }
-    check("S5a: 6 unverified files -> no cadence nudge", sent.length === 0);
-    now += 30_000; editOk(handlers, "c6.py"); turn(handlers);
-    check("S5b: the 7th flips it -> exactly one nudge",
+  { const { handlers, sent } = makePi();          // 셸 쓰기도 변경으로 센다
+    for (let i = 0; i < 6; i++) { now += 30_000; bash(handlers, `cat > app/f${i}.py <<'PY'\nx\nPY`, ""); turn(handlers); }
+    check("M6: six heredoc writes reach the gate cadence",
       sent.length === 1 && /files have changed since the last full verification/.test(sent[0] ?? "")); }
 
-  { const { handlers, sent } = makePi();       // 카운터는 누적이 아니라 unverified 다
-    now += 30_000; editN(handlers, 9, "d");
-    turn(handlers); sent.length = 0;
-    bash(handlers, "make verify", "all green, 150 passed");
-    now += 10_000; editOk(handlers, "e0.py"); editOk(handlers, "e1.py");
-    handlers.turn_end({}, ctx);
-    check("S6: a green root gate resets the size -> the 2 files left finish silently", sent.length === 0); }
-
-  { process.env.BENCH_CELL = "1";              // 셀은 타깃 마감 면제를 못 쓴다
-    const { handlers, sent } = makePi();
-    now += 30_000; editOk(handlers, "a.py");
-    now += 5_000; bash(handlers, "make verify-fast", "3 passed");
-    handlers.turn_end({}, ctx);
-    check("S7: a cell never finishes on a targeted run",
-      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
-    delete process.env.BENCH_CELL; }
-
-  { const { handlers, sent } = makePi();       // 서 있는 경고는 크기와 무관하게 이긴다
-    now += 30_000; editOk(handlers, "a.py");
-    bash(handlers, "make verify", "all green");
-    now += 5_000; editOk(handlers, "b.py");
-    bash(handlers, "cat notice", "[check-backend-naming] found 1 issue in app/x.py");
-    handlers.turn_end({}, ctx);
-    check("S9: a standing check notice outranks the slice size",
-      sent.length === 1 && /harness check notice/.test(sent[0] ?? "")); }
-}
-
-{ // SH: 셸로 만든 파일도 조각 크기에 들어간다.
-  // 실측 2026-08-29(slice-b): 조각 프롬프트 하나에서 `untracked-mutation` 이 11회 찍혔다 —
-  // 모델이 edit/write 도구 대신 heredoc 으로 쓴다. 집계에서 빠지면 조각 판정이 성립하지 않아
-  // 마감이 다시 풀 게이트 요구로 빠진다.
   { const { handlers, sent } = makePi();
-    now += 30_000;
-    bash(handlers, "cat > backend/app/models/notice.py <<'PY'\nx\nPY", "");
-    bash(handlers, "cat > backend/app/schemas/notice.py <<'PY'\nx\nPY", "");
+    now += 30_000; bash(handlers, "ruff check app | tee /tmp/out.txt", "All checks passed");
     handlers.turn_end({}, ctx);
-    check("SH1: two heredoc writes count as a 2-file slice -> silent finish", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000;
-    for (let i = 0; i < 7; i++) bash(handlers, `cat > backend/app/f${i}.py <<'PY'\nx\nPY`, "");
-    turn(handlers); sent.length = 0;
-    handlers.turn_end({}, ctx);
-    check("SH2: seven heredoc writes cross the slice boundary -> root gate demanded",
-      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; bash(handlers, "echo hi >> backend/app/models/notice.py", "");
-    now += 5_000; bash(handlers, "ruff check backend/app | tee /tmp/out.txt", "All checks passed");
-    handlers.turn_end({}, ctx);
-    check("SH3: appends count, and a tee into /tmp does not", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000;
-    bash(handlers, "cat > backend/app/models/notice.py <<'PY'\nx\nPY", "", true); // 실패한 명령
-    handlers.turn_end({}, ctx);
-    check("SH4: a failed shell write changes nothing", sent.length === 0 || !/verify/.test(sent[0] ?? "")); }
+    check("M7: a tee into /tmp is not a change", sent.length === 0); }
 }
 
 process.exit(failures ? 1 : 0);

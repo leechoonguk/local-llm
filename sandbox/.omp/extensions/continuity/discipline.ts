@@ -67,7 +67,11 @@ import { resolve } from "node:path";
 const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
 const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state (same signature)
 const RED_TOTAL_MS = 20 * 60_000;    // absolute ceiling for one red episode even with advancing signatures (debate 2026-08-27)
-const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
+const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/;
+// 하위 디렉터리로 좁힌 게이트는 풀 게이트가 아니다. 실측 2026-08-29: 피험자가
+// `cd …/sandbox/backend && make verify` 를 11회 돌리고 루트 게이트는 0회였는데 하네스가 초록으로
+// 셌고, 최종 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
+const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
 const MAX_RESETS = 6;                // sickness-cut backstop
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
@@ -193,9 +197,17 @@ export function registerDiscipline(pi: any): void {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
-        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
+        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr) && !SUBDIR_GATE_RE.test(cmdStr);
+        if (!event.isError) {
+          for (const wp of shellWritePaths(cmdStr)) {
+            (/(^|\/)tests?\//.test(wp) ? testWritten : srcWritten).add(wp);
+            unverified.add(wp); mutatedEver = true; regCheck(wp);
+          }
+        }
         if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
-        if (fullGate) {
+        // 성공한 게이트만 검증으로 센다. 실패한 게이트까지 밀면 마감 판정이 참이 되어 차단이 침묵한다
+        // (2026-08-29 실측: 마지막 게이트가 빨간 채 종료, 최종 루트 게이트 exit 2).
+        if (fullGate && !event.isError && !f) {
           lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
           cadenceNudged = false; cadenceEscalated = false;
         }
@@ -416,6 +428,18 @@ function savePersisted(patch: Persisted): void {
   } catch { /* 훅·확장은 절대 던지지 않는다 */ }
 }
 
+// 셸로 만든 파일도 변경이다 — 이 모델은 edit/write 대신 `cat > path <<'EOF'` 를 쓴다(실측: 한
+// 프롬프트에서 11회). 집계에서 빠지면 변경 규모 기반 신호가 전부 어긋난다.
+const SHELL_WRITE_RE = /(?:>>?|\btee\b\s+(?:-a\s+)?)\s*(["']?)([\w./@-]+\.[A-Za-z0-9]+)\1/g;
+function shellWritePaths(cmd: string): string[] {
+  const out: string[] = [];
+  for (const m of cmd.matchAll(SHELL_WRITE_RE)) {
+    const q = m[2];
+    if (!q || /^\/dev\//.test(q) || /^\/tmp\//.test(q)) continue;
+    out.push(q.replace(/^\.\//, ""));
+  }
+  return out;
+}
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
 const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));
