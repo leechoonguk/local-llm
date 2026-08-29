@@ -268,7 +268,12 @@ export function registerDiscipline(pi: any): void {
     try {
       if (!openingSent) {
         openingSent = true; savePersisted({ briefedAt: Date.now() });
-        pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification after each area of work — the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
+        // 범위 확장 억제(2026-08-29 실측): "모델과 스키마만" 으로 좁힌 프롬프트가 34분·123턴으로
+        // 부풀었다. 빨강 재구동 탓이 아니라(그 셀은 빨강 없이 끝났다) 모델이 스스로 다음 계층까지
+        // 만들어서다. 셀은 과제가 언제나 기능 전체이므로 이 문장은 인터랙티브에서만 붙인다.
+        const scopeLine = isCellMode() ? "" :
+          `Do what this prompt asks and stop there. If it names part of a feature (one layer, one file, one function), build exactly that, verify it with a targeted run, and end your answer by listing what the full gate will still want — do not start the next layer to make the gate green. `;
+        pi.sendUserMessage(`${scopeLine}Working pattern that finishes tasks like this fastest here (measured): run the project's full verification after each area of work — the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
       stallTurns++; turnCount++;

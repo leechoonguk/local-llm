@@ -494,4 +494,20 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     check("Z2: a passing gate still clears the finish", sent.length === 0); }
 }
 
+{ // W: 브리핑의 범위 문장은 인터랙티브에만 붙는다(셀의 과제는 언제나 기능 전체다).
+  const brief = () => {
+    const handlers = {}; const sent = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 0 }) });
+    return sent[0] ?? "";
+  };
+  check("W1: interactive brief tells the model to stay in scope", /stop there|do not start the next layer/.test(brief()));
+  process.env.BENCH_CELL = "1";
+  const cellBrief = brief();
+  delete process.env.BENCH_CELL;
+  check("W2: the cell brief carries no scope clause", !/stop there|do not start the next layer/.test(cellBrief));
+  check("W3: both briefs keep the measured working pattern", /Working pattern that finishes/.test(cellBrief));
+}
+
 process.exit(failures ? 1 : 0);
