@@ -67,26 +67,15 @@ import { resolve } from "node:path";
 const STALL_MS = 7 * 60_000;         // wall time without a successful mutation
 const RED_AGE_MS = 12 * 60_000;      // wall time with a persisting red state (same signature)
 const RED_TOTAL_MS = 20 * 60_000;    // absolute ceiling for one red episode even with advancing signatures (debate 2026-08-27)
-const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/;
-// 하위 디렉터리로 스코프를 좁힌 게이트는 **풀 게이트가 아니다**. 채점은 프로젝트 루트 게이트가 한다.
-// 실측 2026-08-29(4프롬프트 p4): 피험자가 `cd …/sandbox/backend && make verify` 를 11회 돌리고
-// 루트 게이트는 한 번도 안 돌렸는데, 하네스가 그걸 초록으로 세어 TAIL-TRIM 까지 갔다. 최종 루트
-// 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다(가짜 완료).
-const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
+const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
 const MAX_RESETS = 6;                // sickness-cut backstop
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
-// 빨강의 두 종류. completeness = 아직 만들지 않은 것(등록 누락·테스트 없음·커버리지 미달),
-// breakage = 만든 것이 깨진 것(테스트 실패·타입/문법 오류·표준 위반). 애매하면 breakage 로 본다.
-const COMPLETENESS_RE = /\bnot imported\b|\bnot included\b|\bis missing\b|\bmissing [A-Za-z]|\bhas no tests\b|Coverage failure: total of \d+ is less than fail-under/i;
-const BREAKAGE_RE = /\bFAILED\s+tests?\/|Traceback|SyntaxError|TypeError|AssertionError|ImportError|NameError|\bis neither a\b|\bE\s+\w+Error\b/;
-const SLICE_FOOTPRINT = 6;           // 조각의 유일한 크기 기준: 마지막 성공 루트 게이트 이후 변경 파일 1~6 = 조각, 7+ = 기능 전체.
-// 실측 분포에 빈 구간이 있다 — 조각 사례 2·3·5파일, 기능 전체 13~15파일. 6은 그 하단에 이 모델의
-// 상습 초과배달(2파일 요청에 +1계층) 한 칸을 더한 값이다. 세 호출부(마감·범위존중·케이던스)가 이 하나를 쓴다.
-const isCellMode = (): boolean => process.env.BENCH_CELL === "1"; // 벤치 셀: 과제가 언제나 기능 전체다
+const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
 const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
+const EDITS_PER_GATE = 6;            // distinct files changed since the last full gate before the cadence nudge (debate r2: the 8m wall clock fired in 7/8 null cells and the gate still came late or never)
 const TEST_NUDGE_MS = 15 * 60_000;   // source-only mutations tolerated before the one test reminder
 const SRC_BEFORE_TESTS = 3;          // distinct source files that make missing tests a signal
 const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
@@ -108,13 +97,8 @@ export function registerDiscipline(pi: any): void {
   const persisted = loadPersisted();
   let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
   let lastFastGateAt = 0, lastMutationAt = 0;
-  let gateFailedAt = 0; // 마지막으로 실패한 루트 게이트 시각(정체불명 실패 포함)
   let cadenceNudged = false, cadenceEscalated = false, turnAtCadenceNudge = 0;
   const unverified = new Set<string>();
-  // 조각 판정은 한 곳에서만 답한다. "너무 크다" 는 !isSlice() 가 아니라 isWholeFeature() 로 묻는다
-  // (0파일은 둘 다 아니다).
-  const isSlice = (): boolean => unverified.size > 0 && unverified.size <= SLICE_FOOTPRINT;
-  const isWholeFeature = (): boolean => unverified.size > SLICE_FOOTPRINT;
   // 라운드 3 착륙분(2026-08-28): 종반 꼬리 트림 / write→edit 유도 / TRUNC-RECOVERY
   let greenIdle = false, tailNudged = false, steerCount = 0, sawRed = false;
   const readPaths = new Set<string>();
@@ -164,7 +148,7 @@ export function registerDiscipline(pi: any): void {
     }
   }
 
-  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} slice=${SLICE_FOOTPRINT}files testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
+  log(`loaded discipline. stall=${Math.round(STALL_MS / 60000)}m redAge=${Math.round(RED_AGE_MS / 60000)}m (time-only) maxResets=${MAX_RESETS} hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} gateCadence=${EDITS_PER_GATE}edits testNudge=${Math.round(TEST_NUDGE_MS / 60000)}m/${SRC_BEFORE_TESTS}src regWatch=${regSnapshot.size}files`);
 
   function beginCheckpoint(reason: string, kind: "sick" | "hygiene" = "sick") {
     cutKind = kind;
@@ -188,12 +172,7 @@ export function registerDiscipline(pi: any): void {
       let wasFullGate = false;
       // 서 있는 하네스 검사 경고 추적 — backend 스코프 verify 초록 위에서 종료한
       // 실측 셀(1738s)의 가짜완료 메커니즘. finish 시점에 lastGateAt 과 비교한다.
-      // 서 있는 경고는 "네가 만든 것이 규약을 어겼다" 일 때만이다. 조각 작업 중 나오는
-      // "아직 안 만든 계층" 경고(check-backend-domain 이 backend 쓰기마다 주입한다)를 여기 세면
-      // noticeStanding 이 상시 참이 되어 타깃 마감 경로가 영영 닫힌다(2026-08-29 부검).
-      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content) && !COMPLETENESS_RE.test(content)) {
-        lastNoticeAt = Date.now(); savePersisted({ lastNoticeAt });
-      }
+      if (/\[check-[a-z-]+\][^]{0,60}issue/.test(content)) { lastNoticeAt = Date.now(); savePersisted({ lastNoticeAt }); }
       if (/^read/i.test(event.toolName) && event.input?.path) readPaths.add(String(event.input.path));
       // TRUNC-RECOVERY(사용자 제기): 절단·미완 쓰기는 통째 재시도가 아니라 분할로.
       if (event.isError && /^(write|edit)/i.test(event.toolName)) {
@@ -214,24 +193,9 @@ export function registerDiscipline(pi: any): void {
         const cmdStr = norm(str(event.input)).slice(0, 300);
         const cmdTk = tokens(cmdStr);
         const truncated = /\|\s*(?:tail|head|grep|sed|awk|wc)\b/.test(cmdStr);
-        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr) && !SUBDIR_GATE_RE.test(cmdStr);
-        if (!truncated && !fullGate && !event.isError && (FAST_GATE_RE.test(cmdStr) || SUBDIR_GATE_RE.test(cmdStr))) lastFastGateAt = Date.now();
-        // 게이트는 **성공했을 때만** "검증됨"으로 센다. 실패한 게이트까지 lastGateAt 을 밀면
-        // 마감 판정("마지막 변경 이후에 게이트가 돌았나")이 참이 되어 차단이 침묵한다 —
-        // 실측 2026-08-29(4프롬프트 p4): 게이트 3회 중 마지막이 빨간 채로 세션이 끝났고
-        // 최종 make verify 는 `conftest.py: model "notice" not imported` 한 줄로 exit 2 였다.
-        // 실패한 루트 게이트 시각 — 단, "아직 안 만든 계층"만 지적하는 완성도 실패는 제외한다.
-        // 그건 조각 작업의 정상 상태이지 고장이 아니다(2026-08-29 부검).
-        if (!event.isError) {
-          for (const wp of shellWritePaths(cmdStr)) {
-            (/(^|\/)tests?\//.test(wp) ? testWritten : srcWritten).add(wp);
-            unverified.add(wp); lastMutationAt = Date.now(); mutatedEver = true;
-            regCheck(wp);
-          }
-        }
-        if (fullGate && (event.isError || f)
-            && !(COMPLETENESS_RE.test(content) && !BREAKAGE_RE.test(content))) gateFailedAt = Date.now();
-        if (fullGate && !event.isError && !f) {
+        const fullGate = !truncated && FULL_GATE_RE.test(cmdStr);
+        if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
+        if (fullGate) {
           lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
           cadenceNudged = false; cadenceEscalated = false;
         }
@@ -270,9 +234,6 @@ export function registerDiscipline(pi: any): void {
         stallTurns = 0; lastProgressAt = Date.now(); mutatedEver = true;
         if (!firstMutationAt) firstMutationAt = Date.now();
         const path = String(event.input?.path ?? "");
-        if (!path && !(/^bash|^eval/i.test(String(event.toolName)) && shellWritePaths(norm(str(event.input))).length > 0)) {
-          log(`untracked-mutation ${event.toolName} (no path — unverified/slice size will undercount)`);
-        }
         if (!wasFullGate) { greenIdle = false; tailNudged = false; } // 실제 변이는 종반 윈도를 죽인다(초록 게이트 실행 자체는 예외)
         if (path) { (/(^|\/)tests?\//.test(path) ? testWritten : srcWritten).add(path); unverified.add(path); lastMutationAt = Date.now(); regCheck(path); }
         // write→edit 유도(3:1 표결 — 메시지형, deny 는 EISDIR 교훈으로 기각):
@@ -296,15 +257,7 @@ export function registerDiscipline(pi: any): void {
     try {
       if (!openingSent) {
         openingSent = true; savePersisted({ briefedAt: Date.now() });
-        // 브리핑은 모드별로 다르다(2026-08-29 실측). 셀의 과제는 언제나 기능 전체라 루트 게이트를
-        // 매 영역마다 요구하는 게 맞지만, 인터랙티브에서 같은 문장을 쓰면 "조각만 만들어라"와
-        // 정면으로 충돌한다 — 조각 상태의 루트 게이트는 원래 빨갛고, 그걸 초록으로 만들려면
-        // 범위를 넘어야 한다. 실측: 범위 문장만 넣었을 때 p2 가 2035초→212초였는데, 루트 게이트
-        // 요구를 같이 넣자 2867초로 되돌아갔다.
-        const brief = isCellMode()
-          ? `Working pattern that finishes tasks like this fastest here (measured): run the project's full verification from the project root — a gate run inside a subdirectory (backend/, frontend/) is not it — after each area of work, the first time as soon as one layer stands, not as a pile at the end; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`
-          : `Do what this prompt asks and stop there. If it names part of a feature (one layer, one file, one function), build exactly that and verify it with a targeted run — \`make verify-fast\`, or the tests covering what you touched. The project's root gate stays red while a feature is only half-built; that is expected, so end your answer by listing what it still wants instead of building more to turn it green. Run the root gate (\`make verify\` at the project root — a run inside backend/ or frontend/ is not it) when a whole feature is done. Write each layer's test right beside that code; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line.`;
-        pi.sendUserMessage(brief);
+        pi.sendUserMessage(`Working pattern that finishes tasks like this fastest here (measured): run the project's full verification EARLY — within the first ~8 minutes — and again after each area of work; write each layer's or module's test right after that code, never as a pile at the end; generate migrations only through the project's generator command with a real message; when a wiring file already imports things, add yours alongside — never replace an existing line. Plan with this order, then start.`);
         log("OPENING-BRIEF sent");
       }
       stallTurns++; turnCount++;
@@ -336,13 +289,13 @@ export function registerDiscipline(pi: any): void {
           return;
         }
       }
-      if (phase === "idle" && isWholeFeature() && !cadenceNudged) {
+      if (phase === "idle" && unverified.size >= EDITS_PER_GATE && !cadenceNudged) {
         cadenceNudged = true; turnAtCadenceNudge = turnCount;
         pi.sendUserMessage(`${unverified.size} files have changed since the last full verification run. Run \`make verify\` now — failures found early are cheaper than a pile at the end. Then continue working.`);
         log("GATE-CADENCE nudge");
         return;
       }
-      if (phase === "idle" && cadenceNudged && !cadenceEscalated && unverified.size > SLICE_FOOTPRINT * 2 && turnCount - turnAtCadenceNudge >= 3) {
+      if (phase === "idle" && cadenceNudged && !cadenceEscalated && unverified.size >= EDITS_PER_GATE * 2 && turnCount - turnAtCadenceNudge >= 3) {
         cadenceEscalated = true;
         pi.sendUserMessage(`${unverified.size} files are now unverified and the earlier reminder was not followed. Before your NEXT edit, run \`make verify\` end-to-end and fix what it reports.`);
         log("GATE-CADENCE escalation");
@@ -360,22 +313,6 @@ export function registerDiscipline(pi: any): void {
       }
       const prose = !(e.toolResults && e.toolResults.length);
       if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
-        // 범위 존중(2026-08-29): 인터랙티브에서 조각 작업의 빨강이 '아직 안 만든 것' 뿐이면
-        // 초록을 강요하지 않는다 — 무엇이 남았는지 보고하고 멈추는 게 사용자의 다음 프롬프트를 살린다.
-        // 조각 마감(2026-08-29 부검): 실측 3회 모두 모델은 30~60초 만에 요청 범위(2파일)를 정확히
-        // 끝내고 산문으로 마쳤는데, 게이트를 안 돌렸다는 이유로 FINISH-BLOCK 이 나갔고 47~144초 뒤
-        // 범위 밖 파일이 나오기 시작했다. 조언 메시지도 같은 문제다 — sendUserMessage 는 곧 다음 턴이라
-        // "보고하고 끝내라"는 말조차 세션을 이어가게 만든다(SCOPE-RESPECT 는 한 턴 지켜지고 15초 뒤
-        // FINISH-BLOCK 에 뒤집혔다). 고장이 없는 조각의 마감은 **아무 말도 하지 않는 것**이 옳다.
-        // 빨강이 없거나(게이트 미실행) 완성도 계열이면 조각은 끝난 것이다. 정체불명·고장 빨강은
-        // 보수적으로 종전 경로(END-GATE/FINISH-BLOCK)로 보낸다 — 인식 못 한 실패는 고장으로 본다.
-        const redIsCompletenessOnly = !!redSig && COMPLETENESS_RE.test(redSig) && !BREAKAGE_RE.test(redSig);
-        const standingNotice = lastNoticeAt > 0 && lastNoticeAt > lastGateAt; // 규약 위반 경고는 크기와 무관하게 이긴다
-        if (!isCellMode() && isSlice() && !standingNotice && gateFailedAt < lastMutationAt
-            && (!redSig || redIsCompletenessOnly)) {
-          log(`FINISH-OK slice (${unverified.size} file(s), nothing broken)`);
-          return;
-        }
         if (redSig) {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
@@ -389,7 +326,7 @@ export function registerDiscipline(pi: any): void {
           // 한 파일 편집에 40분 셀용 풀 게이트를 물리면 그 프롬프트 시간의 절반 이상이 게이트로 간다(실측 59/104초).
           // 벤치 셀은 변경이 13~15 파일이라 이 경로로 새지 않는다.
           const noticeStanding = lastNoticeAt > 0 && lastNoticeAt > lastGateAt;
-          const small = !isCellMode() && !noticeStanding && isSlice();
+          const small = !noticeStanding && unverified.size > 0 && unverified.size <= SMALL_FOOTPRINT;
           if (small && lastFastGateAt > lastMutationAt) {
             log(`FINISH-OK targeted (${unverified.size} file(s), fast gate after the last edit)`);
           } else {
@@ -479,20 +416,6 @@ function savePersisted(patch: Persisted): void {
   } catch { /* 훅·확장은 절대 던지지 않는다 */ }
 }
 
-
-// 셸로 만든 파일도 변경이다. 실측 2026-08-29: 한 조각 프롬프트에서 `untracked-mutation` 이 11회
-// 찍혔다 — 모델이 edit/write 도구 대신 `cat > path <<'EOF'` 로 쓰기 때문이다. 그러면 unverified 가
-// 0 으로 남아 조각 판정이 성립하지 않고, 마감이 다시 풀 게이트 요구로 빠진다.
-const SHELL_WRITE_RE = /(?:>>?|\btee\b\s+(?:-a\s+)?)\s*(["']?)([\w./@-]+\.[A-Za-z0-9]+)\1/g;
-function shellWritePaths(cmd: string): string[] {
-  const out: string[] = [];
-  for (const m of cmd.matchAll(SHELL_WRITE_RE)) {
-    const p = m[2];
-    if (!p || /^\/dev\//.test(p) || /^\/tmp\//.test(p)) continue;
-    out.push(p.replace(/^\.\//, ""));
-  }
-  return out;
-}
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 const str = (x: any) => (typeof x === "string" ? x : (() => { try { return JSON.stringify(x); } catch { return String(x); } })());
 const contentText = (c: any): string => Array.isArray(c) ? c.map((x: any) => (x && typeof x.text === "string") ? x.text : "").join("\n") : (typeof c === "string" ? c : str(c));

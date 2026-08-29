@@ -169,7 +169,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=0e6c70f0f78512c2 -->
+<!-- sync: extensions/continuity/=dc7a30edd2cb7193 -->
 
 # 우리 하네스 (OMP) 소개
 
