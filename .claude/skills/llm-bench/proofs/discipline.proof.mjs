@@ -364,4 +364,32 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     ctxTokens = 30_000; }
 }
 
+{ // HC: 하이진 절대 상한 — 성장 예산은 정체된 세션을 못 잡는다(축소판 첫 셀 ctx 96k·턴 183초, 컷 0회).
+  const ctxWin = (tokens, window) => ({ getContextUsage: () => ({ tokens, window }) });
+  { const handlers = {}; const sent = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(90_000, 131_072));   // 첫 턴이 기준선을 잡는다
+    now += 30_000;
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(92_000, 131_072));   // 성장 2k — 예산에 한참 못 미친다
+    check("HC1: past 70% of the window, a barely-growing session is still cut",
+      sent.length === 1 && /of a ~131k window/.test(sent[0] ?? "")); }
+
+  { const handlers = {}; const sent = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(40_000, 131_072));
+    now += 30_000;
+    handlers.turn_end({ toolResults: [{}] }, ctxWin(45_000, 131_072));
+    check("HC2: below the ceiling with small growth -> silent", sent.length === 0); }
+
+  { const handlers = {}; const sent = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 100_000 }) }); // 창 미상
+    now += 30_000;
+    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 101_000 }) });
+    check("HC3: with no window reported, the ceiling never fires", sent.length === 0); }
+}
+
 process.exit(failures ? 1 : 0);

@@ -70,6 +70,10 @@ const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b
 // 셌고, 최종 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
 const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
 const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
+// 절대 상한(2026-08-30): 성장 기반 예산만으로는 **정체된 세션**을 못 잡는다 — 축소판 첫 셀에서
+// ctx 96,074·턴 183초까지 갔는데 컷이 한 번도 안 걸렸다(증가폭이 예산에 못 미쳐서다).
+// 질병 컷을 되살리지 않고 같은 구멍을 막는 최소 장치다. 창을 모르면(0) 적용하지 않는다.
+const HYGIENE_CEILING = 0.7;         // 창의 70% 를 넘으면 성장과 무관하게 컷
 const MAX_HYGIENE = 3;
 const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
@@ -215,8 +219,12 @@ export function registerDiscipline(pi: any): void {
         phase = "cutting"; armed = true;
         return;
       }
-      if (phase === "idle" && hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET) {
-        beginCheckpoint(`the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`);
+      const windowTokens = (() => { try { return ctx.getContextUsage?.()?.window ?? ctx.getContextUsage?.()?.max ?? 0; } catch { return 0; } })();
+      const overCeiling = windowTokens > 0 && used >= windowTokens * HYGIENE_CEILING;
+      if (phase === "idle" && (overCeiling || (hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET))) {
+        beginCheckpoint(overCeiling
+          ? `the context is at ~${Math.round(used / 1000)}k of a ~${Math.round(windowTokens / 1000)}k window`
+          : `the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`);
         return;
       }
       const prose = !(e.toolResults && e.toolResults.length);
