@@ -19,7 +19,7 @@ const GIT_PUBLISH = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?
 // 셀에서는 **읽기 경로로도** 정답에 닿을 수 없다. sandbox 에는 .git 이 없어 git 이 상위 레포로 올라가므로
 // `git show HEAD:<경로>`·`git log -p`·`git diff HEAD` 가 지워진 참조 구현을 그대로 되살려 보여준다
 // (2026-08-30 감사에서 열려 있음이 확인됐다 — 복원 차단만으로는 부족하다).
-const GIT_READ = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:show|log|diff|cat-file|ls-tree|grep|blame)\b/;
+const GIT_READ = /(?:^|[&|;()\n'"]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:show|diff|cat-file|blame|grep)\b|git\s+log\b[^\n]*\s-p\b/;
 const GIT_RESTORE = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:checkout|restore|stash|revert|reset)\b/;
 
 export default function strictNoVcsPublish(pi: any) {

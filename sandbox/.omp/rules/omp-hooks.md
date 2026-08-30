@@ -78,7 +78,6 @@ post hook after every edit.
 | `backend-code-conventions.md` | — | `check-verify.ts` (runs the configured toolchain — lint/typecheck/test) |
 | `backend-makefile.md` | `strict-command-routing.ts` | `check-makefiles.ts` |
 | `root-makefile.md` | `strict-command-routing.ts` | `check-makefiles.ts` |
-| `root-git-workflow.md` | `strict-verified-git.ts` | — |
 | `frontend-makefile.md` | `strict-command-routing.ts` | `check-makefiles.ts` |
 | `frontend-code-conventions.md` | — | `check-frontend-code.ts` |
 | `code-layout.md` | — | `check-code-layout.ts` |
@@ -92,6 +91,7 @@ post hook after every edit.
 | `RULES.md` (sticky) | `strict-no-subagents.ts` | — |
 | `RULES.md` (sticky) | `strict-additive-writes.ts` | — |
 | `RULES.md` (sticky) | `strict-no-vcs-publish.ts` | — |
+| `root-git-workflow.md` | `strict-no-vcs-publish.ts` | — |
 | `backend-app-forbidden-tokens.md` (TTSR trigger) | — | `check-backend-exceptions.ts` + `check-environment.ts` |
 | `backend-service-boundary-tokens.md` (TTSR trigger) | — | `check-backend-transaction.ts` + `check-backend-sse.ts` + `check-backend-background-tasks.ts` + `check-backend-integration.ts` |
 | `backend-router-wiring-tokens.md` (TTSR trigger) | — | `check-backend-auth.ts` |
@@ -183,7 +183,6 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
 | +-- strict-command-routing.ts      # Cross-cutting: blocks direct tool invocations (make/bash/docker)
 | +-- strict-backend-migrations.ts    # Backend: blocks edits only to upstream migration files
 | +-- strict-no-subagents.ts        # Cross-cutting: blocks task (subagent) creation
-| +-- strict-verified-git.ts        # Cross-cutting: runs make verify before Git commit/push
 | +-- strict-no-vcs-publish.ts      # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
 | +-- strict-additive-writes.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
 | +-- strict-backend-app-structure.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)

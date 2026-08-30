@@ -50,4 +50,4 @@ sandbox 규칙 안에서 `bench/`·`.claude/` 경로를 가리키면 그 프로�
 | 도메인 요구 방향 | 모델 하나에 5건 요구 → 하류 앵커로 | 〃 |
 | post 훅 36 + lib 19 | `check-backend-tests` 1,232줄/125세션 — 최대 발화 | 〃 |
 | integration 측 | 채점이 역전(아무것도 안 하면 6/6), 오퍼레이션 코드가 setup 이 지우는 파일에만 존재 | 〃 |
-| `pre/` 가드 8종 | 진행 중 | — |
+| `pre/` 가드 8종 | `strict-additive-writes` 가 편집 2,923건 중 2,670건에서 **무동작**(경로 필드 부재·내용 태그로 fail-open), `strict-backend-app-structure` 차단 70건 중 64건이 **오차단**(앵커드 편집 태그), 라우팅 가드가 자기 안내문이 권하는 명령을 차단 + `eval` 채널 32% 누수, `strict-verified-git` 211세션 0회 발화 | `bench/2026-08-30.s2.reduction.md` |

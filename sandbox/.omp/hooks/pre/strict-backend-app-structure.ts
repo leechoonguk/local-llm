@@ -49,7 +49,9 @@ export default function strictBackendAppStructure(pi: ExtensionAPI): void {
   pi.on("tool_call", (event: { toolName: string; input: Record<string, unknown> }, _ctx: unknown) => {
     if (event.toolName !== "write" && event.toolName !== "edit") return;
 
-    const path = String((event.input as Record<string, unknown>)?.path ?? "");
+    const path = String((event.input as Record<string, unknown>)?.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "");
+  // 앵커드 편집은 경로에 내용 태그를 붙인다(`main.py#0D77`). 그대로 매칭하면 허용 목록에 없어
+  // 라우터 등록 파일 편집이 전부 막히고, 모델은 `sed -i` 로 우회한다 — 우리가 막으려던 그 행동이다.
 
     // backend/app/<subdir>/... — known app subdirectories only.
     const appMatch = path.match(/(?:^|\/)backend\/app\/([^/]+)\//);

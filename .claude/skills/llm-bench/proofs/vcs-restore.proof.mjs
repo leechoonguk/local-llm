@@ -18,13 +18,18 @@ check("R1: a cell cannot restore deleted artifacts from HEAD",
 check("R2: git restore is the same move", blocked(run("git restore --source=HEAD backend/app/models/notice.py")));
 check("R3: so is reset --hard", blocked(run("git reset --hard HEAD")));
 check("R4: so is stash pop", blocked(run("git stash pop")));
-check("R5: history reads are blocked in a cell (the answer lives there)", blocked(run("git log --oneline -5")));
-check("R6: so is diffing", blocked(run("git diff -- backend/app")));
+// 범위 축소(2026-08-30 전수 점검): `--oneline` 로그는 내용을 되살리지 않는다. 22건 중 18건이 즉시
+// 재시도였고, 그중엔 "이 리비전은 푸시됐나"에 답하려던 호출이 있었다 — 그 질문은 우리 규칙이 만든다.
+check("R5: a plain log listing is allowed in a cell", !blocked(run("git log --oneline -5")));
+check("R5b: but `git log -p` recovers content and is blocked", blocked(run("git log -p -- backend/app")));
+check("R5c: ls-files / merge-base answer 'is it pushed' and pass",
+  !blocked(run("git ls-files --error-unmatch backend/app/main.py")) && !blocked(run("git merge-base --is-ancestor HEAD origin/main")));
+check("R6: diffing still blocked (it prints content)", blocked(run("git diff -- backend/app")));
 check("R7: commit/push stay blocked in a cell too", blocked(run("git commit -m x")));
 check("R8: the reason points at implementing, not recovering", /직접 만들어야/.test(run("git checkout HEAD -- x.py")?.reason ?? ""));
 check("R11: a cell cannot read the answer out of history either",
   blocked(run("git show HEAD:sandbox/api/integration.search-barcode-item-info.http")));
-check("R12: git log -p is the same read path", blocked(run("git log -p -- sandbox/api")));
+check("R12: quoted execSync in an eval body is the same read path", blocked(run("execSync('git show HEAD:x.py')")));
 check("R13: git diff HEAD too", blocked(run("git diff HEAD -- sandbox/backend")));
 delete process.env.BENCH_CELL;
 check("R9: interactive sessions may restore and read freely",

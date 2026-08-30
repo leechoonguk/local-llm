@@ -19,7 +19,7 @@ enforces it on the root, backend, frontend and decks Makefiles.
 
 ## Verify Membership
 
-`make verify` is the gate: `strict-verified-git` runs it before every commit
+`make verify` is the gate: run it before declaring work done
 and the `commit` skill treats its exit status as authoritative. A `check-*`
 target that exists but is not a prerequisite of `verify` passes when run by
 hand and is never run by the gate — three such targets

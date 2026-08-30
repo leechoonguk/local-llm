@@ -100,4 +100,26 @@ check("25 접두 없는 교체형 형제치환 BLOCK",
 check("26 접두 없는 삽입형은 통과",
   pedit("backend/app/main.py", "[backend/app/main.py#0D77]\nPUT 3+1@:\napi_router.include_router(notice.router)") === undefined);
 
+// 27-33: 이 가드가 실제로 도는 경로들 — 전수 점검(2026-08-30)에서 편집 2,923건 중 2,670건이
+// fail-open 으로 빠져 무동작이었다(path 없음 2,230 / 내용 태그 440). 문법에도 두 구멍이 있었다:
+// 범위 교체 `PUT N.=M:` 1,109건, 삭제 `CUT` 154건.
+writeFileSync(FIX + "/backend/app/main.py",
+  "from app.routers import auth, batch, user\nx = 1\napi_router.include_router(user.router)\napi_router.include_router(batch.router)\n");
+const pedit2 = (input, path) => handlers.tool_call({ toolName: "edit", input: path === undefined ? { input } : { path, input } }, {});
+
+check("27 path 없이 헤더만 있어도 등록 줄 교체 BLOCK",
+  pedit2("[backend/app/main.py#AB12]\nPUT 3:\napi_router.include_router(notice.router)")?.block === true);
+check("28 내용 태그가 붙은 path 도 동일하게 BLOCK",
+  pedit2("PUT 3:\napi_router.include_router(notice.router)", "backend/app/main.py#AB12")?.block === true);
+check("29 범위 교체(PUT N.=M:)가 등록 줄을 삼키면 BLOCK",
+  pedit2("[backend/app/main.py#AB12]\nPUT 3.=4:\napi_router.include_router(notice.router)")?.block === true);
+check("30 CUT 으로 import 줄 삭제 BLOCK",
+  pedit2("[backend/app/main.py#AB12]\nCUT 1")?.block === true);
+check("31 CUT 으로 평범한 줄 삭제는 통과",
+  pedit2("[backend/app/main.py#AB12]\nCUT 2") === undefined);
+check("32 의도 선언은 범위 교체도 통과",
+  pedit2("[backend/app/main.py#AB12]\n# intent: replace\nPUT 3.=4:\napi_router.include_router(notice.router)") === undefined);
+check("33 읽을 수 없는 경로는 여전히 fail-open(던지지 않는다)",
+  pedit2("PUT 1:\nx", "/nonexistent/dir/") === undefined);
+
 process.exit(bad ? 1 : 0);

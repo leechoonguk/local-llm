@@ -90,20 +90,19 @@ style: |
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
 <!-- sync: omp-conventions.md=1983392cf85dd0da -->
 <!-- sync: omp-hook-crash-guard.md=3813240c3c5ba87d -->
-<!-- sync: omp-hooks.md=d261be81457402ef -->
+<!-- sync: omp-hooks.md=c108d1c1eb84afca -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
-<!-- sync: root-git-workflow.md=a6dceb7c22eef3a9 -->
-<!-- sync: root-makefile.md=4a23bf9dbf49bc3d -->
+<!-- sync: root-git-workflow.md=d623ac8f064686ae -->
+<!-- sync: root-makefile.md=eb585864798e1655 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
-<!-- sync: strict-additive-writes.ts=610acc3152e012cb -->
-<!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
+<!-- sync: strict-additive-writes.ts=a83e8f798e77e797 -->
+<!-- sync: strict-backend-app-structure.ts=8f7a405fd926c26f -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
-<!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
+<!-- sync: strict-command-routing.ts=db92c85fa488dda3 -->
 <!-- sync: strict-no-subagents.ts=a60f42f59cd92d89 -->
-<!-- sync: strict-no-vcs-publish.ts=93fc9f5746e2c09c -->
-<!-- sync: strict-tooling.ts=bdea910e68b74005 -->
-<!-- sync: strict-verified-git.ts=66eeb22752206f71 -->
+<!-- sync: strict-no-vcs-publish.ts=d768e02e750c2fca -->
+<!-- sync: strict-tooling.ts=465e56371d4389aa -->
 <!-- sync: check-ast-rules.ts=4ff5ebb7e669cdcf -->
 <!-- sync: check-backend-api-http.ts=7d815cf226e74ecc -->
 <!-- sync: check-backend-api-keys.ts=de367c8e35e2a93f -->
@@ -314,7 +313,6 @@ flowchart LR
 | `backend-code-conventions.md` | — | `check-verify` (toolchain) |
 | `backend-makefile.md` | `strict-command-routing` | `check-makefiles` |
 | `root-makefile.md` | `strict-command-routing` | `check-makefiles` |
-| `root-git-workflow.md` | `strict-verified-git` | — |
 | `backend-router-wiring-tokens.md` (TTSR) | — | `check-backend-auth` |
 | `backend-identity-tokens.md` (TTSR) | — | `check-backend-auth` |
 | `frontend-makefile.md` | `strict-command-routing` | `check-makefiles` |
@@ -343,7 +341,6 @@ flowchart LR
 | `strict-no-subagents.ts` | **cross-cutting** | `task` 도구로 서브에이전트 생성 차단 (agent 타입 6종) |
 | `strict-no-vcs-publish.ts` | **cross-cutting** | `git commit`/`git push` 자체를 차단 — VCS 는 사용자 소관(RULES.md Session Safety). 이 피험자 트리는 바깥 레포가 추적하므로 피험자의 커밋/푸시는 바깥 레포를 건드린다 | 벤치 셀(`BENCH_CELL=1`)에서는 `git checkout/restore/stash/revert/reset` 도 차단한다 — 지워진 참조 구현을 VCS 에서 되살리는 것은 구현이 아니다(2026-08-29 실측: 그렇게 1248초·writes 2·산출물 0/6 으로 '초록' 이 나왔다). 인터랙티브에서는 허용 |
 | `lib/hook-scope.ts` | **cross-cutting** | 훅의 경로 게이트 — `touchesPath`(경로 있는 이벤트만) / `touchesStrict`(셸 명령까지). 실측 2026-08-29: 변이 도구 결과 1회에 post 훅 36개가 write 6.8초·bash 4.9초를 썼고 그중 3.3초가 무관한 메타 검사였다. 게이트 후 bash 1.56초 |
-| `strict-verified-git.ts` | **cross-cutting** | `git commit`/`git push` 직전에 `make verify` 실행; 실패하면 차단. **커밋은 검증된 트리여야 한다** — unstaged/untracked가 남아 있으면 `make verify`가 읽은 트리 ≠ 커밋될 트리이므로 차단(`git add -A` 또는 `git stash -k` 안내). 미추적 새 모듈을 추적 파일들이 import하던 케이스가 실제로 있었다 |
 | `strict-tooling.ts` | **cross-cutting** | 파이썬/셸 스크립트 및 루트 `scripts|tools|bin|utils/` 생성 차단 — 스크립트성 코드는 `.omp/hooks/` TypeScript |
 
 <div class="muted small">denylist 패턴 — 명령 경계에 앵커 (줄 시작, `&&`/`||`/`;`/`|`/`(` 뒤, sudo 옵션), 상대경로 프리픽스 허용, 인자 단어는 매칭 안 됨</div>

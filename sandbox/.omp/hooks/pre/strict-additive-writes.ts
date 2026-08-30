@@ -43,7 +43,12 @@ export default function strictAdditiveWrites(pi: any) {
       // the replace-instead-of-add habit — frontier models do it in omp too) arrived as a
       // replace-form PUT on the user import line. Destruction is blocked, not advised.
       const patch = String((event.input as any).input);
-      const path = String(event.input.path ?? "");
+      // 경로는 세 곳에 있을 수 있다: `path`(깨끗), `path`+내용 태그(`main.py#0D77`), 또는 패치 본문의
+      // `[상대경로#TAG]` 헤더. 전수 점검(2026-08-30): 편집 2,923건 중 2,230건은 `path` 자체가 없고
+      // 440건은 태그가 붙어 있었다 — 둘 다 fail-open 으로 빠져서 이 가드는 **91% 무동작**이었다.
+      const header = /^\s*\[([^\]\n#]+)/.exec(patch);
+      const rawPath = String(event.input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "") || (header?.[1] ?? "");
+      const path = rawPath;
       const abs = path.startsWith("/") ? path : resolve(process.cwd(), path);
       const fileText = safeRead(abs);
       if (fileText === null) return; // 빈 path→cwd(디렉터리) 등 — EISDIR 클래스 fail-open
@@ -55,12 +60,43 @@ export default function strictAdditiveWrites(pi: any) {
       const intendedReplace = /#\s*intent:\s*replace/i.test(patch);
       // 본문 줄의 `+` 접두는 **선택**이다 — 배포 셀에서 접두 없는 형식(`PUT 233:\n api_router...`)
       // 으로 등록 줄이 교체됐는데 파서가 통째로 놓쳤다(2026-08-28 실측, 회귀 1건).
-      for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?\.?:\n((?:(?!PUT \d)[^\n]*(?:\n|$))+)/g)) {
+      // 삭제형(`CUT N`, `CUT N.=M`)은 문법에 아예 없었다 — 등록 줄을 지우는 가장 직접적인 형태인데
+      // 통과했다(전수 점검에서 154건/66세션). 지운 줄이 등록·import 면 막는다.
+      if (!intendedReplace) {
+        for (const cut of patch.matchAll(/(?:^|\n)CUT (\d+)(?:\.?=(\d+))?/g)) {
+          const from = Number(cut[1]), to = Number(cut[2] ?? cut[1]);
+          for (let n = from; n <= to; n++) {
+            const line = (fileLines[n - 1] ?? "").trim();
+            if (line && isRegistrationLine(line)) {
+              return {
+                block: true,
+                reason: `\`${path}\` ${n}행을 지운다 — 그 줄은 등록/배선이다(\`${line.slice(0, 60)}\`). ` +
+                  "추가 과제에서 기존 등록은 남는다. 정말 지워야 하면 편집에 `# intent: replace` 를 실어라.",
+              };
+            }
+          }
+        }
+      }
+      // `PUT N.=M:` 은 N..M 을 통째로 갈아끼우는 범위 교체다. 전수 점검에서 **1,109건/131세션**으로
+      // 가장 흔한 교체 형태인데 예전 문법이 못 잡았다. 범위의 모든 줄을 대상으로 본다.
+      for (const op of patch.matchAll(/(?:^|\n)PUT (\d+)(\+\d+@?)?(?:\.?=(\d+))?\.?:\n((?:(?!PUT \d|CUT \d)[^\n]*(?:\n|$))+)/g)) {
         if (op[2]) continue; // insert form — additive, fine
         if (intendedReplace) continue; // declared intent — the replacement stands
+        const rangeEnd = Number(op[3] ?? op[1]);
+        const bodyAll = op[4].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
+        for (let n = Number(op[1]); n <= rangeEnd; n++) {
+          const covered = (fileLines[n - 1] ?? "").trim();
+          if (covered && isRegistrationLine(covered) && !bodyAll.includes(covered)) {
+            return {
+              block: true,
+              reason: `\`${path}\` ${n}행이 교체 범위에 들어가 사라진다 — 그 줄은 등록/배선이다(\`${covered.slice(0, 60)}\`). ` +
+                "나란히 추가하라. 교체가 의도라면 `# intent: replace` 를 실어라.",
+            };
+          }
+        }
         const target = (fileLines[Number(op[1]) - 1] ?? "").trim();
         if (!target) continue;
-        const bodyLines = op[3].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean); // 접두 있으면 벗기고, 없으면 그대로
+        const bodyLines = op[4].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean); // 접두 있으면 벗기고, 없으면 그대로
         const retained = bodyLines.includes(target);
         if (retained) continue;
         // 보편 규칙: 형제 치환(sibling swap). 관측된 7건 전부 "뼈대는 같고 식별자만
