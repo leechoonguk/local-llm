@@ -100,7 +100,7 @@ style: |
 <!-- sync: strict-backend-app-structure.ts=a68e571b3fe846b3 -->
 <!-- sync: strict-backend-migrations.ts=ae10170057c7049b -->
 <!-- sync: strict-command-routing.ts=1e16b573c3f80e01 -->
-<!-- sync: strict-no-subagents.ts=442ea25cec44fa09 -->
+<!-- sync: strict-no-subagents.ts=a60f42f59cd92d89 -->
 <!-- sync: strict-no-vcs-publish.ts=93fc9f5746e2c09c -->
 <!-- sync: strict-tooling.ts=bdea910e68b74005 -->
 <!-- sync: strict-verified-git.ts=66eeb22752206f71 -->
