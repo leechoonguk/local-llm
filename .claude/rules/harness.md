@@ -25,5 +25,12 @@ paths:
 - 훅 본체는 `guarded()` 로 감싼다 — 훅의 예외는 exit 0 으로 삼켜 도구 호출을 죽이지 않되 stderr 에 남긴다.
 - 검사는 순수 파일 읽기다. 서버·네트워크를 만지지 않는다(편집 지연 = 검사 시간). 예외는 `check-live-sync`(호스트의 라이브 설정 파일 + 루프백 2s)와 `check-autostart`(brew services·launchctl·로그인 항목 조회) — 미설치 시스템은 skip 으로 처리해 다른 호스트의 verify 를 깨지 않는다.
 
+## 검사 전수 점검
+
+훅·규칙을 통째로 점검할 때의 절차는 `sandbox/.omp/rules/omp-hooks.md` "Sweeping the checks" 에 있다 —
+증상에서 출발, 전수 스윕은 독립 에이전트, 순위는 세션 코퍼스의 발화 횟수로, "현재가 옳으면 옳다고 말하라",
+그리고 고친 뒤에는 메타 계약으로 재발을 막는다. 2026-08-30 에 네 번 돌려 매번 사람이 짚은 증상보다 큰
+결함이 나왔다(도구 호출 2,266건 취소, 요구 방향 1,232줄/125세션, Mode A 채점 역전).
+
 ## Makefile
 - 모든 타깃은 `.PHONY` 등재 + `## 설명`. `check-<name>` 레시피는 `node .claude/hooks/check-<name>.ts` 한 줄. `verify` 는 모든 `check-*` 를 선행 조건으로 가진다 — verify 에 없는 검사는 아무도 안 도는 주장이다.
