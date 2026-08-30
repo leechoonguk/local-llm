@@ -1,11 +1,14 @@
 # local-llm 검증 진입점. 검사는 전부 순수 파일 읽기(서버·네트워크 없음), node 24+ 로 .ts 를 직접 실행한다.
 # 타깃 계약(check-harness 가 강제): .claude/rules/<name>.md ↔ .claude/hooks/check-<name>.ts ↔ check-<name> ↔ verify.
-.PHONY: check-sandbox-harness-edit check-sandbox-harness-review help verify preflight smoke bake check-harness-proofs check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-harness check-live-sync check-autostart
+.PHONY: check-bench-tasks check-sandbox-harness-edit check-sandbox-harness-review help verify preflight smoke bake check-harness-proofs check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-harness check-live-sync check-autostart
 
 help: ## 타깃 목록
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-24s\033[0m %s\n", $$1, $$2}'
 
-verify: check-harness check-harness-proofs check-sandbox-harness-review check-sandbox-harness-edit check-bench-results check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-live-sync check-autostart ## 모든 검사 실행 (커밋 전 게이트)
+verify: check-harness check-harness-proofs check-sandbox-harness-review check-sandbox-harness-edit check-bench-results check-bench-tasks check-ollama-modelfile check-omp-models check-omlx-config check-docs-sync check-skills check-live-sync check-autostart ## 모든 검사 실행 (커밋 전 게이트)
+
+check-bench-tasks: ## 벤치 과제의 모양(greenfield)·이름·매니페스트 일치 검사
+	node .claude/hooks/check-bench-tasks.ts
 
 check-bench-results: ## bench/ 결과 기록 표준 (파일명·5절·표·인덱스)
 	node .claude/hooks/check-bench-results.ts

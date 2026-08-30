@@ -19,6 +19,11 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 
 ## 과제 두 가지
 
+과제의 모양·이름·매니페스트 계약은 `.claude/rules/bench-tasks.md` 에 있고 `make check-bench-tasks` 가 집행한다 —
+새 과제를 만들 때는 그 규칙의 "새 과제를 추가할 때" 절을 따른다(둘 다 `shape: "greenfield"`, 정답은 트리 밖,
+글자가 아니라 이름으로 부른다).
+
+
 | | integration(외부 연동 추가) 재현 (`integration`) | rest(도메인 추가) 적합성 (`rest`) |
 |---|---|---|
 | 과제 | 외부 API I2570 을 형제 `search-food-raw-material` 을 본떠 추가 | `notice` CRUD 를 형제 `batch` 를 본떠 신규 작성 |

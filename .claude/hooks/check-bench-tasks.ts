@@ -1,0 +1,90 @@
+#!/usr/bin/env node
+/**
+ * 벤치 과제의 모양·이름 계약 검사 — `make check-bench-tasks`.
+ *
+ * 규칙 본문은 `.claude/rules/bench-tasks.md`. 넷을 본다.
+ *
+ *  1. 모든 과제가 `shape: "greenfield"` 인가 — 다른 모양(정답을 지우고 재현)은 채점을 뒤집고 지름길을 만든다.
+ *  2. 기대 산출물(매니페스트 `added`)이 피험자 트리에 존재하지 않는가 — 있으면 그건 정답이 아니라 기준선이다.
+ *  3. "Mode A/B" 어휘가 남아 있지 않은가 — 과제는 이름으로 부른다.
+ *  4. `expect` 가 매니페스트의 `added + modified` 수와 같은가.
+ */
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+
+const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+const SKILL = join(ROOT, ".claude", "skills", "llm-bench");
+const RUNNER = join(SKILL, "runner.ts");
+const REFERENCE = join(SKILL, "reference");
+const SANDBOX = join(ROOT, "sandbox");
+
+const issues: string[] = [];
+
+if (!existsSync(RUNNER)) {
+  console.log("check-bench-tasks: skip — llm-bench 러너 없음");
+  process.exit(0);
+}
+
+const runner = readFileSync(RUNNER, "utf-8");
+
+// --- 1. 모든 과제가 greenfield ---
+// TASKS 블록 안의 과제 항목마다 shape 선언을 확인한다.
+const tasksBlock = /const TASKS: Record<string, Task> = \{([\s\S]*?)\n\};/.exec(runner)?.[1] ?? "";
+const taskNames = [...tasksBlock.matchAll(/^ {2}([a-z][a-z0-9_]*):\s*\{/gm)].map((m) => m[1]);
+for (const name of taskNames) {
+  const body = new RegExp(`^ {2}${name}:\\s*\\{([\\s\\S]*?)^ {2}\\},`, "m").exec(tasksBlock)?.[1] ?? "";
+  if (!/shape:\s*"greenfield"/.test(body)) {
+    issues.push(`과제 '${name}' 가 shape: "greenfield" 를 선언하지 않는다 — 모든 과제는 없는 것을 더하는 모양이다 (bench-tasks.md 1)`);
+  }
+}
+if (taskNames.length === 0) issues.push("runner.ts 에서 TASKS 정의를 읽지 못했다 — 이 검사가 아무것도 보지 못한다");
+
+// --- 2·4. 매니페스트: 정답이 트리에 없어야 하고, expect 와 수가 맞아야 한다 ---
+if (existsSync(REFERENCE)) {
+  for (const f of readdirSync(REFERENCE).filter((n) => n.endsWith(".manifest.json"))) {
+    const ref = f.replace(/\.manifest\.json$/, "");
+    let manifest: { added?: string[]; modified?: string[] };
+    try {
+      manifest = JSON.parse(readFileSync(join(REFERENCE, f), "utf-8")) as { added?: string[]; modified?: string[] };
+    } catch (e) {
+      issues.push(`reference/${f}: 읽을 수 없다 — ${String(e).slice(0, 60)}`);
+      continue;
+    }
+    const added = manifest.added ?? [];
+    for (const rel of added) {
+      if (existsSync(join(SANDBOX, rel))) {
+        issues.push(`reference/${f} 의 기대 산출물이 피험자 트리에 있다: sandbox/${rel} — 정답은 reference/answers/ 에 두고 트리에서는 빼야 과제가 성립한다 (bench-tasks.md 2)`);
+      }
+    }
+    // expect 는 이 ref 를 쓰는 과제에 선언돼 있다.
+    const owner = taskNames.find((n) => new RegExp(`^ {2}${n}:[\\s\\S]*?reference:\\s*"${ref}"`, "m").test(tasksBlock));
+    if (owner !== undefined) {
+      const body = new RegExp(`^ {2}${owner}:\\s*\\{([\\s\\S]*?)^ {2}\\},`, "m").exec(tasksBlock)?.[1] ?? "";
+      const expect = Number(/expect:\s*(\d+)/.exec(body)?.[1] ?? NaN);
+      const total = added.length + (manifest.modified ?? []).length;
+      if (Number.isFinite(expect) && expect !== total) {
+        issues.push(`과제 '${owner}' 의 expect(${expect}) 가 reference/${f} 의 added+modified(${total}) 와 다르다 (bench-tasks.md 4)`);
+      }
+    }
+  }
+}
+
+// --- 3. 이름으로 부른다 ---
+const NAMED = [RUNNER, join(SKILL, "SKILL.md")];
+for (const dir of [join(SKILL, "tasks")]) {
+  if (existsSync(dir)) for (const f of readdirSync(dir)) NAMED.push(join(dir, f));
+}
+for (const abs of NAMED) {
+  if (!existsSync(abs)) continue;
+  readFileSync(abs, "utf-8").split("\n").forEach((line, i) => {
+    if (/\bMode\s+[AB]\b|\bmode:\s*"[AB]"/.test(line)) {
+      issues.push(`${abs.replace(ROOT + "/", "")}:${i + 1}: 과제를 글자(Mode A/B)로 부른다 — 이름으로 부른다 (bench-tasks.md 3)`);
+    }
+  });
+}
+
+if (issues.length > 0) {
+  console.error("check-bench-tasks: " + issues.join("\ncheck-bench-tasks: "));
+  process.exit(1);
+}
+console.log("check-bench-tasks: OK");
