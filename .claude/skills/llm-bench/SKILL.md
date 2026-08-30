@@ -14,20 +14,20 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 | `sandbox/` | 피험자 트리. fast-api-standard 를 **batch·user 도메인 + auth·health + core + 하네스**로 줄인 최소 baseline. 포트 분리(18000/15173/15432/16379). git 저장소 아님 — local-llm 이 추적. `sandbox/SANDBOX.md` |
 | `runner.ts` | 셀 하나 = 세팅 → `omp -p` 독립 프로세스 → 하드 타임아웃 → `make verify` 채점 → 무결성 → 원복 → JSON 1행 |
 | `tasks/rest_spec.md`, `tasks/integration_spec.md` | 피험자에게 넘기는 요구사항·계측 브리핑 |
-| `reference/a1aebf3.{manifest.json,parent.patch}` | Mode A 레퍼런스 산출물 목록 + 부모 상태로 되돌리는 역패치 |
+| `reference/a1aebf3.{manifest.json,parent.patch}` | integration(외부 연동 추가) 레퍼런스 산출물 목록 + 부모 상태로 되돌리는 역패치 |
 | `bench/` | 결과. 표준은 `bench/README.md` — 러너가 `<date>.s2.<campaign>.json` 을 쓰고, `.md` 는 사람이 쓴다 |
 
 ## 과제 두 가지
 
-| | Mode A 재현 (`integration`) | Mode B 적합성 (`rest`) |
+| | integration(외부 연동 추가) 재현 (`integration`) | rest(도메인 추가) 적합성 (`rest`) |
 |---|---|---|
 | 과제 | 외부 API I2570 을 형제 `search-food-raw-material` 을 본떠 추가 | `notice` CRUD 를 형제 `batch` 를 본떠 신규 작성 |
 | 정답 | landed 산출물 6개(시드 마이그레이션 2 + `.http` + 픽스처 + 테스트 배선 2). 러너가 부모 상태 복원(레퍼런스 산출물 삭제 + 역패치)으로 숨긴다 | 없음 — 레포에 존재한 적 없어 누출 구조적 0, HEAD 에서 그대로 |
 | 채점 바닥 | `make verify` = 훅 스위트 + 100% 커버리지 (**두 모드 공통**) | 동일 |
-| Mode A 추가 | 레퍼런스 산출물 이름 재사용 감사(`reference_names_reused`), 시드 행 대조 | — |
+| integration(외부 연동 추가) 추가 | 레퍼런스 산출물 이름 재사용 감사(`reference_names_reused`), 시드 행 대조 | — |
 | 기대 산출물 | 6 | 13 |
 
-합격 기준이 명령으로 계산되지 않는 과제는 벤치가 아니다. 새 과제는 `runner.ts` 의 `TASKS` 에 추가하고, Mode A 면 `reference/` 에 매니페스트+역패치를 만든다(`git -C <source> diff <ref> <ref>^ -- <modified files>`).
+합격 기준이 명령으로 계산되지 않는 과제는 벤치가 아니다. 새 과제는 `runner.ts` 의 `TASKS` 에 추가하고, integration(외부 연동 추가) 면 `reference/` 에 매니페스트+역패치를 만든다(`git -C <source> diff <ref> <ref>^ -- <modified files>`).
 
 ## 절차
 
@@ -67,7 +67,7 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 | `asserts_removed` | 테스트에서 지운 assert 수. 0 이어야 한다 — 커버리지 게이트는 이걸 못 본다 |
 | `omp_touched` | `sandbox/.omp`·Makefile 변경 수. 0 이어야 한다 — 훅을 고치면 게이트는 자명하게 초록 |
 | `writes`, `tools` | 세션 로그의 write/edit 수와 툴 종류별 횟수 |
-| `no_work` | `writes===0` — 피험자가 아무것도 안 썼다. **게이트/산출물 수와 무관하게 실패다.** Mode A 는 부모 상태 잔여(바코드 삭제·테스트 되돌림) 때문에 `artifacts>0·gate 0` 으로 성공처럼 보일 수 있어 이 플래그로 가른다(실측: 3.8-oQ6) |
+| `no_work` | `writes===0` — 피험자가 아무것도 안 썼다. **게이트/산출물 수와 무관하게 실패다.** integration(외부 연동 추가) 는 부모 상태 잔여(바코드 삭제·테스트 되돌림) 때문에 `artifacts>0·gate 0` 으로 성공처럼 보일 수 있어 이 플래그로 가른다(실측: 3.8-oQ6) |
 | `residency` | 로컬 서빙 상주 상태. `single:true`(loaded_count 1)여야 유효 — `false`면 다른 모델이 같이 올라와 메모리 경합, 재실행. 클라우드 모델은 `null` |
 | `turns`, `toolCalls`, `loops`, `compactions`, `peak` | continuity 상태 |
 
@@ -86,7 +86,7 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 - 안전: 총 리셋 상한 · 같은 계열 신호 지속 시 GIVE UP(강제하지 않음) · 툴 정책 블록 제외
 - 실측 계보: stuck-reset v1(동일성 감지 무용) → v2(주기 리셋, baseline 동률) → v3(end-gate+유사도+정체, REST 개선 신호) → 체계화. 근거는 `bench/2026-08-26.s2.stuckreset-v*.md`.
 
-## Mode A(integration 재현) 재추가
+## integration(외부 연동 추가)(integration 재현) 재추가
 
 무거운 integration 서브시스템이 계약 테스트와 강하게 결합돼(테스트가 시드 마이그레이션을 리플레이) sandbox 최소화 때 통째로 뺐다. 다시 하려면: fast-api-standard 에서 integration 관련 파일(models/routers/services/repositories/schemas/core integration, tests/core/test_integration*, fixtures, api/integration*.http, 훅 `check-backend-integration*`, 규칙, ast-grep integration, 시드 마이그레이션)을 sandbox 로 복원하고 포트만 치환한 뒤, `runner.ts` 의 `TASKS` 에 `integration` 셀을 되살린다. 부모 상태 복원(레퍼런스 산출물 삭제 + 역패치)은 `reference/a1aebf3.manifest.json` + `a1aebf3.parent.patch` 로 하고, 시드 마이그레이션이 다시 들어오면 마이그레이션 불변 규칙(`@{upstream}`) 때문에 임시 git 핀이 필요해진다 — 예전 러너 이력(git log)에 그 방식이 있다.
 

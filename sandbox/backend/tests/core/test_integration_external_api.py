@@ -618,7 +618,6 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
         "search-food-item-report",
         "search-product-classification",
         "search-food-raw-material",
-        "search-barcode-item-info",
     }
     for code, seed in seed_of.items():
         request_file = api_dir / f"integration.{code}.http"

@@ -91,11 +91,10 @@ def test_http_files_send_the_seeded_credentials_verbatim() -> None:
     assert [path.name for path in domain_files] == [
         "batch.http",
         "integration.http",
-        "integration.search-barcode-item-info.http",
-         "integration.search-food-item-report.http",
-         "integration.search-food-nutrition.http",
-         "integration.search-food-raw-material.http",
-         "integration.search-product-classification.http",
+        "integration.search-food-item-report.http",
+        "integration.search-food-nutrition.http",
+        "integration.search-food-raw-material.http",
+        "integration.search-product-classification.http",
         "user.http",
     ]
     for path in domain_files:

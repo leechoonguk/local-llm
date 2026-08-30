@@ -5,9 +5,13 @@
  * sandbox 는 git 저장소가 아니다 — local-llm 저장소가 파일을 추적하고, 원복은 부모 저장소의
  * `git checkout -- sandbox && git clean -fdq sandbox` 다. 임시 git 은 만들지 않는다.
  *
- * 현재 과제는 REST(Mode B, notice CRUD) 하나다. integration(Mode A)은 sandbox 에서 서브시스템째
+ * 과제는 둘이고 **모양이 같다**: 둘 다 빈 곳에 새 기능을 더한다(`shape: "greenfield"`).
+ *   - `rest`        — notice CRUD 도메인 추가(기대 15)
+ *   - `integration` — 바코드연계 품목정보 API(I2570) 외부 연동 추가(기대 6)
+ * 예전 integration 은 트리에 있던 정답을 지우고 재현시키는 모양이었다. 정답이 트리에 있어야 성립하므로
+ * 채점이 뒤집혔고(아무것도 안 하면 만점) VCS 로 되살리는 지름길이 생겼다. 정답은 이제
  * 제거했다(계약 테스트가 시드 마이그레이션을 리플레이해 결합이 컸다). 레퍼런스 패치는
- * `reference/` 에 보존돼 있으니, integration 을 sandbox 에 되살리면 Mode A 를 다시 붙일 수 있다.
+ * `reference/answers/` 에만 있고 피험자 트리에는 없다 — 지울 것이 없으니 지름길도 없다.
  *
  * 사용:
  *   node .claude/skills/llm-bench/runner.ts --dry-run                          # 세팅→채점→원복만, 모델 없이
@@ -32,9 +36,12 @@ const SESSIONS = join(homedir(), ".omp", "agent", "sessions");
 const OMLX_URL = "http://127.0.0.1:9090";
 
 interface Task {
-  mode: "A" | "B";
+  /** 과제의 모양. 지금은 둘 다 `greenfield` 다 — 빈 곳에 새 기능을 더한다.
+   *  예전에는 integration 만 `reproduce`(정답을 지우고 재현) 였는데, 정답이 트리에 있어야 성립하는 모양이라
+   *  채점이 뒤집히고(아무것도 안 하면 만점) VCS 로 되살리는 지름길이 생겼다. 두 과제를 같은 모양으로 맞췄다. */
+  shape: "greenfield";
   spec: string;
-  /** Mode A: 레퍼런스 식별자. reference/<ref>.manifest.json + <ref>.parent.patch 가 있어야 한다. */
+  /** 기대 산출물 목록의 식별자. `reference/<ref>.manifest.json` 이 added/modified 를 담는다. */
   reference?: string;
   expect: number;
   prompt: (spec: string) => string;
@@ -42,11 +49,11 @@ interface Task {
 
 const TASKS: Record<string, Task> = {
   integration: {
-    mode: "A",
+    shape: "greenfield",
     spec: "integration_spec.md",
-    reference: "a1aebf3",
+    reference: "a1aebf3",   // 기대 산출물 목록(정답 사본은 reference/answers/, 트리에는 없다)
     expect: 6,
-    prompt: (spec) => `Add the 바코드연계 품목정보 API (service I2570) to this repository.
+    prompt: (spec) => `Add the 바코드연계 품목정보 API (service I2570) to this repository — it is not there yet.
 
 1. Read the skill first: .omp/skills/integration/SKILL.md. Follow it.
 2. Read ${spec} — the measurement is already done, do NOT call any live API.
@@ -58,7 +65,7 @@ const TASKS: Record<string, Task> = {
 6. Finish by running \`make verify\` and make it pass.`,
   },
   rest: {
-    mode: "B",
+    shape: "greenfield",
     spec: "rest_spec.md",
     expect: 15, // 실측 재보정(2026-08-27 4자 토의): 초록 셀 산출물이 일관되게 15-16 — 13은 만성 과대달성으로 읽혀 미달 감지 불능
     prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository.
@@ -129,23 +136,18 @@ function assertSandboxClean(): void {
   }
 }
 
-/** Mode A: 레퍼런스 산출물을 지우고 수정 파일을 부모 상태로 되돌린다(파일 연산 + 역패치, git 불필요). */
-/** setup 직후(부모 상태) 의 modified 파일 내용 — 피험자가 **다시** 바꿨는지 판정하는 기준선. */
-const parentState = new Map<string, string>();
+/** setup 시각의 내용 — modified 산출물이 **피험자에 의해** 바뀌었는지 판정하는 기준선. */
+const baselineText = new Map<string, string>();
 
-function toParentState(ref: string): void {
+/** 기대 산출물 목록을 읽고, modified 대상의 현재 내용을 기준선으로 기록한다(삭제는 하지 않는다). */
+function captureBaseline(ref: string): void {
   const manifest = JSON.parse(readFileSync(join(REFERENCE_DIR, `${ref}.manifest.json`), "utf-8")) as {
     added: string[]; modified: string[];
   };
-  for (const f of manifest.added) rmSync(join(SANDBOX, f), { force: true });
-  const patch = join(REFERENCE_DIR, `${ref}.parent.patch`);
-  const r = sh("git", ["apply", "--directory=sandbox", patch], WORKSPACE);
-  if (r.code !== 0) throw new Error(`parent patch failed: ${r.out}`);
-  // 기준선은 **역패치까지 끝난 뒤**의 내용이다. 그전에 찍으면 setup 자신의 변경이 피험자 작업으로 잡힌다.
-  parentState.clear();
+  baselineText.clear();
   for (const f of manifest.modified ?? []) {
     const abs = join(SANDBOX, f);
-    parentState.set(f, existsSync(abs) ? readFileSync(abs, "utf-8") : "");
+    baselineText.set(f, existsSync(abs) ? readFileSync(abs, "utf-8") : "");
   }
 }
 
@@ -158,8 +160,8 @@ function snapshotTests(): string {
 
 function setup(task: Task): { baseline: number; baselineOut: string; models: Set<string>; snapshot: string } {
   assertSandboxClean();
+  if (task.reference) captureBaseline(task.reference);
   purgeCellResidue(); // 셀은 무상태로 시작한다(이전 셀 정답 잔재 제거)
-  if (task.mode === "A" && task.reference) toParentState(task.reference);
   const snapshot = snapshotTests();
   const models = baselineModels();
   const db = make("db-init");
@@ -375,7 +377,7 @@ function grade(task: Task, models: Set<string>, snapshot: string): Record<string
   const leak = task.reference
     ? (JSON.parse(readFileSync(join(REFERENCE_DIR, `${task.reference}.manifest.json`), "utf-8")) as { added: string[] }).added
     : [];
-  // Mode A 산출물 계수(2026-08-30 정정). 예전에는 `git status` 줄 수를 셌는데, 그 기준은 HEAD 가
+  // 산출물 계수(2026-08-30 정정). 예전에는 `git status` 줄 수를 셌는데, 그 기준은 HEAD 가
   // **정답을 담고 있다**는 사실을 무시한다: setup 이 참조 파일 4개를 지우고 2개를 역패치하므로
   // 피험자가 아무것도 안 해도 6줄이 서 있고 6/6 이 된다(dry-run 으로 재현). 반대로 정확히 복원하면
   // 0/6 이다. 실측: writes 0 인 셀 3개가 6/6 으로 기록돼 있었다. 이제 매니페스트 경로 기준으로
@@ -389,7 +391,7 @@ function grade(task: Task, models: Set<string>, snapshot: string): Record<string
       + manifest.modified.filter((f) => {
         const abs = join(SANDBOX, f);
         const nowText = existsSync(abs) ? readFileSync(abs, "utf-8") : "";
-        return nowText !== (parentState.get(f) ?? nowText); // 부모 상태에서 다시 바뀌었을 때만 센다
+        return nowText !== (baselineText.get(f) ?? nowText); // 시작 시점에서 실제로 바뀌었을 때만 센다
       }).length;
   return {
     artifacts,
@@ -413,7 +415,7 @@ function grade(task: Task, models: Set<string>, snapshot: string): Record<string
 async function one(model: string, taskName: string, opts: { timeoutS: number; dryRun: boolean; restartOmlx: boolean }): Promise<Record<string, unknown>> {
   const task = TASKS[taskName];
   const spec = join(TASKS_DIR, task.spec);
-  console.log(`\n===== ${model || "(dry-run)"} / ${taskName} (mode ${task.mode}, cap ${opts.timeoutS}s)`);
+  console.log(`\n===== ${model || "(dry-run)"} / ${taskName} (cap ${opts.timeoutS}s)`);
 
   const { baseline, baselineOut, models, snapshot } = setup(task);
   if (baseline !== 0) {
@@ -425,7 +427,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   console.log("  baseline green");
 
   if (opts.dryRun) {
-    const row = { model: "(dry-run)", task: taskName, mode: task.mode, wall_s: 0, timed_out: false, ...grade(task, models, snapshot) };
+    const row = { model: "(dry-run)", task: taskName, shape: task.shape, wall_s: 0, timed_out: false, ...grade(task, models, snapshot) };
     rmSync(snapshot, { recursive: true, force: true });
     revert();
     return row;
@@ -556,7 +558,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   if (overlayDir) rmSync(overlayDir, { recursive: true, force: true });
   if (res && res.ok === false) console.error(`  !! residency: loaded_count=${res.loaded_count} (예상 코더+4B aux) — 재시작/역할 고정 확인 후 재실행`);
   const row: Record<string, unknown> = {
-    model, task: taskName, mode: task.mode, wall_s: wall, timed_out: timedOut,
+    model, task: taskName, shape: task.shape, wall_s: wall, timed_out: timedOut,
     bundle: process.env.BENCH_BUNDLE ?? null, attempt: Number(process.env.BENCH_ATTEMPT ?? 1),
     baked: baked || undefined,
     ...(phaseWalls.length > 1 ? { phase_walls: phaseWalls } : {}),
@@ -564,7 +566,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     ...grade(task, models, snapshot),
     ...sessionMetrics(newestSessionAfter(started)),
   };
-  // writes 0 = 피험자가 아무것도 안 썼다. Mode A 는 부모 상태 잔여 산출물 때문에 artifacts>0·gate 0
+  // writes 0 = 피험자가 아무것도 안 썼다. 예전 모양에서는 지워 둔 자리 때문에 artifacts>0·gate 0
   // 으로 "성공처럼" 보일 수 있으니, 게이트와 무관하게 실패로 표시한다(no_work).
   row.no_work = (row.writes ?? 0) === 0;
   if (row.no_work) console.error(`  !! no_work: writes 0 — 피험자가 산출 없음(게이트/산출물 수와 무관하게 실패)`);

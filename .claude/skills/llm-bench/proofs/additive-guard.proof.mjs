@@ -122,4 +122,15 @@ check("32 의도 선언은 범위 교체도 통과",
 check("33 읽을 수 없는 경로는 여전히 fail-open(던지지 않는다)",
   pedit2("PUT 1:\nx", "/nonexistent/dir/") === undefined);
 
+// 34-35: write 경로에도 내용 태그가 붙어 올 수 있다. 벗기지 않으면 확장자 판정이 빗나가
+// 통째 덮어쓰기가 조용히 통과한다(가드가 있는데 아무 일도 안 하는 그 상태).
+writeFileSync(FIX + "/backend/app/services/big.py",
+  Array.from({ length: 20 }, (_, i) => `line_${i} = compute_${i}()`).join("\n") + "\n");
+const pwrite = (path, content) => handlers.tool_call({ toolName: "write", input: { path, content } }, {});
+check("34 태그 붙은 write 경로도 통째 덮어쓰기 BLOCK",
+  pwrite("backend/app/services/big.py#0D77", "x = 1\n")?.block === true);
+check("35 기존 내용을 유지한 write 는 통과",
+  pwrite("backend/app/services/big.py#0D77",
+    Array.from({ length: 20 }, (_, i) => `line_${i} = compute_${i}()`).join("\n") + "\nline_20 = compute_20()\n") === undefined);
+
 process.exit(bad ? 1 : 0);

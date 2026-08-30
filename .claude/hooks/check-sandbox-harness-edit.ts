@@ -44,11 +44,14 @@ if (cellRunning && harnessDirty !== "") {
   );
 }
 
-// 2. 피험자 트리 스테이징
-const staged = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/backend", "sandbox/api"]).trim();
+// 2. 하네스와 피험자 트리가 **같은 커밋에** 스테이징돼 있는가.
+// 피험자 트리 단독 변경은 정상 작업이다(기준선 조정 등) — 문제는 섞이는 것이다.
+const stagedSubject = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/backend", "sandbox/api"]).trim();
+const stagedHarness = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/.omp"]).trim();
+const staged = stagedSubject !== "" && stagedHarness !== "" ? stagedSubject : "";
 if (staged !== "") {
   issues.push(
-    "피험자 트리가 스테이징돼 있다 — 하네스 커밋에 과제 산출물이 섞이면 이후 셀이 '절반 끝난 트리'에서 시작한다. " +
+    "하네스와 피험자 트리가 한 커밋에 함께 스테이징됐다 — 과제 산출물이 섞이면 이후 셀이 '절반 끝난 트리'에서 시작한다. " +
       `경로를 좁혀 담는다(git add sandbox/.omp sandbox/decks):\n${staged}`,
   );
 }
