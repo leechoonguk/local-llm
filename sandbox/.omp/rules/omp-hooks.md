@@ -184,9 +184,9 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
 | +-- strict-backend-migrations.ts    # Backend: blocks edits only to upstream migration files
 | +-- strict-no-subagents.ts        # Cross-cutting: blocks task (subagent) creation
 | +-- strict-no-vcs-publish.ts      # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
-| +-- strict-additive-writes.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
+| +-- strict-additive-writes.ts # Cross-cutting: blocks an edit that replaces or deletes a registration/import line instead of adding alongside
 | +-- strict-backend-app-structure.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
-| +-- strict-tooling.ts            # Cross-cutting: blocks Python/shell tooling and root script dirs outside .omp/hooks/
+| +-- strict-tooling.ts            # Cross-cutting: blocks writes of Python/shell tooling and root script dirs outside .omp/hooks/ (write only — an existing file is fixed forward)
 +-- post/
   +-- check-backend-domain.ts      # Read-only: validates 5-layer CRUD domain pattern
   +-- check-backend-migrations.ts  # Read-only: validates ORM ↔ DB sync and migration scope
@@ -292,6 +292,52 @@ export default function strictNoSubagents(pi: ExtensionAPI): void {
 ```
 
 To add/remove rules: modify the denylist array or tool check logic. No other logic changes needed.
+
+### Reading the edited path (`path-raw-ok`)
+
+An anchored edit does not hand the hook a clean path: it carries a content tag,
+`backend/app/main.py#0D77`. A guard that matches that string against an
+allowlist, an extension test or a directory prefix is matching a path that
+exists nowhere — so it either refuses a legitimate edit or waves it through in
+silence, and both failures are invisible from the outside. Strip the tag where
+the path is read:
+
+```ts
+const path = String(event.input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "");
+```
+
+The field can also be absent. A patch-form edit arrives as
+`{ input: "[relative/path#TAG]\nPUT 12.:\n+..." }` with no `path` at all, and a
+guard that only reads `path` then sees nothing to judge. When the target matters,
+read the patch header as a fallback — and when neither is there, fail open (a
+pre hook that throws costs the agent the whole tool call).
+
+`check-omp-hooks` requires every `input.path` read under `pre/` to strip the tag
+on the spot, or to carry `// path-raw-ok: <reason>` within the five lines above
+it.
+
+### Every execution channel (`channel-ok`)
+
+Commands do not only arrive through `bash`. The `eval` tool carries a Python or
+JS body in `input.code`, and that body reaches the same binaries through
+`subprocess.run([...])`, `os.system(...)` or `execSync(...)`. A guard that reads
+`input.command` and filters on `bash` alone therefore states a policy that the
+very next tool call can step around without breaking a single rule.
+
+A guard that inspects a command string accepts `eval` as well, reads
+`input.code` next to `input.command`, and gives the same guidance on both
+channels. If the policy really is shell-shaped, say so with
+`// channel-ok: <reason>`.
+
+### The context parameter is not readable (`ctx-ok`)
+
+A `tool_call` handler's second argument is the extension context. An exception
+thrown inside a pre hook is promoted to a **tool failure**: the tool call dies
+and the agent receives the crash instead of its result. Every read of that
+parameter is a candidate — a property that is undefined in some call shapes, a
+getter that throws — so the decision to block is made from `event` alone and the
+parameter is written `_ctx: unknown`. If a hook genuinely needs it, it says why
+with `// ctx-ok: <reason>`.
 
 ## Post-Hooks
 
@@ -618,3 +664,9 @@ These exist because the harness's own measurements say each class can grow. From
 - Forget to keep `.omp/hooks/` and `omp-hooks.md` in sync
 - Register a `tool_result` handler whose body is not wrapped in `guarded()` — the
   runner swallows the throw and the hook goes quiet for the rest of the session
+- Match a raw `input.path` in a pre hook — strip the anchored-edit content tag
+  (`#0D77`) first, or the guard judges a path that exists nowhere
+- Gate a command policy on `bash` alone — `eval` carries the same command in
+  `input.code`
+- Read a pre hook's context parameter — a throw there is promoted to a tool
+  failure and the agent loses the call

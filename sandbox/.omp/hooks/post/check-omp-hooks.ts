@@ -350,6 +350,9 @@ function checkOmpHooksSync(): string[] {
       if (!/pi\.on\("tool_call"/.test(hookContent)) {
         issues.push(`${actual}: missing tool_call event handler`);
       }
+      issues.push(...checkPathTagStrip(actual, hookContent));
+      issues.push(...checkChannelCoverage(actual, hookContent));
+      issues.push(...checkNoCtxDereference(actual, hookContent));
       issues.push(...checkSyntax(actual, hookPath));
     }
   }
@@ -602,6 +605,68 @@ function checkCrashGuard(actual: string, fileName: string, hookContent: string):
       `${actual}: guarded() names ${delegation[1]} (expected "${hookName}") — ` +
         `the crash notice tells the reader to re-run "make <name>"`,
     );
+  }
+  return issues;
+}
+
+/**
+ * 경로 정규화 계약 — 앵커드 편집은 경로에 내용 태그를 붙인다(`main.py#0D77`). 그 문자열을 그대로
+ * 허용 목록·확장자·디렉터리 접두와 맞추면 **어디에도 없는 경로**를 판정하는 것이라, 정당한 편집을
+ * 막거나(모델은 셸로 우회한다) 정책을 조용히 통과시킨다 — 둘 다 밖에서는 보이지 않는다.
+ * 경로를 읽는 자리에서 태그를 벗기거나, 위 5줄 안에 `// path-raw-ok: <사유>` 를 단다.
+ * (omp-hooks.md, "Reading the edited path")
+ */
+function checkPathTagStrip(actual: string, hookContent: string): string[] {
+  const issues: string[] = [];
+  const lines = hookContent.split("\n");
+  const TAG_STRIP = /#\[0-9A-Fa-f\]\{4\}\$/;
+  lines.forEach((line, i) => {
+    if (/^\s*(\/\/|\*)/.test(line)) return; // 주석은 이 모양을 설명하려고 적기도 한다
+    if (!/\binput\b/.test(line) || !/\.path\b/.test(line)) return;
+    // 한 문장이 여러 줄에 걸칠 수 있으므로 읽은 줄부터 두 줄까지를 같은 문장으로 본다.
+    if (TAG_STRIP.test(lines.slice(i, i + 3).join("\n"))) return;
+    if (/path-raw-ok:\s*\S/.test(lines.slice(Math.max(0, i - 5), i + 1).join("\n"))) return;
+    issues.push(`${actual}:${i + 1}: 앵커드 편집의 내용 태그를 벗기지 않고 경로를 매칭한다 — 읽는 자리에서 태그를 벗기거나(4자리 16진 접미), 어느 모양으로 와도 옳으면 \`// path-raw-ok: <사유>\` 를 단다 (omp-hooks.md, Reading the edited path)`);
+  });
+  return issues;
+}
+
+/**
+ * 채널 계약 — 명령은 `bash` 로만 오지 않는다. `eval` 도구는 파이썬/JS 본문을 `input.code` 로
+ * 싣고, 그 본문은 `subprocess.run([...])`·`execSync(...)` 로 같은 바이너리에 닿는다. 명령 문자열을
+ * 검사하면서 `bash` 만 거르는 가드는 다음 도구 호출이 그대로 걸어 나가는 정책을 선언하는 것이다.
+ * 셸 전용 정책이 정말 맞다면 `// channel-ok: <사유>` 로 밝힌다.
+ * (omp-hooks.md, "Every execution channel")
+ */
+function checkChannelCoverage(actual: string, hookContent: string): string[] {
+  const code = stripComments(hookContent);
+  if (!/\binput\b[^\n]*\.command\b/.test(code)) return [];
+  if (/["']eval["']/.test(code) && /\binput\b[^\n]*\.code\b/.test(code)) return [];
+  if (/channel-ok:\s*\S/.test(hookContent)) return [];
+  return [
+    `${actual}: 명령 문자열을 검사하면서 \`eval\` 채널을 받지 않는다 — 도구 필터에 \`eval\` 을 넣고 \`input.code\` 를 \`input.command\` 와 같이 읽거나, 셸 전용이 맞으면 \`// channel-ok: <사유>\` 를 단다 (omp-hooks.md, Every execution channel)`,
+  ];
+}
+
+/**
+ * 컨텍스트 비참조 계약 — `tool_call` 핸들러의 두 번째 인자는 확장 컨텍스트다. pre 훅의 예외는
+ * **도구 실패로 승격**돼 도구 호출 자체가 죽고, 에이전트는 결과 대신 크래시를 받는다. 컨텍스트를
+ * 읽는 모든 줄이 그 후보다(호출 모양에 따라 없는 속성, 던지는 getter). 차단 판단은 `event` 만으로
+ * 하고 인자는 `_ctx: unknown` 으로 받는다. 정말 필요하면 `// ctx-ok: <사유>` 로 밝힌다.
+ * (omp-hooks.md, "The context parameter is not readable")
+ */
+function checkNoCtxDereference(actual: string, hookContent: string): string[] {
+  const issues: string[] = [];
+  const code = stripComments(hookContent);
+  if (/ctx-ok:\s*\S/.test(hookContent)) return issues;
+  for (const handler of code.matchAll(/pi\.on\(\s*["']tool_call["']\s*,\s*(?:async\s*)?\(([^)]*)\)/g)) {
+    const parameters = splitArguments(handler[1]);
+    const contextName = (parameters[1] ?? "").split(":")[0].trim();
+    if (contextName === "") continue;
+    // 선언 자체를 지운 나머지에서 이름이 한 번이라도 보이면 쓰고 있는 것이다. `(ctx as any).x`
+    // 처럼 캐스팅을 거치거나 헬퍼로 넘겨도 결국 같은 읽기라서, 모양이 아니라 등장으로 센다.
+    if (!new RegExp(`\\b${contextName}\\b`).test(code.replace(handler[0], ""))) continue;
+    issues.push(`${actual}: tool_call 핸들러가 컨텍스트 인자 \`${contextName}\` 를 읽는다 — 거기서 던지면 도구 호출이 죽는다(예외는 도구 실패로 승격). \`event\` 만으로 판단하거나 \`// ctx-ok: <사유>\` 를 단다 (omp-hooks.md, The context parameter is not readable)`);
   }
   return issues;
 }

@@ -42,7 +42,15 @@ export default function strictBackendMigrations(pi: ExtensionAPI): void {
 
     if (toolName !== "write" && toolName !== "edit") return;
 
-    const path = String(event.input.path ?? "");
+    // 편집의 대상 경로는 세 모양으로 온다: 깨끗한 `path`, 내용 태그가 붙은 `path`
+    // (`0072_add_notice.py#0D77`), 그리고 `path` 가 아예 없고 패치 본문 첫 줄의
+    // `[상대경로#TAG]` 헤더에만 있는 형태. 앞의 둘만 읽으면 패치형 편집이 푸시된 리비전을
+    // 그대로 고쳐도 이 가드는 경로를 못 봐서 통과시킨다. strict-additive-writes 와 같은
+    // 해석을 쓴다 — 태그를 벗기고, 없으면 헤더에서 읽고, 그래도 없으면 fail-open.
+    const patch = typeof event.input.input === "string" ? event.input.input : "";
+    const header = /^\s*\[([^\]\n#]+)/.exec(patch);
+    const path = String(event.input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "") || (header?.[1] ?? "");
+    if (path === "") return; // 경로를 못 읽으면 조용히 통과한다 — 훅은 절대 던지지 않는다
     if (!isMigrationPath(path)) return;
 
     // Hand-creating a revision file skips `make migrate-gen`'s auto-numbering.

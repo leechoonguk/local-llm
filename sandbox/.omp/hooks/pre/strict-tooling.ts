@@ -3,7 +3,10 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 /**
  * Strict-Tooling Pre Hook
  *
- * Enforces the tooling language policy (tooling.md) at write time:
+ * Enforces the tooling language policy (tooling.md) at write time — `write`
+ * only. A misplaced file must never land; but a file that already exists at a
+ * bad path is fix-forward work, and blocking its `edit` strands it there with
+ * nothing but the post check to nag about it. The policy itself:
  *
  *   - Python is application code only — `backend/app`, `backend/tests`,
  *     `backend/alembic`. A Python script anywhere else is automation, and
@@ -41,9 +44,15 @@ export default function strictTooling(pi: ExtensionAPI): void {
         };
       }
     }
-    if (event.toolName !== "write" && event.toolName !== "edit") return;
+    // 이 정책은 **파일이 어디에 생기는가**에 관한 것이라 `write` 에만 건다. 이미 잘못된 자리에
+    // 있는 파일을 고치는 `edit` 은 앞으로 나아가는 작업이다 — 막으면 파일은 그 자리에 그대로
+    // 남고 사후 검사가 잔소리만 하는 상태가 된다. 잘못 놓인 파일은 애초에 생기지 않게 막고,
+    // 이미 생긴 파일은 고칠 수 있게 둔다.
+    if (event.toolName !== "write") return;
 
-    const path = normalize(String((event.input as Record<string, unknown>)?.path ?? ""));
+    // 앵커드 편집이 붙이는 내용 태그(`main.py#0D77`)를 먼저 벗긴다 — 태그가 남으면 확장자
+    // 판정이 전부 빗나가 정책이 조용히 통과된다.
+    const path = normalize(String((event.input as Record<string, unknown>)?.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, ""));
     if (path === "") return;
 
     if (path.endsWith(".py") && !PYTHON_ROOTS.some((root) => path.startsWith(root))) {

@@ -239,8 +239,16 @@ export function listUnknownSeedColumns(): string[] {
 export function listPushedMigrationsMutatedBy(command: string): string[] {
   // Verbs that relocate, delete or rewrite a file. `git mv`/`git rm` are the
   // same acts through another door, and a `>` redirect rewrites in place.
-  const MUTATES = /\b(mv|rm|cp|rename|install|truncate|shred|sed\s+-i|tee|dd)\b|>\s*\S*backend\/alembic|git\s+(mv|rm)\b/;
-  if (!MUTATES.test(command)) return [];
+  // A shell is not the only door: an `eval` body moves the same bytes with
+  // `fs.renameSync()` or `shutil.move()`, and those calls carry no shell verb at
+  // all - a published revision renamed that way passed every check here, while a
+  // sibling attempt was caught only because its comment happened to spell
+  // `fs.rename `. The policy is about the file, so the language does not matter.
+  const MUTATES =
+    /\b(mv|rm|cp|rename|install|truncate|shred|sed\s+-i|tee|dd)\b|>\s*\S*backend\/alembic|git\s+(mv|rm)\b/;
+  const MUTATES_IN_CODE =
+    /\b(?:renameSync|unlinkSync|writeFileSync|rmSync|copyFileSync)\s*\(|\bshutil\.(?:move|copy\w*)\s*\(|\bos\.(?:rename|remove|replace|unlink)\s*\(/;
+  if (!MUTATES.test(command) && !MUTATES_IN_CODE.test(command)) return [];
   const named = new Set<string>();
   for (const match of command.matchAll(/[\w./-]*alembic\/versions\/([\w.-]+\.py)/g)) named.add(match[1]);
   for (const match of command.matchAll(/(?:^|[\s"'(/])(\d+_[\w-]+\.py)\b/g)) named.add(match[1]);

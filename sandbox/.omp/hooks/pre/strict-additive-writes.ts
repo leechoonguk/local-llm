@@ -204,7 +204,8 @@ export default function strictAdditiveWrites(pi: any) {
     }
 
     if (toolName !== "write") return;
-    const path = String(event.input.path ?? "");
+    // 내용 태그(`main.py#0D77`)가 붙어 오면 확장자 판정이 빗나가 이 가드가 조용히 통과한다.
+    const path = String(event.input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "");
     if (!/\.(?:py|ts|tsx|js|mjs|yml|yaml|toml|json|http)$/.test(path)) return;
     const abs = resolve(process.cwd(), path);
     const fileText = safeRead(abs);
