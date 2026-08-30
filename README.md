@@ -344,7 +344,14 @@ provider 설정은 두 엔트리이고 아래 절에 전문이 있다. baseUrl�
 - 비대화형 실행(`omp -p "..."`) 시 stdin이 파이프면 EOF를 기다리며 멈춘다 → `</dev/null` 필요.
 - 검증: `sandbox/`에 LRU 캐시 구현 + pytest 작성·실행 과제를 `--auto-approve`로 수행, 툴콜 21회, 177초, 8 tests passed.
 
-#### 보조 작업과 압축 (`modelRoles.tiny`, `compactionModel`)
+#### 보조 작업 (`modelRoles.tiny`) — 압축은 omp 소관
+
+**압축은 우리가 모델을 고를 수 없다**(2026-08-30 공식 코드 확인). omp 런타임에 `compactionModel` 키는 없고,
+압축은 `compact(preparation, this.model, …, this.thinkingLevel, …)`(`core/agent-session.js:1328,1562`)로 **현재 세션
+모델과 현재 thinking 레벨** 그대로 수행된다. 그래서 오래 쓰던 `compactionModel: …:nothink` 설정은 아무 효과가
+없었고 제거했다. 노출된 압축 설정은 `compaction.enabled`·`reserveTokens`(기본 16384)·`keepRecentTokens`(기본
+20000) 뿐이다(`docs/compaction.md`). 트리거는 `contextTokens > contextWindow − reserveTokens` 라, 131K 창에서
+기본값이면 약 115K 에서야 걸린다 — 40분 캡 셀에서도 발화 0회였다(2026-08-30 실측).
 
 omp는 제목 생성·메모리 질의·사고강도 분류·비정상 종료 감지를 `tiny` 역할로 돌린다(미설정이면 `@smol`). 코더에 맡기면 보조 요청 하나가 thinking 토큰 수천 개를 쓰고, `OLLAMA_NUM_PARALLEL=1`이라 그동안 코딩이 멈춘다.
 
@@ -360,7 +367,7 @@ omp의 thinking 레벨은 `minimal|low|medium|high`뿐이고 `none`이 없다 �
 
 한 서버인데 provider 엔트리가 **두 개**인 이유는 스키마 때문이다:
 
-1. `api`는 provider 레벨 필드다 — `modelOverrides`가 덮을 수 있는 목록(`contextWindow`, `maxTokens`, `compat`, `compactionModel`, `remoteCompaction`, ...)에 `api`가 없다. 모델별로 경로를 갈아탈 수 없다.
+1. `api`는 provider 레벨 필드다 — `modelOverrides`가 덮을 수 있는 목록(`contextWindow`, `maxTokens`, `compat`, `remoteCompaction`, ...)에 `api`가 없다. 모델별로 경로를 갈아탈 수 없다.
 2. `extraBody`는 completions 경로에서만 실린다.
 3. 코더가 두 역할을 겸한다 — 코딩은 thinking ON, 요약은 OFF. 같은 provider + 같은 모델 id는 compat을 하나만 가지므로 분리가 불가피하다.
 
@@ -376,7 +383,6 @@ providers:
       type: ollama
     modelOverrides:
       qwen3.6-coder:latest:
-        compactionModel: ollama-nothink/qwen3.6-coder:latest
 
   ollama-nothink:                    # 생각하면 안 되는 호출 전부
     baseUrl: http://127.0.0.1:11434/v1

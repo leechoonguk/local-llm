@@ -24,7 +24,7 @@ curl -s -X POST http://127.0.0.1:9090/admin/api/hf/download \
 `:mtp`/`:nothink` 별칭이 필요한 모델만(현재 35B 코더). 별칭은 **default 모델만 서빙에 노출**된다 — 실험 모델은 bare id 로 쓰고 프로파일은 만들지 않는다.
 
 ## 4. omp 배선 — `omp/models.yml` (+역할 변경 시 `config.fragment.yml`)
-`providers.omlx.models` 에 `- id: "<짧은 id>"`(코더는 `api: openai-completions` — extraBody 경로), `contextWindow`/`maxTokens` 는 settings 와 동일. 기본 코더 교체면 `modelOverrides`(compactionModel, extraBody thinking_budget)와 `config.fragment.yml` `modelRoles` 도 — 그리고 CLAUDE.md "기본 코더" 줄과 함께 바꾼다(`make check-docs-sync`).
+`providers.omlx.models` 에 `- id: "<짧은 id>"`(코더는 `api: openai-completions` — extraBody 경로), `contextWindow`/`maxTokens` 는 settings 와 동일. 기본 코더 교체면 `modelOverrides`(extraBody thinking_budget)와 `config.fragment.yml` `modelRoles` 도 — 그리고 CLAUDE.md "기본 코더" 줄과 함께 바꾼다(`make check-docs-sync`).
 
 ## 5. 문서 — README 모델 표 + `omlx/install.sh` 관리 주석
 README 표에 행 추가(크기는 설치 후 `du -sh ~/.omlx/models/mlx-community/<name>`), install.sh 의 "앱 스토어 관리 대상" 주석에 짧은 id 명기(`make check-omlx-config` 가 이 명기를 요구한다).

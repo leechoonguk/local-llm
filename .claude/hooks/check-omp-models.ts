@@ -6,7 +6,7 @@
  *    는 둘 다 있어야 하고 합치지 않는다
  *  - Modelfile.<name> 마다 `ollama-nothink.models` 에 `<name>:latest` 가 있고 contextWindow == num_ctx,
  *    maxTokens <= num_predict. `ollama.modelOverrides` 에 있으면 contextWindow == num_ctx, maxTokens == num_predict
- *  - `<name>:latest` 를 쓰는 항목은 Modelfile.<name> 이 있어야 한다. compactionModel 은 실재하는 provider/id
+ *  - `<name>:latest` 를 쓰는 항목은 Modelfile.<name> 이 있어야 한다. modelRoles 는 실재하는 provider/id
  *  - `omlx` provider 의 id 는 omlx/model_profiles.json 의 `<model>:<profile>`(expose_as_model) 또는
  *    model_settings.json 의 모델이고 contextWindow/maxTokens 가 그쪽 max_context_window/max_tokens 와 같다
  *  - omlx 에서 compat.extraBody 를 싣는 id 는 `api: openai-completions` 여야 한다(openai-responses 는 미병합, 실측)
@@ -75,7 +75,7 @@ export function run(root: string): Issue[] {
     }
   }
 
-  // --- compactionModel / modelRoles 참조 실재 ---
+  // --- modelRoles 참조 실재 ---
   const exists = (ref: string): boolean => {
     const i = ref.indexOf("/");
     if (i < 0) return false;
@@ -84,8 +84,6 @@ export function run(root: string): Issue[] {
   };
   for (const [prov, p] of Object.entries(providers)) {
     for (const [id, m] of providerModels(p as Rec)) {
-      const c = m.compactionModel;
-      if (typeof c === "string" && !exists(c)) issues.push(`${F}: ${prov}/${id}.compactionModel → ${c} 가 없다`);
     }
   }
 

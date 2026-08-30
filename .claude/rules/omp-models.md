@@ -15,7 +15,7 @@ paths:
 ## Modelfile 과의 대응
 - `ollama/Modelfile.<name>` 마다 `ollama-nothink.models` 에 `<name>:latest` — `contextWindow == num_ctx`, `maxTokens <= num_predict`(압축 요약은 더 짧아도 된다).
 - `ollama.modelOverrides` 에 있는 `<name>:latest` 는 `contextWindow == num_ctx`, `maxTokens == num_predict`. discovery 캐시가 128000 폴백으로 되돌아간 적이 있어 창은 손으로 박는다.
-- `<name>:latest` 를 쓰는 항목은 Modelfile 이 있어야 하고, `compactionModel` 은 실재하는 `provider/id`.
+- `<name>:latest` 를 쓰는 항목은 Modelfile 이 있어야 한다. `compactionModel` 은 omp 런타임에 없는 키라 2026-08-30 제거했다 — 압축은 현재 세션 모델·thinking 레벨로 수행된다.
 
 ## oMLX provider
 - id 는 `<model>:<profile>`(`omlx/model_profiles.json` 의 `expose_as_model: true` 프로파일) 또는 `<model>`(`model_settings.json`). `contextWindow`/`maxTokens` 는 그쪽 `max_context_window`/`max_tokens` 와 같다.

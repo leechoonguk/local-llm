@@ -1,0 +1,130 @@
+[
+ {
+  "at": "2026-08-30T03:58:11.821Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "task": "integration",
+  "mode": "A",
+  "wall_s": 2238,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 6,
+  "expected": 6,
+  "files": [
+   "M sandbox/api/integration.search-barcode-item-info.http",
+   " M sandbox/backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   " M sandbox/backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   " M sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.json",
+   " M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/backend/tests/core/fixtures/integration/search-barcode-item-info.refused.json"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-item-info.http",
+   "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
+   "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-30T03-58-43-575Z_01a050d1-d377-74e4-a3d8-598efee36d9b.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 16,
+  "tools": {
+   "read": 41,
+   "glob": 17,
+   "bash": 26,
+   "write": 5,
+   "edit": 11
+  },
+  "gate_runs": 5,
+  "first_full_gate_s": 1449,
+  "advisory_skips": 0,
+  "piped_gates": 2,
+  "first_green_s": 2114,
+  "no_work": false
+ },
+ {
+  "at": "2026-08-30T04:36:22.773Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "task": "rest",
+  "mode": "B",
+  "wall_s": 1660,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 15,
+  "expected": 15,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   " M sandbox/backend/tests/conftest.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/alembic/versions/74_add_notice_table.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py",
+   "?? sandbox/backend/tests/api/test_notice.py",
+   "?? sandbox/backend/tests/repositories/test_notice.py",
+   "?? sandbox/backend/tests/services/test_notice.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-30T04-36-55-431Z_01a050f4-cc07-72ba-83ee-b55778da7232.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 29,
+  "tools": {
+   "read": 60,
+   "write": 9,
+   "edit": 20,
+   "bash": 17
+  },
+  "gate_runs": 8,
+  "first_full_gate_s": 1129,
+  "advisory_skips": 0,
+  "piped_gates": 2,
+  "first_green_s": 1564,
+  "no_work": false
+ }
+]

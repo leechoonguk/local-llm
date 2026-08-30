@@ -3,6 +3,11 @@
 # thinking off) is applied on the chat-completions path only. Coding wants
 # thinking on, summaries and background work want it off, so the split is the
 # schema's, not a preference.
+# compactionModel 은 2026-08-30 제거했다 — omp 런타임에 그런 키가 없다(dist 전수 검색 0건).
+# 압축은 `compact(preparation, this.model, …, this.thinkingLevel, …)`(core/agent-session.js:1328,1562)로
+# **현재 세션 모델·현재 thinking 레벨** 그대로 수행된다. 즉 "압축은 nothink 로 돈다"는 우리 가정은
+# 사실이 아니었고, 그 설정은 아무도 읽지 않았다. 공식 문서가 노출하는 압축 설정은
+# compaction.enabled / reserveTokens(기본 16384) / keepRecentTokens(기본 20000) 뿐이다(docs/compaction.md).
 providers:
   ollama:
     baseUrl: http://127.0.0.1:11434/v1
@@ -21,19 +26,16 @@ providers:
         # 출력 예약. qwen은 8K로 충분했다(모델마다 다르다 - Ornith는 33K가 필요했다).
         # Modelfile num_predict와 같은 값이어야 한다.
         maxTokens: 8192
-        compactionModel: ollama-nothink/qwen3.6-coder:latest
       qwen3.8-coder:latest:
         # 3.6과 같은 coder 레시피. 이전 32768은 co-residency를 위한 값이었고, 통합 과제
         # 수요(58K~128K)를 담지 못해 모델이 아니라 창을 재게 만들었다.
         contextWindow: 131072
         maxTokens: 8192
-        compactionModel: ollama-nothink/qwen3.8-coder:latest
       qwen3-coder:latest:
         # Qwen3-Coder-30B-A3B-Instruct. thinking capability 가 없어서 압축도 같은
         # 슬롯의 nothink 경로를 쓸 이유가 없지만, 일관성을 위해 같은 형태로 둔다.
         contextWindow: 131072
         maxTokens: 8192
-        compactionModel: ollama-nothink/qwen3-coder:latest
 
   # Every call here is a call that must not think: session titles, memory
   # queries, thinking classification (4B), and compaction summaries (the coder
@@ -96,7 +98,6 @@ providers:
       # 코더는 3.6:mtp 유지. 실험 재개 시 install.sh 로 재다운로드.
     modelOverrides:
       "Qwen3.6-35B-A3B-5bit:coder":
-        compactionModel: "omlx/Qwen3.6-35B-A3B-5bit:nothink"
         # 실측(2026-08-24): reasoning_effort는 3.6 template에서 완전 no-op(seed 고정
         # A/B로 확인, low/high 완전 동일). thinking_budget만 실제로 먹는다(64→3000에서
         # 토큰·시간이 비례 반응). **2026-08-28 정정**: "프로파일 파일엔 안 먹힌다"던 옛
