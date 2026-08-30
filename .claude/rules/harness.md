@@ -27,10 +27,9 @@ paths:
 
 ## 검사 전수 점검
 
-훅·규칙을 통째로 점검할 때의 절차는 `sandbox/.omp/rules/omp-hooks.md` "Sweeping the checks" 에 있다 —
-증상에서 출발, 전수 스윕은 독립 에이전트, 순위는 세션 코퍼스의 발화 횟수로, "현재가 옳으면 옳다고 말하라",
-그리고 고친 뒤에는 메타 계약으로 재발을 막는다. 2026-08-30 에 네 번 돌려 매번 사람이 짚은 증상보다 큰
-결함이 나왔다(도구 호출 2,266건 취소, 요구 방향 1,232줄/125세션, Mode A 채점 역전).
+절차와 지금까지의 결과는 `.claude/rules/sandbox-harness-review.md` 에 있다 — 그 규칙이 관점의 경계도
+함께 정한다: **피험자 트리의 규칙은 그 프로젝트의 표준만 담고, 측정·판정은 이 워크스페이스에 남긴다.**
+`make check-sandbox-harness-review` 가 그 경계를 검사한다.
 
 ## Makefile
 - 모든 타깃은 `.PHONY` 등재 + `## 설명`. `check-<name>` 레시피는 `node .claude/hooks/check-<name>.ts` 한 줄. `verify` 는 모든 `check-*` 를 선행 조건으로 가진다 — verify 에 없는 검사는 아무도 안 도는 주장이다.

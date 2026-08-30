@@ -500,10 +500,9 @@ such as `lib/backend-integration-configuration.ts`. Prefix-less hooks are cross-
 ### Demand direction (요구는 의존 방향으로)
 
 검사는 **존재하는 하류가 상류를 요구**한다. 작업의 첫 걸음에서 마지막 걸음을 요구하지 않는다.
-실측 2026-08-29: `app/models/x.py` 하나가 생기는 순간 schema/repository/service 누락과 라우터 미등록·
-DI 미배선까지 5건이 한 번에 나갔고, 이 지적들은 매 변이 도구 결과에 주입되므로 로컬 모델이 그 목록을
-작업 큐로 읽어("첫 실패 수정 완료. 다음: missing service file") 한 계층만 요청한 프롬프트를 기능 전체로
-부풀렸다.
+왜 중요한가: 이 지적들은 매 변이 도구 결과에 주입된다. `app/models/x.py` 하나를 만들면 schema·repository·
+service 누락과 라우터 미등록·DI 미배선까지 다섯 건이 한 번에 나가고, 작성자는 그 목록을 작업 큐로 읽는다.
+한 계층만 손보려던 작업이 도메인 전체로 번지는 경로가 이것이다.
 
 파일이나 등록의 **부재**를 지적하는 문장은 둘 중 하나여야 한다 — `check-omp-hooks` 가 강제한다:
 
@@ -594,26 +593,6 @@ When adding/updating rule files in `.omp/rules/`:
 2. Run `make verify` (or `make check-omp-rules`) to validate the dynamic-loading contract
 3. Resolve any discrepancies
 
-## Sweeping the checks (전수 점검 플로우)
-
-2026-08-30 에 이 방식으로 네 번 돌렸고(연속성 확장 축소, 도메인 요구 방향, post 훅 36 + lib 19 전수,
-integration 측), 매번 사람이 짚은 증상보다 큰 결함이 나왔다. 절차를 기록해 둔다.
-
-1. **증상에서 출발한다.** 사용자가 겪은 구체적 불편 하나(“모델만 만들었는데 라우터를 만들라고 한다”)를
-   코드의 정확한 줄까지 좁힌다. 추상적 개선 목록에서 시작하지 않는다.
-2. **전수 스윕은 독립 에이전트에 맡긴다.** 설계와 구현을 분리해야 “내가 만든 규칙을 내가 합리화”하는
-   편향이 줄고, 계약이 프루프로 남는다.
-3. **순위는 실측으로 매긴다.** 세션 코퍼스(`~/.omp/agent/sessions/**`)에서 각 지적 문자열의 **발화 횟수와
-   세션 수**를 세게 한다. 체감으로 고르면 큰 것을 놓친다 — 실제로 우리가 먼저 고친 도메인 검사(1,267줄)
-   보다 `check-backend-tests`(1,232줄, 125/191 세션)가 사실상 같은 크기였는데 뒤늦게 발견됐다.
-4. **“현재가 옳으면 옳다고 말하라”를 요구한다.** 이게 없으면 정당한 요구까지 걷어낸다.
-   예: `alembic/env.py` 미등록은 모델 자체의 속성이라 모델 생성 시점에 지적하는 게 맞다.
-5. **고친 뒤에는 메타 계약으로 재발을 막는다.** 개별 수정만 하면 같은 결함이 새 훅에서 다시 자란다.
-   요구 방향 결함이 그랬다 — 도메인 검사만 고쳤을 때 테스트·`.http` 검사에 그대로 남아 있었다.
-   계약은 `check-omp-hooks` 가 기계로 집행하고, 경계는 `.claude/skills/llm-bench/proofs/` 가 고정한다.
-
-한 번 더 돌릴 대상: `pre/` 가드 8종은 아직 전수로 보지 않았다(오늘은 post 훅과 lib 중심이었다).
-
 ## Authoring Invariants (enforced by `check-omp-hooks`)
 
 These exist because the harness's own measurements say each class can grow. From
@@ -627,8 +606,7 @@ These exist because the harness's own measurements say each class can grow. From
 
 마지막 항목은 2026-08-29 축소로 사라졌다: 루프 감지기(`LoopKind`)와 자기검사(`continuity-selftest`)는
 확장과 함께 제거됐다 — 개입이 도구 호출 2,266건을 취소했고, rung-1 증거의 1,075건이 그 취소로
-재발행된 호출이었다(자기 피해를 루프로 읽었다). 남은 신호의 경계는 `.claude/skills/llm-bench/proofs/`
-의 합성 프루프가 고정한다.
+재발행된 호출이었다(자기 피해를 루프로 읽었다). 남은 신호의 경계는 이 워크스페이스 밖의 합성 프루프가 고정한다(그 관리 주체는 이 프로젝트가 아니다).
 
 ## Never Do These
 
