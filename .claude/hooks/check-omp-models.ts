@@ -2,10 +2,11 @@
  * check-omp-models — omp/models.yml, omp/config.fragment.yml 이 서빙 쪽 설정과 맞는지.
  *
  * 규칙: .claude/rules/omp-models.md
- *  - provider `ollama`(openai-responses) 와 `ollama-nothink`(openai-completions + reasoning_effort: none)
- *    는 둘 다 있어야 하고 합치지 않는다
- *  - Modelfile.<name> 마다 `ollama-nothink.models` 에 `<name>:latest` 가 있고 contextWindow == num_ctx,
- *    maxTokens <= num_predict. `ollama.modelOverrides` 에 있으면 contextWindow == num_ctx, maxTokens == num_predict
+ *  - provider `ollama`(openai-responses) 는 필수. `ollama-nothink`(openai-completions +
+ *    reasoning_effort: none)는 2026-08-31 제거돼 **선택**이다 — 있으면 그 형태를 지켜야 하고,
+ *    둘이 있을 때 합치지 않는다(`api` 는 provider 수준 필드라 modelOverrides 로 못 바꾼다)
+ *  - `ollama.modelOverrides` 의 `<name>:latest` 는 contextWindow == num_ctx, maxTokens == num_predict.
+ *    nothink 벌이 있으면 거기에도 `<name>:latest` 가 있고 contextWindow == num_ctx, maxTokens <= num_predict
  *  - `<name>:latest` 를 쓰는 항목은 Modelfile.<name> 이 있어야 한다. modelRoles 는 실재하는 provider/id
  *  - `omlx` provider 의 id 는 omlx/model_profiles.json 의 `<model>:<profile>`(expose_as_model) 또는
  *    model_settings.json 의 모델이고 contextWindow/maxTokens 가 그쪽 max_context_window/max_tokens 와 같다
@@ -43,7 +44,6 @@ export function run(root: string): Issue[] {
   // --- 두 Ollama provider ---
   const ol = providers.ollama as Rec | undefined, nt = providers["ollama-nothink"] as Rec | undefined;
   if (!ol) issues.push(`${F}: provider 'ollama' 가 없다`);
-  if (!nt) issues.push(`${F}: provider 'ollama-nothink' 가 없다`);
   if (ol && ol.api !== "openai-responses") issues.push(`${F}: ollama.api 는 openai-responses 여야 한다(${String(ol.api)})`);
   if (nt) {
     if (nt.api !== "openai-completions") issues.push(`${F}: ollama-nothink.api 는 openai-completions 여야 한다(${String(nt.api)})`);
@@ -57,8 +57,8 @@ export function run(root: string): Issue[] {
     const id = `${name}:latest`;
     const ctx = Number(mf.params.num_ctx), pred = Number(mf.params.num_predict);
     const n = ntModels.get(id);
-    if (!n) issues.push(`${F}: ollama-nothink.models 에 ${id} 가 없다(ollama/Modelfile.${name})`);
-    else {
+    if (nt && !n) issues.push(`${F}: ollama-nothink.models 에 ${id} 가 없다(ollama/Modelfile.${name})`);
+    else if (n) {
       if (n.contextWindow !== ctx) issues.push(`${F}: ollama-nothink ${id}.contextWindow(${String(n.contextWindow)}) != Modelfile num_ctx(${ctx})`);
       if (typeof n.maxTokens !== "number" || n.maxTokens > pred) issues.push(`${F}: ollama-nothink ${id}.maxTokens(${String(n.maxTokens)}) > Modelfile num_predict(${pred})`);
     }

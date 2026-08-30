@@ -71,9 +71,9 @@ make preflight && BENCH_BAKED=1 node .claude/skills/llm-bench/runner.ts \
 | 코더 | `omlx/Qwen3.6-35B-A3B-5bit:coder`, 창 131072/출력 8192 | MoE 활성 3B — 로컬 최속 손(9B 41-44, 4B+MTP 45.3 tok/s 대비) |
 | thinking | 서버 `thinking_budget_enabled: true`+`_tokens: 2048`, omp `extraBody.thinking_budget: 2048`(이중 보장) | 스윕 실측(`bench/2026-08-28.s2.thinkbudget.md`): 5120 대비 2/2 초록·유일 scored green 38.6m, 1024 는 하한 초과 |
 | aux(tiny) | `omlx/Qwen3.5-4B-4bit`(창 8192/출력 1024) + MTP 드래프터 | 4B 는 MTP 페어링으로 23.2→45.3 tok/s |
-| compaction | `…:nothink` | 코더와 같은 엔진 슬롯 — 추가 상주 0 |
+| compaction | 별도 모델 없음 | `compactionModel` 은 omp 에 없는 키였다(2026-08-30 확인) — 압축은 세션 모델·세션 thinking 레벨로 돈다. 그래서 `:nothink` 엔트리도 2026-08-31 제거 |
 | 사고 강도 | `defaultThinkingLevel: medium` | `auto` 는 벤치 변동성의 원천이었다 |
-| advisor | off(기본). 켜려면 `advisor.enabled: true` + `modelRoles.advisor: omlx/Qwen3.6-35B-A3B-5bit:nothink` | 헤드리스 실동 확인·조합은 기각(`bench/2026-08-28.s2.advmatrix.md`) |
+| advisor | off(기본). 켜려면 `advisor.enabled: true` + `modelRoles.advisor: omlx/Qwen3.5-4B-4bit` | 헤드리스 실동 확인·조합은 기각(`bench/2026-08-28.s2.advmatrix.md`) |
 | 모델 저장소 | oMLX 앱 스토어 `~/.omlx/models`, 짧은 서빙 id. 다운로드는 `POST /admin/api/hf/download` | HF 캐시 폐지(2026-08-28) — 절차는 `/add-model` |
 
 ## 6. 알려진 함정

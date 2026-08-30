@@ -1,8 +1,9 @@
-# One Ollama server, two entries - `api` is a provider-level field that
-# `modelOverrides` cannot override, and `extraBody` (the only way to turn Qwen
-# thinking off) is applied on the chat-completions path only. Coding wants
-# thinking on, summaries and background work want it off, so the split is the
-# schema's, not a preference.
+# Ollama 쪽은 thinking on 하나만 남았다. 예전에는 `ollama` / `ollama-nothink` 두 벌이었고,
+# 그 분리는 취향이 아니라 스키마 제약이었다 — `api` 는 provider 레벨 필드라 `modelOverrides`
+# 로 덮을 수 없고, thinking 을 끄는 유일한 수단인 `extraBody` 는 chat-completions 경로에만
+# 실린다. 그 nothink 벌은 2026-08-31 제거했다: 존재 이유였던 압축 요약 경로가 compactionModel
+# 과 함께 죽었고(아래 참조), Ollama 자체가 이 호스트에서 미설치라 호출이 닿지도 않는다.
+# 되살려야 하면 git 이력에서 그대로 꺼낸다.
 # compactionModel 은 2026-08-30 제거했다 — omp 런타임에 그런 키가 없다(dist 전수 검색 0건).
 # 압축은 `compact(preparation, this.model, …, this.thinkingLevel, …)`(core/agent-session.js:1328,1562)로
 # **현재 세션 모델·현재 thinking 레벨** 그대로 수행된다. 즉 "압축은 nothink 로 돈다"는 우리 가정은
@@ -37,43 +38,13 @@ providers:
         contextWindow: 131072
         maxTokens: 8192
 
-  # Every call here is a call that must not think: session titles, memory
-  # queries, thinking classification (4B), and compaction summaries (the coder
-  # itself, same loaded slot - only the path differs, so summaries keep 35B
-  # quality). 예전 주석은 "Ollama ignores every switch except reasoning_effort:
-  # none" 이었으나 0.32.14 에서는 더 이상 사실이 아니다 - 실측(2026-08-24,
-  # qwen3.8-coder, 동일 프롬프트): none 5 토큰 / medium 949 / 미지정 1024 / high 2502.
-  # 강도는 이제 실제로 먹는다. 이 분리가 남아 있는 이유는 그것과 무관하다:
-  # extraBody 가 chat-completions 경로에만 적용되고 `api` 는 modelOverrides 로
-  # 덮을 수 없어서, thinking off 를 보장하려면 provider 를 따로 두는 수밖에 없다.
-  ollama-nothink:
-    baseUrl: http://127.0.0.1:11434/v1
-    api: openai-completions
-    auth: none
-    compat:
-      extraBody:
-        reasoning_effort: none
-    models:
-      - id: qwen3.6-coder:latest
-        contextWindow: 131072
-        maxTokens: 4096
-      # 4096 은 압축 요약 몫이다. 이 항목은 그 용도에 더해 "thinking 을 끈 코더"로도
-      # 직접 쓰이므로 출력은 코더와 같은 8192 로 둔다 - 시드 필드 마이그레이션 한 장이
-      # 3~4K 토큰이라 4096 이면 잘리고, 그러면 모델이 아니라 잘림을 재게 된다.
-      - id: qwen3.8-coder:latest
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: qwen3-coder:latest
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: qwen3.5-aux:latest
-        contextWindow: 8192
-        maxTokens: 1024
-
   # oMLX (MLX 네이티브 서버, 포트 8000, 2026-08-24 도입). Ollama 와 달리 thinking 이
   # 서버쪽 per-model/프로파일 설정이라 provider 를 둘로 쪼갤 필요가 없다:
-  #  - :mtp      = coder 레시피 + MTP speculative decoding, thinking on (omlx/model_profiles.json)
-  #  - :nothink  = 같은 엔진 슬롯에서 thinking off - 압축 요약용
+  #  - :coder   = coder 레시피(131072/8192) + thinking budget 2048, MTP off (omlx/model_profiles.json)
+  #  - :coding  = 3.8-27B(dense)의 같은 레시피. 3.8 template 은 reasoning_effort 를 네이티브로
+  #               읽고 기본이 xhigh 라 서버쪽에서 medium 으로 고정했다(omlx/model_settings.json).
+  # :nothink 는 2026-08-31 제거했다 - 존재 이유가 "압축 요약용" 하나였는데 compactionModel 이
+  # 죽은 키로 판명나(아래 주석) 아무도 그 엔트리를 부르지 않았다. 프로파일 자체는 oMLX 에 남아 있다.
   # 모델 id 는 oMLX 앱 스토어(~/.omlx/models) 의 짧은 서빙 id(2026-08-28 전면 포팅 — HF 캐시 제거).
   omlx:
     baseUrl: http://127.0.0.1:9090/v1
@@ -84,7 +55,11 @@ providers:
         api: openai-completions  # 실험: openai-responses 에선 compat.extraBody 가 안 실린다(실측, 2026-08-24)
         contextWindow: 131072
         maxTokens: 8192
-      - id: "Qwen3.6-35B-A3B-5bit:nothink"
+      # 3.8 dense 27B(4bit, 15GB). 2026-08-25 에 한 번 배제된 계열이지만(nvfp4·oQ6·표준4bit 전부
+      # writes 0) 사용자 요청으로 2026-08-31 재등록 - 기본 코더는 3.6 그대로이고 이건 선택지다.
+      # 샘플링은 모델 카드 generation_config.json(temperature 1.0 / top_p 0.95 / top_k 20) -
+      # 3.6(0.6)과 다르다. 창 용량은 262144 이지만 coder 레시피에 맞춰 131072 로 둔다.
+      - id: "Qwen3.8-27B-4bit:coding"
         contextWindow: 131072
         maxTokens: 8192
       - id: "Qwen3.5-4B-4bit"  # aux(tiny). 4B+MTP 드래프터 페어링 유지(45.3 tok/s 실측) — 코더 실험은 2026-08-28 기각

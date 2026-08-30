@@ -25,7 +25,8 @@ HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 # 4bit(+MTP-4bit)는 2026-08-27 기각·캐시 삭제 — 웜 70.2 tok/s 로 5bit 동급 이하, 45m TO+회귀 1(bench/2026-08-27.s2.coder-4bit.md)
 # 모든 모델은 oMLX 앱 다운로드로 관리한다(~/.omlx/models, 짧은 서빙 id — 2026-08-28 전면 포팅,
 # HF 캐시 제거·hf CLI 경로 폐지, 다운로드는 POST /admin/api/hf/download). 관리 대상:
-# Qwen3.6-35B-A3B-5bit + Qwen3.6-35B-A3B-MTP-5bit(드래프터), Qwen3.5-4B-4bit + Qwen3.5-4B-MTP-4bit(aux).
+# Qwen3.6-35B-A3B-5bit + Qwen3.6-35B-A3B-MTP-5bit(드래프터), Qwen3.5-4B-4bit + Qwen3.5-4B-MTP-4bit(aux),
+# Qwen3.8-27B-4bit(선택 코더, 2026-08-31 사용자 요청으로 재등록 — 드래프터 없음, 15GB).
 # 9B·3.8 실험 모델은 2026-08-28 어드바이저 매트릭스 기각과 함께 삭제(bench/2026-08-28.s2.advmatrix.md).
 # 9B 코더·3.8 어드바이저(+각 MTP 드래프터)는 oMLX 앱 다운로드로 관리한다(~/.omlx/models,
 # 서빙 id 는 짧은 형식 "Qwen3.5-9B-MLX-4bit"/"Qwen3.8-27B-nvfp4"). HF 캐시 중복은 2026-08-28

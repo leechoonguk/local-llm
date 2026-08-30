@@ -7,13 +7,13 @@ paths:
 
 `omp/models.yml` 은 `~/.omp/agent/models.yml` 로 그대로 설치되고, `config.fragment.yml` 은 `config.yml` 에 손으로 병합한다. 여기 값은 서빙 쪽(Modelfile, oMLX 설정)과 **같은 숫자**여야 한다 — `make check-omp-models`. 편집 후 `post-edit` 훅이 라이브 반영을 상기시킨다(자동 복사 없음).
 
-## 두 Ollama provider 는 합치지 않는다
-- `ollama`: `api: openai-responses`, thinking on. 코딩용.
-- `ollama-nothink`: `api: openai-completions` + `compat.extraBody.reasoning_effort: none`. 제목·메모리·압축용.
-- `api` 는 provider 수준 필드라 `modelOverrides` 로 못 바꾸고, `extraBody` 는 chat-completions 경로에만 실린다. 스키마 제약이지 취향이 아니다.
+## Ollama provider
+- `ollama`: `api: openai-responses`, thinking on. 코딩용. 필수.
+- `ollama-nothink`(`api: openai-completions` + `compat.extraBody.reasoning_effort: none`)는 **2026-08-31 제거**했다 — 존재 이유였던 압축 요약 경로가 `compactionModel` 과 함께 죽었고, Ollama 자체가 미설치다. 되살리면 이 형태를 그대로 지켜야 한다(검사는 있을 때만 본다).
+- 둘이 함께 있을 때 **합치지 않는다**: `api` 는 provider 수준 필드라 `modelOverrides` 로 못 바꾸고, `extraBody` 는 chat-completions 경로에만 실린다. 스키마 제약이지 취향이 아니다.
 
 ## Modelfile 과의 대응
-- `ollama/Modelfile.<name>` 마다 `ollama-nothink.models` 에 `<name>:latest` — `contextWindow == num_ctx`, `maxTokens <= num_predict`(압축 요약은 더 짧아도 된다).
+- nothink 벌이 있다면 `ollama/Modelfile.<name>` 마다 `ollama-nothink.models` 에 `<name>:latest` — `contextWindow == num_ctx`, `maxTokens <= num_predict`.
 - `ollama.modelOverrides` 에 있는 `<name>:latest` 는 `contextWindow == num_ctx`, `maxTokens == num_predict`. discovery 캐시가 128000 폴백으로 되돌아간 적이 있어 창은 손으로 박는다.
 - `<name>:latest` 를 쓰는 항목은 Modelfile 이 있어야 한다. `compactionModel` 은 omp 런타임에 없는 키라 2026-08-30 제거했다 — 압축은 현재 세션 모델·thinking 레벨로 수행된다.
 

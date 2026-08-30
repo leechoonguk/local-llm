@@ -46,7 +46,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 실제 chat template(`chat_template.jinja`)을 그대로 태우는데, Qwen3.8 템플릿이 `reasoning_effort`
 를 네이티브로 해석한다: 유효값은 `xhigh`(기본) / `medium` / `low` 뿐이고(`high`/`none`이 아니다),
 `xhigh`/`low`는 지시문을 프롬프트에 주입하고 `medium`은 지시문 없이 모델 기본 판단에 맡긴다.
-`omlx/model_settings.json` + `model_profiles.json`(`:mtp`/`:nothink` 둘 다)의
+`omlx/model_settings.json` + `model_profiles.json` 의 3.8 항목(2026-08-31 기준 `Qwen3.8-27B-4bit`·`:coding`)에
 `chat_template_kwargs: {"reasoning_effort": "medium"}` 으로 서버쪽 기본값을 박았다 —
 클라이언트가 값을 안 보내도 적용되고, 요청에서 명시하면 오버라이드 가능(강제 아님).
 
@@ -95,7 +95,8 @@ seed로 다른 변수를 다 죽였는데 값이 바이트 단위로 같으면 �
 빠져 있었다 - 캐싱이 아니라 `openai-responses` 코드 경로 자체가 `extraBody`를 병합하지
 않는다. 그 모델 항목에만 `api: openai-completions`(`/v1/chat/completions`)를 오버라이드
 하니 즉시 실렸다(trace 확인: `"thinking_budget":5120`). `omp/models.yml`의 3.6 `:mtp`
-항목만 이렇게 바꿨다 - `:nothink`/3.8은 `openai-responses`로 남겨 사고 범위를 좁혔다.
+항목만 이렇게 바꿨다 - 나머지(3.8 `:coding`, 4B aux)는 `extraBody` 를 싣지 않으므로
+`openai-responses` 로 남겨 사고 범위를 좁혔다. (`:nothink` 엔트리는 2026-08-31 제거.)
 
 **SSD/hot 캐시 (2026-08-24, 정정).** 앞서 "SSD prefix cache가 꺼져 있다"고 결론 냈는데
 **틀렸다** — `~/.omlx/settings.json`의 `cache.ssd_cache_dir: null`은 "꺼짐"이 아니라
@@ -117,7 +118,7 @@ seed로 다른 변수를 다 죽였는데 값이 바이트 단위로 같으면 �
 nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 연산/대역폭이 더 들어가는 게 dense 모델에서 그대로 드러난다(MoE인 3.6은 활성 파라미터가 3B뿐이라 이 효과가 훨씬 작다). 이 nvfp4 수치(21.0 tok/s)는 2026-08-20 Ollama 시절 벤치(22~29 tok/s, 같은 nvfp4)와도 같은 대역이라 oMLX 자체가 3.8을 유난히 느리게 만드는 건 아니라는 교차 확인이 된다 — **느림의 원인은 dense 27B 아키텍처 자체**(토큰당 27B 전부 활성, MoE 3.6은 3B)이고, oQ6는 거기에 양자화 비용까지 얹힌 것.
 
 `mlx-community--Qwen3.8-27B-nvfp4:mtp`/`:nothink`도 oQ6와 같은 패턴으로 등록했었으나, **2026-08-25 oQ6와 함께 제거**했다 — s2 벤치(`bench/2026-08-24.s2.qwen-recipe.md`)에서 dense 27B(oQ6·nvfp4)가 두 과제 모두 writes 0(무산출)으로 실패했다. 위 속도 실측치는 근거로 남긴다.
-| 프로파일 | `:mtp` = coder 레시피(131072/8192, temp 0.6/top_p 0.95/top_k 20/min_p 0) + MTP on + `thinking_budget` 5120(서버 기본값, 2026-08-24 REST 캠페인에서 무제한 대비 회귀 0 — `bench/2026-08-24.s2.omlx.md`; omp `extraBody` 와 같은 값) / `:nothink` = 동일 + thinking off(압축용) |
+| 프로파일 | 3.6: `:coder` = coder 레시피(131072/8192, temp 0.6/top_p 0.95/top_k 20/min_p 0) + `thinking_budget` 2048, MTP off(budget 과 공존 불가 — 2026-08-28) / `:nothink` = 동일 + thinking off. 원래 이름은 `:mtp` 였고 값은 5120 이었다(`bench/2026-08-24.s2.omlx.md`). 3.8-27B: `:coding` = 같은 레시피에 temp 1.0(모델 카드) + `reasoning_effort: medium` 고정. **omp 에 등록된 것은 `:coder`·`:coding`·4B 셋뿐** — `:nothink` 는 2026-08-31 제거(프로파일 자체는 oMLX 에 남는다) |
 | 설정 파일 | `omlx/model_settings.json`, `omlx/model_profiles.json` → `~/.omlx/` 로 설치 (`omlx/install.sh`). 전역 `~/.omlx/settings.json` 은 auth secret 이 있어 커밋하지 않는다 |
 | Ollama | `launchctl bootout` + `disable` (로그인 자동 시작 꺼짐). 복귀: `launchctl enable gui/$UID/com.ollama.serve && launchctl bootstrap gui/$UID ~/Library/LaunchAgents/com.ollama.serve.plist && launchctl kickstart gui/$UID/com.ollama.serve` (템플릿이 RunAtLoad false 라 bootstrap 만으로는 뜨지 않는다) |
 | `memory_guard_tier` | `safe` (8GB 정적 예약, `omlx/install.sh`). 기본 `balanced`(6GB 예약)의 정적 상한이 이 레포 wired_limit_mb 보다 커서(64GB: 58GB > 56GB) admin 대시보드가 sysctl을 더 올리라고 경고했다 — 실사용 상한은 metal_cap이 커널 캡을 접어 넣어 항상 안전했지만(소스 확인, 2026-08-24), 커널 캡을 더 올리기보다 oMLX 목표를 캡 아래로 낮추는 쪽이 48GB로 옮겨도 깨지지 않는다. `safe`의 RAM−8GB 은 이 레포의 두 RAM 티어 모두에서 정확히 wired_limit_mb 값과 같다 |
@@ -145,6 +146,14 @@ nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 �
 | `qwen3.6-coder` | `qwen3.6:35b-a3b-nvfp4` (MoE 35B, 활성 3B, 4bit) | 23GB | **주력**. 코딩/에이전트. 창 131072 / 출력 8192 |
 | `qwen3.8-coder` | `qwen3.8:27b-nvfp4` (dense 27B, 4bit) | 18GB | 무거운 추론. prefill 느림 |
 | `qwen3.5-aux` | `qwen3.5:4b-nvfp4` (dense 4B, 4bit) | 4GB | 보조 작업(제목/메모리/분류). 코더와 동시 상주 |
+
+oMLX 로 옮긴 뒤의 등록 현황(2026-08-31):
+
+| omp id | 스토어 | 크기 | 용도 |
+|---|---|---|---|
+| `omlx/Qwen3.6-35B-A3B-5bit:coder` | `mlx-community/Qwen3.6-35B-A3B-5bit` | 23GB | **기본 코더**. 창 131072 / 출력 8192, thinking budget 2048 |
+| `omlx/Qwen3.8-27B-4bit:coding` | `mlx-community/Qwen3.8-27B-4bit` | 15GB | 선택지(사용자 요청, 2026-08-31 등록). 같은 레시피, temp 1.0, `reasoning_effort: medium`. **이 계열은 2026-08-25 에 writes 0 으로 배제된 적이 있다** — 다시 쓰려면 `/llm-bench` 로 재확인할 것 |
+| `omlx/Qwen3.5-4B-4bit` | `mlx-community/Qwen3.5-4B-4bit` | 4GB | 보조(tiny). thinking off, MTP 드래프터 페어링 |
 
 ### 컨텍스트 레시피 (2026-08-23, fast-api-standard 장기 세션 실측)
 
@@ -337,6 +346,10 @@ modelRoles:
   default: ollama/qwen3.6-coder            # 코딩 본체 (35B, 창 131072)
   tiny: ollama-nothink/qwen3.5-aux:latest  # 제목·메모리·분류 (4B, thinking off)
 ```
+
+> 아래 Ollama 절의 스냅샷은 **2026-08-24 이전의 기록**이다. `ollama-nothink` provider 는
+> 2026-08-31 `omp/models.yml` 에서 제거했다(압축 요약 경로가 `compactionModel` 과 함께
+> 죽었고 Ollama 자체가 미설치). 되살리려면 git 이력에서 그대로 꺼낸다.
 
 provider 설정은 두 엔트리이고 아래 절에 전문이 있다. baseUrl에 `/v1`이 **필수**인 점만 먼저 — 빼면 `POST /responses`가 404다.
 
@@ -535,7 +548,7 @@ CLAUDE.md                          # Claude 작업 규칙과 환경 사실
 omlx/
   install.sh                       # ~/.omlx 설정 동기화 + 서비스 잔재 정리 + 앱 서버 재시작 (멱등, 앱은 DMG 로 먼저. 모델은 앱 스토어 관리)
   model_settings.json              # 모델별 설정(창/샘플링/MTP/thinking budget) → ~/.omlx/ 로 설치
-  model_profiles.json              # :mtp / :nothink 프로파일 → ~/.omlx/ 로 설치
+  model_profiles.json              # 3.6 :coder/:nothink · 3.8-27B :coding 프로파일 → ~/.omlx/ 로 설치
   smoke.sh                         # 베이크 후 검증(서빙·응답·reasoning 분리·MTP 발화·서버가 보는 설정값) — `make smoke`
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치

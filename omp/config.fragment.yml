@@ -24,7 +24,8 @@ defaultThinkingLevel: medium
 # 어드바이저(선택). 2026-08-28 실측: 헤드리스에서도 실동하지만 벤치 조합은 기각
 # (bench/2026-08-28.s2.advmatrix.md — MoE 속도 역전으로 소형 코더 전제 붕괴).
 # 인터랙티브에서 쓰려면 아래 두 줄이면 된다(WATCHDOG.yml 불필요):
-#   modelRoles.advisor: omlx/Qwen3.6-35B-A3B-5bit:nothink   # 코더와 같은 엔진 슬롯 = 추가 상주 0
+#   modelRoles.advisor: omlx/Qwen3.5-4B-4bit                 # tiny 로 이미 상주 = 추가 로드 0
+#   (깊은 감시를 원하면 omlx/Qwen3.8-27B-4bit:coding — 별도 15GB 를 더 물린다)
 #   advisor.enabled: true                                    # TUI 는 /advisor on|off|status
 # 조언 실물은 실전급이었다(재독 처닝 지적) — 켜고 끄기는 취향.
 advisor:

@@ -51,7 +51,7 @@ guarded("post-edit", async () => {
 });
 
 function liveSyncReminder(rel: string): string | null {
-  if (/^omp\/(models\.yml|config\.fragment\.yml)$/.test(rel)) return "omp 설정이 바뀌었다. 라이브(`omp config path`, 기본 ~/.omp/agent)에 반영할 것: models.yml 은 cp, config.yml 은 modelRoles 만 손으로. 끝나면 /v1 nothink 스모크 테스트.";
+  if (/^omp\/(models\.yml|config\.fragment\.yml)$/.test(rel)) return "omp 설정이 바뀌었다. 라이브(`omp config path`, 기본 ~/.omp/agent)에 반영할 것: models.yml 은 cp, config.yml 은 modelRoles 만 손으로. 끝나면 /v1 스모크 테스트(`make smoke`).";
   const mf = rel.match(/^ollama\/Modelfile\.(.+)$/);
   if (mf) return `Modelfile 이 바뀌었다. 'ollama create ${mf[1]} -f ${rel}' 로 다시 만들어야 반영된다.`;
   if (/^omlx\/model_(settings|profiles)\.json$/.test(rel)) return `${rel} 이 바뀌었다. ~/.omlx/ 로 복사하고 'omlx restart'(메뉴바 앱) 후 admin 로그의 total: 로 단일 상주를 확인할 것.`;

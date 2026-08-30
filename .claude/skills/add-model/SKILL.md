@@ -21,7 +21,7 @@ curl -s -X POST http://127.0.0.1:9090/admin/api/hf/download \
 키는 **짧은 id**(`<name>`). 코더는 `max_context_window 131072 / max_tokens 8192`, aux 는 `8192/1024`, 어드바이저는 `32768/4096`(48GB 캡). 샘플링은 모델 카드 권장값(출처 주석), `reasoning_parser: qwen` 필수, MTP 는 `vlm_mtp_enabled` + `vlm_mtp_draft_model: "<드래프터 짧은 id>"`. 3.8 계열은 `chat_template_kwargs: {"reasoning_effort": "medium"}`.
 
 ## 3. 프로파일 — `omlx/model_profiles.json` (필요 시)
-`:mtp`/`:nothink` 별칭이 필요한 모델만(현재 35B 코더). 별칭은 **default 모델만 서빙에 노출**된다 — 실험 모델은 bare id 로 쓰고 프로파일은 만들지 않는다.
+별칭 프로파일이 필요한 모델만(현재 35B `:coder`, 3.8-27B `:coding`). 별칭은 **default 모델만 서빙에 노출**된다 — 실험 모델은 bare id 로 쓰고 프로파일은 만들지 않는다.
 
 ## 4. omp 배선 — `omp/models.yml` (+역할 변경 시 `config.fragment.yml`)
 `providers.omlx.models` 에 `- id: "<짧은 id>"`(코더는 `api: openai-completions` — extraBody 경로), `contextWindow`/`maxTokens` 는 settings 와 동일. 기본 코더 교체면 `modelOverrides`(extraBody thinking_budget)와 `config.fragment.yml` `modelRoles` 도 — 그리고 CLAUDE.md "기본 코더" 줄과 함께 바꾼다(`make check-docs-sync`).

@@ -255,7 +255,7 @@ function omlxWarm(model: string): void {
 
 /**
  * 상주 기록/검증. 보장은 **구성상** 성립한다 — 셀마다 서버를 재시작(전체 언로드)하고, default=대상 코더,
- * tiny/smol=4B aux 로 고정하며, compaction 은 같은 계열 :nothink 다. 그래서 로드될 수 있는 물리 모델은
+ * tiny/smol=4B aux 로 고정하며, compaction 은 세션 모델 자신이 수행한다(별도 모델 없음). 그래서 로드될 수 있는 물리 모델은
  * {대상 코더, 그 드래프터, 4B aux} 셋뿐이고 엉뚱한 코더는 못 뜬다. 여기서는 그 사실을 기록하고,
  * 상주 수가 예상 범위(1~3)를 벗어나면 경고한다(재시작 실패·설정 누락의 신호). ok=false 면 재실행.
  */
@@ -442,7 +442,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   // aux 역할 고정: tiny/smol 을 **실제 4B aux 모델**로 고정한다(코더가 아니다 — 실사용 구성으로 검증).
   // 이렇게 하면 셀 동안 로드될 수 있는 물리 모델은 {대상 코더(--model), 그 :mtp 드래프터(같은 계열),
   // 4B aux} 로 한정된다 — 깨끗한 재시작(위)과 합쳐 **구성상** 엉뚱한 코더가 상주할 수 없다.
-  // 코더 자체 설정(thinking·샘플링)은 불변. compaction 은 models.yml 에서 같은 계열 :nothink.
+  // 코더 자체 설정(thinking·샘플링)은 불변. compaction 은 세션 모델 자신이 돈다(compactionModel 은 죽은 키).
   // BENCH_BAKED=1: **라이브 설정만으로** 셀을 돌린다(오버레이·--smol·--model·어드바이저 주입 없음).
   // 베이크한 구성(modelRoles.default/tiny, models.yml 의 창·extraBody, oMLX settings)이 실제
   // 실행 경로에서 그대로 먹는지 증명하는 모드 — 실험 스위치들은 이 모드에서 전부 무시된다.
@@ -452,7 +452,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   if (local && !baked) {
     overlayDir = mkdtempSync(join(tmpdir(), "llm-bench-cfg-"));
     // 실험 옵트인: BENCH_ADVISOR=1 이면 벤치 셀에만 advisor 를 켠다(라이브 config 는 불변).
-    // BENCH_ADVISOR=<모델id> 면 advisor.model 도 지정 — 예: omlx/…-5bit:nothink 는 코더와 같은
+    // BENCH_ADVISOR=<모델id> 면 advisor.model 도 지정 — 예: omlx/Qwen3.5-4B-4bit 는 tiny 로 이미 상주해
     // 물리 모델의 프로파일이라 추가 상주 0 으로 35B 어드바이저가 된다(사용자 아이디어, 2026-08-27).
     // 이전 실측(2026-08-26)은 헤드리스 셀에서 advisor 무동작(aux 호출 0)이었다 — 재검증용 스위치.
     const adv = process.env.BENCH_ADVISOR;

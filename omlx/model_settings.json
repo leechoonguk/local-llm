@@ -26,6 +26,23 @@
    "reasoning_parser": "qwen",
    "vlm_mtp_enabled": true,
    "vlm_mtp_draft_model": "Qwen3.5-4B-MTP-4bit"
+  },
+  "Qwen3.8-27B-4bit": {
+   "max_context_window": 131072,
+   "max_tokens": 8192,
+   "temperature": 1.0,
+   "top_p": 0.95,
+   "top_k": 20,
+   "min_p": 0.0,
+   "enable_thinking": true,
+   "is_default": false,
+   "active_profile_name": "coding",
+   "reasoning_parser": "qwen",
+   "thinking_budget_enabled": true,
+   "thinking_budget_tokens": 2048,
+   "chat_template_kwargs": {
+    "reasoning_effort": "medium"
+   }
   }
  }
 }

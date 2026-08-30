@@ -142,7 +142,7 @@ if [[ -d "$OMP_DIR" ]]; then
   FOREIGN=""
   if [[ -f "$DST" ]]; then
     FOREIGN="$(sed -n 's/^  \([A-Za-z0-9_.-]*\):.*/\1/p' "$DST" \
-      | grep -vxE 'ollama|ollama-nothink' | tr '\n' ' ' || true)"
+      | grep -vxE 'ollama|omlx' | tr '\n' ' ' || true)"
   fi
   if [[ -n "${FOREIGN// /}" ]]; then
     cp "$SRC" "$DST.local-llm"
@@ -155,19 +155,21 @@ if [[ -d "$OMP_DIR" ]]; then
       echo "omp: models.yml differed - previous copy kept at $KEEP"
     fi
     cp "$SRC" "$DST"
-    echo "omp: installed models.yml into $OMP_DIR (providers: ollama, ollama-nothink)"
+    echo "omp: installed models.yml into $OMP_DIR (providers: ollama, omlx)"
   fi
   CFG="$OMP_DIR/config.yml"
   REQUIRED=("default: ollama/qwen3.6-coder")
   if [[ $WITH_AUX -eq 1 ]]; then
-    REQUIRED+=("tiny: ollama-nothink/qwen3.5-aux:latest")
+    # nothink 벌 제거(2026-08-31) 후의 Ollama 롤백 경로 — aux 는 thinking on 으로 돈다.
+    # 끄려면 models.yml 에 nothink provider 를 git 이력에서 되살려야 한다.
+    REQUIRED+=("tiny: ollama/qwen3.5-aux:latest")
   fi
   for pair in "${REQUIRED[@]}"; do
     if ! grep -qF "$pair" "$CFG" 2>/dev/null; then
       echo "omp: config.yml lacks '$pair' - merge omp/config.fragment.yml by hand"
     fi
   done
-  if [[ $WITH_AUX -eq 0 ]] && grep -qF "tiny: ollama-nothink" "$CFG" 2>/dev/null; then
+  if [[ $WITH_AUX -eq 0 ]] && grep -qE "tiny: ollama(-nothink)?/qwen3.5-aux" "$CFG" 2>/dev/null; then
     echo "omp: 이 호스트에는 보조 모델을 설치하지 않았는데 config.yml이 tiny로 가리킨다"
     echo "omp: 그 줄을 지우거나 클라우드 소형 모델로 바꿀 것"
   fi
