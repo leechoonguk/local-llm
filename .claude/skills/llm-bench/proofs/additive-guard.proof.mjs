@@ -133,4 +133,27 @@ check("35 기존 내용을 유지한 write 는 통과",
   pwrite("backend/app/services/big.py#0D77",
     Array.from({ length: 20 }, (_, i) => `line_${i} = compute_${i}()`).join("\n") + "\nline_20 = compute_20()\n") === undefined);
 
+// 37-43: 판정은 "같은가"가 아니라 "잃었는가"다. 한 줄짜리 import 목록에 이름을 더하려면 그 줄을
+// 고칠 수밖에 없으므로, 글자 동일성을 요구하면 정당한 배선이 통째로 막힌다 — 실측(2026-08-30)에서
+// 세션이 라우터 등록 단계에서 갇혔고, 안내문("나란히 추가하라")은 실행 불가능한 지시였다.
+writeFileSync(FIX + "/backend/app/main.py",
+  "from app.routers import auth, batch, health, integration, user\napi_router.include_router(user.router)\napi_router.include_router(batch.router)\n");
+const wire = (input) => handlers.tool_call({ toolName: "edit", input: { input } }, {});
+const M = "backend/app/main.py";
+
+check("37 import 목록에 이름 추가는 통과(범위형)",
+  wire(`[${M}#A]\nPUT 1.=1:\nfrom app.routers import auth, batch, health, integration, notice, user`) === undefined);
+check("38 import 목록에 이름 추가는 통과(단일행형)",
+  wire(`[${M}#A]\nPUT 1:\nfrom app.routers import auth, batch, health, integration, notice, user`) === undefined);
+check("39 등록 줄 삽입은 통과",
+  wire(`[${M}#A]\nPUT 2+1@:\napi_router.include_router(notice.router)`) === undefined);
+check("40 등록 대상 바꿔치기는 BLOCK(user.router 가 사라진다)",
+  wire(`[${M}#A]\nPUT 2.=2:\napi_router.include_router(notice.router)`)?.block === true);
+check("41 import 목록 축소는 BLOCK",
+  wire(`[${M}#A]\nPUT 1.=1:\nfrom app.routers import notice`)?.block === true);
+check("42 CUT 으로 등록 줄 삭제는 BLOCK",
+  wire(`[${M}#A]\nCUT 2`)?.block === true);
+check("43 의도 선언이면 교체도 통과",
+  wire(`[${M}#A]\n# intent: replace\nPUT 2.=2:\napi_router.include_router(notice.router)`) === undefined);
+
 process.exit(bad ? 1 : 0);

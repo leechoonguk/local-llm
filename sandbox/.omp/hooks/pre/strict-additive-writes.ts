@@ -86,11 +86,12 @@ export default function strictAdditiveWrites(pi: any) {
         const bodyAll = op[4].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
         for (let n = Number(op[1]); n <= rangeEnd; n++) {
           const covered = (fileLines[n - 1] ?? "").trim();
-          if (covered && isRegistrationLine(covered) && !bodyAll.includes(covered)) {
+          if (covered && isRegistrationLine(covered) && losesEntries(covered, bodyAll.join("\n"))) {
+            const lost = registrationEntries(covered).filter((e) => !bodyAll.join("\n").includes(e));
             return {
               block: true,
-              reason: `\`${path}\` ${n}행이 교체 범위에 들어가 사라진다 — 그 줄은 등록/배선이다(\`${covered.slice(0, 60)}\`). ` +
-                "나란히 추가하라. 교체가 의도라면 `# intent: replace` 를 실어라.",
+              reason: `\`${path}\` ${n}행의 등록이 사라진다 — \`${lost.join(", ").slice(0, 60)}\` 가 새 내용에 없다. ` +
+                "기존 항목을 모두 유지한 채 새 이름을 더하라. 정말 지워야 하면 `# intent: replace` 를 실어라.",
             };
           }
         }
@@ -108,13 +109,17 @@ export default function strictAdditiveWrites(pi: any) {
         // (include_router(user) → include_router(notice)) 다른 도메인이 라우팅에서 사라진다.
         // 2026-08-28 배포 셀에서 정확히 이 형태로 회귀 1건이 났고, 형제치환 규칙(식별자 2개
         // 이상)에는 안 걸렸다. 경로 목록이 아니라 **줄 모양**으로 판정한다(프레임워크 무관).
-        if (isRegistrationLine(target)) {
+        // 등록 줄은 **누적된다** — 그래서 판정은 "같은가"가 아니라 "잃었는가"다. 한 줄짜리 import
+        // 목록에 이름을 더하려면 그 줄을 고칠 수밖에 없으므로, 글자 동일성을 요구하면 정당한 배선이
+        // 통째로 막힌다(2026-08-30 실측: 그 상태에서 세션이 라우터 등록을 끝내지 못했다).
+        if (isRegistrationLine(target) && losesEntries(target, bodyLines.join("\n"))) {
+          const lost = registrationEntries(target).filter((e) => !bodyLines.join("\n").includes(e));
           return {
             block: true,
             reason:
-              `this edit REPLACES a registration line (\`${target.slice(0, 70)}\`) — registries accumulate: ` +
-              `keep it and use the insert form (\`PUT ${op[1]}+1@:\`) for the new entry. ` +
-              "If replacement is truly intended, resend with a `# intent: replace` comment line.",
+              `this edit drops \`${lost.join(", ").slice(0, 60)}\` from a registration line ` +
+              `(\`${target.slice(0, 70)}\`) — registries accumulate: keep every existing entry and add yours ` +
+              "alongside. If removal is truly intended, resend with a `# intent: replace` comment line.",
           };
         }
         const sibling = bodyLines.find((b) => siblingSwap(target, b));
@@ -128,7 +133,7 @@ export default function strictAdditiveWrites(pi: any) {
               "edit with a `# intent: replace` comment line included.",
           };
         }
-        if (isImport(target) && bodyLines.some(isImport)) {
+        if (isImport(target) && bodyLines.some(isImport) && losesEntries(target, bodyLines.join("\n"))) {
           return {
             block: true,
             reason:
@@ -226,6 +231,33 @@ export default function strictAdditiveWrites(pi: any) {
 }
 
 /** 등록·배선 줄(누적되는 레지스트리 항목)인가 — 경로가 아니라 모양으로 판정한다. */
+/**
+ * 등록 줄이 담고 있던 **항목**들. import 목록의 이름, `include_router(x.router)` 의 `x`,
+ * `XDep = Annotated[...]` 의 좌변처럼 "누적되는 것"을 뽑는다.
+ */
+function registrationEntries(line: string): string[] {
+  const imp = /^from\s+\S+\s+import\s+(.+)$/.exec(line);
+  if (imp) return imp[1].split(",").map((x) => x.trim().replace(/\s+as\s+\S+$/, "")).filter(Boolean);
+  const call = /\b(?:include_router|add_middleware|add_api_route|register|add_url_rule|mount)\s*\(\s*([A-Za-z_][\w.]*)/.exec(line);
+  if (call) return [call[1]];
+  const dep = /^(\w+Dep)\s*=/.exec(line);
+  if (dep) return [dep[1]];
+  const plain = /^import\s+(\S+)/.exec(line);
+  if (plain) return [plain[1]];
+  return [line];
+}
+
+/**
+ * 교체가 **손실인가**. 항목이 하나도 사라지지 않으면 손실이 아니다.
+ *
+ * 이 판정이 "옛 줄이 글자 그대로 남아 있는가" 였을 때, `from app.routers import a, b` 에 이름을
+ * 하나 더하는 정당한 편집이 막혔다 — 한 줄짜리 목록에서 "나란히 추가"는 그 줄을 고치는 것뿐인데,
+ * 안내는 실행 불가능한 지시를 하고 있었다(2026-08-30 실측: 배선 단계에서 세션이 갇혔다).
+ */
+function losesEntries(oldLine: string, bodyText: string): boolean {
+  return registrationEntries(oldLine).some((e) => !new RegExp(`(^|[^\\w.])${e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w]|$)`).test(bodyText));
+}
+
 function isRegistrationLine(l: string): boolean {
   return /^(from\s+\S+\s+import\b|import\s+\S)/.test(l)
     || /^\w+Dep\s*=\s*Annotated\b/.test(l)
