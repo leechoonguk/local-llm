@@ -1,0 +1,101 @@
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=9.3s ctx=30843
+[continuity] turn dt=26.2s ctx=39929
+[continuity] turn dt=33.2s ctx=42960
+[continuity] turn dt=20.8s ctx=44891
+[continuity] turn dt=15.2s ctx=46456
+[continuity] turn dt=31.7s ctx=47206
+[continuity] turn dt=91.5s ctx=48538
+[continuity] turn dt=24.7s ctx=54267
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=64.8s ctx=55085
+[continuity] turn dt=8.5s ctx=56009
+[continuity] REG-WATCH backend/app/dependencies/services.py: IntegrationServiceDep = Annotated[IntegrationService, Depend
+[continuity] turn dt=37.5s ctx=56944
+[continuity] turn dt=17.2s ctx=58347
+[continuity] turn dt=12.8s ctx=58549
+[continuity] turn dt=11.4s ctx=62809
+[continuity] REG-WATCH backend/app/main.py: from app.routers import auth, batch, health, integration, us
+[continuity] turn dt=33.8s ctx=63277
+[continuity] turn dt=12.2s ctx=66355
+[continuity] turn dt=48.2s ctx=66883
+[continuity] turn dt=12.0s ctx=67603
+[continuity] turn dt=10.9s ctx=68720
+[continuity] turn dt=16.2s ctx=68862
+[continuity] agent_end msgs=94 endGate=0 red=no phase=idle
+[continuity] turn dt=29.7s ctx=71957
+[continuity] turn dt=11.8s ctx=72802
+[continuity] turn dt=16.9s ctx=72977
+[continuity] turn dt=18.8s ctx=73808
+[continuity] turn dt=164.9s ctx=74384
+[continuity] turn dt=26.9s ctx=80018
+[continuity] turn dt=19.3s ctx=80334
+[continuity] turn dt=15.3s ctx=81171
+[continuity] turn dt=26.8s ctx=81455
+[continuity] turn dt=19.1s ctx=81878
+[continuity] turn dt=23.3s ctx=82017
+[continuity] turn dt=6.4s ctx=82737
+[continuity] turn dt=11.7s ctx=82971
+[continuity] turn dt=12.0s ctx=83320
+[continuity] turn dt=21.1s ctx=84017
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=23.2s ctx=85041
+[continuity] red: ERROR: Coverage failure: total of 99 is less than fail-under=100
+[continuity] turn dt=23.6s ctx=86913
+[continuity] turn dt=97.6s ctx=87537
+[continuity] turn dt=42.3s ctx=89933
+[continuity] red: ERROR: Coverage failure: total of 99 is less than fail-under=100 | FAIL Required test coverage of 10
+[continuity] turn dt=31.4s ctx=90916
+[continuity] turn dt=12.9s ctx=92261
+[continuity] turn dt=94.2s ctx=92854
+[continuity] turn dt=29.6s ctx=95602
+[continuity] turn dt=11.8s ctx=96440
+[continuity] turn dt=20.5s ctx=96781
+[continuity] red: FAIL Required test coverage of 100% not reached. Total coverage: 99.77% | FAILED tests/services/test
+[continuity] turn dt=23.1s ctx=97268
+[continuity] turn dt=43.0s ctx=97433
+[continuity] red: ERROR: file or directory not found: test_batch_reads_use_cache_and_writes_invalidate
+[continuity] turn dt=362.2s ctx=98376

@@ -1,0 +1,149 @@
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=9.3s ctx=30843
+[continuity] turn dt=11.6s ctx=34746
+[continuity] turn dt=22.1s ctx=40248
+[continuity] turn dt=22.7s ctx=41704
+[continuity] turn dt=16.0s ctx=42616
+[continuity] turn dt=8.0s ctx=44129
+[continuity] turn dt=12.5s ctx=46164
+[continuity] turn dt=19.7s ctx=46612
+[continuity] turn dt=7.5s ctx=48216
+[continuity] turn dt=12.2s ctx=49357
+[continuity] turn dt=32.9s ctx=50185
+[continuity] turn dt=7.8s ctx=51743
+[continuity] turn dt=14.5s ctx=52983
+[continuity] turn dt=24.4s ctx=53683
+[continuity] turn dt=95.0s ctx=54911
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=60.4s ctx=57585
+[continuity] turn dt=17.7s ctx=58849
+[continuity] turn dt=23.5s ctx=59109
+[continuity] REG-WATCH backend/app/main.py: from app.routers import auth, batch, health, integration, us
+[continuity] turn dt=30.5s ctx=60302
+[continuity] turn dt=14.6s ctx=61987
+[continuity] turn dt=30.8s ctx=62217
+[continuity] turn dt=8.7s ctx=63900
+[continuity] turn dt=18.6s ctx=64278
+[continuity] turn dt=22.8s ctx=69018
+[continuity] turn dt=49.5s ctx=69098
+[continuity] agent_end msgs=97 endGate=0 red=no phase=idle
+[continuity] turn dt=33.0s ctx=72649
+[continuity] turn dt=15.5s ctx=73446
+[continuity] turn dt=24.7s ctx=73567
+[continuity] turn dt=60.0s ctx=73773
+[continuity] turn dt=21.2s ctx=73955
+[continuity] turn dt=4.0s ctx=74211
+[continuity] turn dt=5.4s ctx=74654
+[continuity] turn dt=8.7s ctx=74832
+[continuity] turn dt=13.5s ctx=77173
+[continuity] turn dt=187.0s ctx=77982
+[continuity] turn dt=81.2s ctx=82522
+[continuity] CHECKPOINT requested (the context is at ~63% of the window (~83k tokens))
+[continuity] turn dt=10.0s ctx=85108
+[continuity] RESET window @127/131 (hygiene cut #1)
+[continuity] turn dt=9.0s ctx=24295
+[continuity] turn dt=10.0s ctx=24607
+[continuity] turn dt=14.3s ctx=24760
+[continuity] turn dt=4.3s ctx=24932
+[continuity] red: FAIL: notice.py:list_notices: limit defaults to 100 — the standard default is settings.items_per_use
+[continuity] turn dt=5.5s ctx=25315
+[continuity] turn dt=4.1s ctx=26167
+[continuity] turn dt=5.9s ctx=26442
+[continuity] turn dt=6.4s ctx=26894
+[continuity] turn dt=10.1s ctx=27045
+[continuity] turn dt=9.7s ctx=27487
+[continuity] turn dt=8.1s ctx=27851
+[continuity] turn dt=11.1s ctx=27996
+[continuity] red: FAIL: main.py: the versioned parent must be APIRouter(prefix=API_V1_PREFIX)
+[continuity] turn dt=12.7s ctx=28560
+[continuity] turn dt=10.5s ctx=28768
+[continuity] turn dt=12.5s ctx=28957
+[continuity] turn dt=3.5s ctx=29095
+[continuity] turn dt=3.0s ctx=29297
+[continuity] turn dt=4.2s ctx=29708
+[continuity] turn dt=5.2s ctx=29888
+[continuity] turn dt=9.5s ctx=30042
+[continuity] turn dt=5.6s ctx=30306
+[continuity] turn dt=7.9s ctx=30439
+[continuity] turn dt=8.5s ctx=30627
+[continuity] turn dt=8.8s ctx=30833
+[continuity] green — red cleared (full-gate success)
+[continuity] turn dt=11.9s ctx=31484
+[continuity] red: FAIL: backend/app/repositories/notice.py:NoticeRepository: private _get_by_title() precedes public d
+[continuity] turn dt=13.1s ctx=32442
+[continuity] turn dt=10.9s ctx=33281
+[continuity] turn dt=17.1s ctx=33618
+[continuity] green — red cleared (full-gate success)
+[continuity] turn dt=14.4s ctx=34334
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=15.9s ctx=35550
+[continuity] turn dt=13.0s ctx=36288
+[continuity] turn dt=12.5s ctx=37028
+[continuity] turn dt=21.3s ctx=37402
+[continuity] turn dt=5.7s ctx=38258
+[continuity] turn dt=7.9s ctx=38856
+[continuity] turn dt=7.6s ctx=39223
+[continuity] turn dt=10.5s ctx=39379
+[continuity] turn dt=10.1s ctx=39599
+[continuity] turn dt=10.2s ctx=40327
+[continuity] turn dt=13.8s ctx=41265
+[continuity] turn dt=26.2s ctx=41871
+[continuity] turn dt=5.9s ctx=42477
+[continuity] turn dt=7.7s ctx=43135
+[continuity] turn dt=12.7s ctx=43368
+[continuity] turn dt=12.0s ctx=44328
+[continuity] turn dt=19.9s ctx=44953
+[continuity] turn dt=23.1s ctx=45892
+[continuity] turn dt=6.3s ctx=45990
+[continuity] turn dt=4.9s ctx=46215
+[continuity] turn dt=5.8s ctx=46658
+[continuity] turn dt=17.7s ctx=46896
+[continuity] turn dt=9.9s ctx=47113
+[continuity] turn dt=9.1s ctx=47273
+[continuity] turn dt=10.7s ctx=48196
+[continuity] turn dt=100.9s ctx=49056
+[continuity] turn dt=39.4s ctx=52537
+[continuity] turn dt=31.7s ctx=52972

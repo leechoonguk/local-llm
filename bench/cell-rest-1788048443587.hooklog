@@ -1,0 +1,143 @@
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=9.3s ctx=30843
+[continuity] turn dt=14.6s ctx=37605
+[continuity] turn dt=30.2s ctx=46415
+[continuity] turn dt=31.5s ctx=49947
+[continuity] turn dt=17.6s ctx=50936
+[continuity] turn dt=19.7s ctx=51652
+[continuity] turn dt=121.8s ctx=52959
+[continuity] turn dt=23.9s ctx=55921
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=57.1s ctx=56369
+[continuity] turn dt=18.0s ctx=56757
+[continuity] turn dt=18.8s ctx=59953
+[continuity] REG-WATCH backend/app/dependencies/services.py: from app.services.user import UserService
+[continuity] turn dt=33.9s ctx=60695
+[continuity] turn dt=15.3s ctx=61572
+[continuity] turn dt=22.5s ctx=61881
+[continuity] turn dt=6.6s ctx=62194
+[continuity] REG-WATCH backend/app/main.py: from app.routers import auth, batch, health, integration, us
+[continuity] turn dt=11.8s ctx=62618
+[continuity] turn dt=7.5s ctx=65416
+[continuity] turn dt=25.9s ctx=65650
+[continuity] turn dt=21.3s ctx=66458
+[continuity] turn dt=12.1s ctx=66988
+[continuity] turn dt=12.6s ctx=69380
+[continuity] turn dt=18.2s ctx=69468
+[continuity] agent_end msgs=93 endGate=0 red=no phase=idle
+[continuity] turn dt=32.9s ctx=72799
+[continuity] turn dt=16.2s ctx=73611
+[continuity] turn dt=23.1s ctx=73774
+[continuity] turn dt=69.2s ctx=74662
+[continuity] turn dt=170.3s ctx=75113
+[continuity] turn dt=26.7s ctx=80250
+[continuity] CHECKPOINT requested (the context is at ~61% of the window (~80k tokens))
+[continuity] turn dt=17.2s ctx=81045
+[continuity] RESET window @109/113 (hygiene cut #1)
+[continuity] turn dt=7.1s ctx=22737
+[continuity] turn dt=7.0s ctx=23569
+[continuity] turn dt=8.3s ctx=24305
+[continuity] turn dt=9.4s ctx=24780
+[continuity] turn dt=12.4s ctx=26190
+[continuity] turn dt=7.2s ctx=27774
+[continuity] turn dt=27.8s ctx=28104
+[continuity] turn dt=18.9s ctx=29169
+[continuity] turn dt=4.1s ctx=29696
+[continuity] turn dt=6.0s ctx=29911
+[continuity] turn dt=5.4s ctx=30439
+[continuity] turn dt=54.3s ctx=30856
+[continuity] turn dt=13.2s ctx=34481
+[continuity] turn dt=27.8s ctx=34693
+[continuity] turn dt=75.2s ctx=35741
+[continuity] turn dt=34.3s ctx=38920
+[continuity] red: FAIL: notice: missing NoticeServiceDep Annotated DI in dependencies/services.py
+[continuity] turn dt=11.3s ctx=39567
+[continuity] turn dt=9.4s ctx=39778
+[continuity] turn dt=10.1s ctx=40223
+[continuity] turn dt=13.4s ctx=40375
+[continuity] red: FAIL: backend/app/dependencies/services.py:37: 1 blank line(s) before banner "Dependencies" — every 
+[continuity] turn dt=17.0s ctx=41350
+[continuity] turn dt=14.5s ctx=41583
+[continuity] turn dt=6.2s ctx=41724
+[continuity] turn dt=7.6s ctx=41881
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=15.1s ctx=42385
+[continuity] turn dt=8.2s ctx=42902
+[continuity] turn dt=7.9s ctx=43078
+[continuity] turn dt=7.3s ctx=43189
+[continuity] turn dt=8.3s ctx=43847
+[continuity] turn dt=13.8s ctx=44044
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=21.2s ctx=44612
+[continuity] green — red cleared (full-gate success)
+[continuity] turn dt=13.4s ctx=45305
+[continuity] turn dt=14.6s ctx=45718
+[continuity] turn dt=8.7s ctx=45928
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=15.4s ctx=46486
+[continuity] green — red cleared (full-gate success)
+[continuity] turn dt=8.1s ctx=47173
+[continuity] turn dt=11.5s ctx=47663
+[continuity] turn dt=22.6s ctx=47941
+[continuity] turn dt=13.7s ctx=48641
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=22.5s ctx=49137
+[continuity] green — red cleared (full-gate success)
+[continuity] turn dt=90.6s ctx=49886
+[continuity] turn dt=19.5s ctx=50056
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=24.9s ctx=50638
+[continuity] turn dt=17.6s ctx=51042
+[continuity] turn dt=9.6s ctx=51485
+[continuity] turn dt=13.8s ctx=51925
+[continuity] turn dt=11.0s ctx=52499
+[continuity] turn dt=16.9s ctx=52710
+[continuity] red: FAIL: backend: make verify failed (exit 2)
+[continuity] turn dt=23.8s ctx=53261
+[continuity] green — red cleared (full-gate success)
+[continuity] turn dt=16.8s ctx=53840
+[continuity] turn dt=7.1s ctx=54471
+[continuity] turn dt=12.7s ctx=54746

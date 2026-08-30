@@ -1,4 +1,4 @@
-// 축소판(2026-08-29) 계약 프루프 — 남은 신호는 셋뿐이다: REG-WATCH(배선 방어), 마감 게이트
+// 축소판 계약 프루프 — 남은 신호는 둘뿐이다(2026-08-30: 하이진 컷도 제거, 컨텍스트 관리는 omp 소관): REG-WATCH(배선 방어), 마감 게이트
 // (가짜 완료 방어), 하이진 컷(컨텍스트 초기화). 루프 감지·질병 컷·TAIL-TRIM·WRITE-STEER·
 // GATE-CADENCE·TEST-NUDGE·TRUNC-RECOVERY 의 케이스는 그 신호와 함께 삭제했다(발화 0 또는 유해 실측).
 // A: red persists 12 fast turns (~1 min) with edits landing -> no checkpoint (red-age turn over-fire, gone).
@@ -123,14 +123,6 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
 
 
-{ // M: hygiene restored — +55k context growth requests a hygiene checkpoint
-  const { handlers, sent } = makePi();
-  ctxTokens = 25_000;
-  bash(handlers, "make verify", "all green"); // verifySeen — isolate the hygiene signal
-  for (let i = 0; i < 9; i++) { now += 60_000; ctxTokens += 7_000; editOk(handlers); turn(handlers); }
-  check("M: +55k ctx growth with MAX_HYGIENE=3 -> hygiene checkpoint", sent.length === 1 && /context grew/.test(sent[0] ?? ""));
-  ctxTokens = 30_000;
-}
 
 
 { // O3: a test file exists early -> no nudge
@@ -290,50 +282,6 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     p2.sent.length === 1 && /verify-fast/.test(p2.sent[0] ?? ""));
 }
 
-{ // M: 측정 정확도 3종(2026-08-29) — 롤백 엔진 위에 얹은 수정들.
-  { const { handlers, sent } = makePi();          // 실패한 게이트는 검증이 아니다
-    now += 30_000; editOk(handlers, "a.py");
-    handlers.tool_result({ toolName: "bash", isError: true, input: { command: "make verify" },
-      content: [{ type: "text", text: "make: *** [verify] Error 2" }] }, ctx);
-    handlers.turn_end({}, ctx);
-    check("M1: a failing root gate does not satisfy the finish check", sent.length === 1); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; editOk(handlers, "a.py");
-    bash(handlers, "make verify", "all green, 150 passed");
-    handlers.turn_end({}, ctx);
-    check("M2: a passing root gate still clears it", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();          // 하위 디렉터리 게이트는 루트 게이트가 아니다
-    now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
-    bash(handlers, "cd /Users/x/sandbox/backend && make verify 2>&1", "all green, 150 passed");
-    handlers.turn_end({}, ctx);
-    check("M3: a backend-scoped gate does not satisfy the finish check", sent.length === 1); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
-    bash(handlers, "make -C backend verify", "all green");
-    handlers.turn_end({}, ctx);
-    check("M4: `make -C backend verify` is scoped too", sent.length === 1); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
-    bash(handlers, "cd /Users/x/sandbox && make verify", "all green, 150 passed");
-    handlers.turn_end({}, ctx);
-    check("M5: the root gate still clears the finish", sent.length === 0); }
-
-  { const { handlers, sent } = makePi();          // 셸 쓰기도 변경으로 센다(케이던스는 삭제됐다)
-    now += 30_000;
-    for (let i = 0; i < 6; i++) bash(handlers, `cat > app/f${i}.py <<'PY'\nx\nPY`, "");
-    handlers.turn_end({}, ctx);
-    check("M6: heredoc writes count as changes -> the finish gate demands verification",
-      sent.length === 1 && /has not run since your last change/.test(sent[0] ?? "")); }
-
-  { const { handlers, sent } = makePi();
-    now += 30_000; bash(handlers, "ruff check app | tee /tmp/out.txt", "All checks passed");
-    handlers.turn_end({}, ctx);
-    check("M7: a tee into /tmp is not a change", sent.length === 0); }
-}
 
 { // N: 축소판의 계약(2026-08-29). 남은 신호는 셋뿐이고, 건강한 세션은 아무 말도 듣지 않는다.
   { const handlers = {}; const sent = []; const steers = [];
@@ -355,112 +303,26 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     check("N3: a healthy cell — six writes, a green root gate, a prose finish — receives zero messages",
       sent.length === 0 && steers.length === 0); }
 
-  { const { handlers, sent } = makePi();   // 하이진 컷만이 컨텍스트를 다시 쓴다
-    ctxTokens = 30_000; handlers.turn_end({ toolResults: [{}] }, ctx);
-    for (let i = 0; i < 4; i++) { now += 600_000; handlers.turn_end({ toolResults: [{}] }, ctx); }
-    check("N4: a stalled session with no context growth is never cut", handlers.context({ messages: msgs(30) }, ctx) === undefined);
-    // 컷은 진행 중인 작업에만 적용된다(CUT0) — 각 케이스에 실제 쓰기를 하나 넣는다.
-    now += 5_000; editOk(handlers, "app/n5.py");
-    ctxTokens = 30_000 + 55_000; now += 30_000; handlers.turn_end({ toolResults: [{}] }, ctx);
-    check("N5: +55k growth still checkpoints (the one context job)", sent.length === 1 && /Checkpoint before a context reset/.test(sent[0] ?? ""));
-    ctxTokens = 30_000; }
 }
 
-{ // HC: 하이진 절대 상한 — 성장 예산은 정체된 세션을 못 잡는다(축소판 첫 셀 ctx 96k·턴 183초, 컷 0회).
-  const ctxWin = (tokens, window) => ({ getContextUsage: () => ({ tokens, window }) });
-  { const handlers = {}; const sent = [];
-    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(80_000, 131_072));   // 첫 턴이 기준선을 잡는다
-    // 컷은 진행 중인 작업에만 적용된다(CUT0) — 각 케이스에 실제 쓰기를 하나 넣는다.
-    now += 5_000; editOk(handlers, "app/hc1.py");
-    now += 30_000;
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(82_000, 131_072));   // 성장 2k — 예산에 한참 못 미친다
-    check("HC1: past 60% of the window, a barely-growing session is still cut",
-      sent.length === 1 && /% of the window/.test(sent[0] ?? "")); }
 
-  { const handlers = {}; const sent = [];
-    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(40_000, 131_072));
-    now += 30_000;
-    handlers.turn_end({ toolResults: [{}] }, ctxWin(45_000, 131_072));  // 34% — 상한 아래
-    check("HC2: below the ceiling with small growth -> silent", sent.length === 0); }
 
-  { const handlers = {}; const sent = [];
-    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 100_000 }) }); // 창 미상
-    now += 30_000;
-    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 101_000 }) });
-    check("HC3: with no window reported, the ceiling never fires", sent.length === 0); }
-}
 
-{ // HC4-6: 런타임이 사용률을 알려주는 세 가지 모양을 모두 읽는다(2026-08-30: window 만 보다 놓쳤다).
-  const fire = (usage) => {
-    const handlers = {}; const sent = [];
-    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => usage });
-    now += 5_000; editOk(handlers, "app/hc.py");   // 컷은 작업이 시작된 뒤에만(CUT0)
-    now += 30_000;
-    handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => usage });
-    return sent;
-  };
-  check("HC4: contextWindow key", fire({ tokens: 100_000, contextWindow: 131_072 }).length === 1);
-  check("HC5: percentage key", fire({ tokens: 0, percentage: 76 }).length === 1);
-  check("HC6: fraction under the ceiling stays silent", fire({ tokens: 40_000, contextWindow: 131_072 }).length === 0);
-}
 
-{ // HC7: 상한은 셀마다 끌 수 있다(BENCH_HYGIENE_CEILING=0) — 두 팔 비교용 노브.
-  process.env.BENCH_HYGIENE_CEILING = "0";
+
+{ // OMP: 컨텍스트 관리는 omp 소관이다 — 확장은 문맥을 만지지 않는다(2026-08-30 짝 비교 결론).
+  // ON(상한 0.6) 3셀은 자체 종료 0/3·게이트 초록 0/3, OFF(상한 0) 3셀은 1/3·1/3 이었고 회귀는 6셀 모두 0.
+  // 컷이 필요하다는 근거가 하나도 없었다. 원래 근거(ctx 45k→22k)는 개입이 도구 호출을 취소하며
+  // 컨텍스트를 부풀리던 옛 하네스의 수치였다.
   const handlers = {}; const sent = [];
   try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
   registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 120_000, contextWindow: 131_072 }) });
-  now += 5_000; editOk(handlers, "app/hc7.py");
-  now += 30_000;
-  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 121_000, contextWindow: 131_072 }) });
-  check("HC7: ceiling 0 disables the absolute cut (growth budget still applies)", sent.length === 0);
-  delete process.env.BENCH_HYGIENE_CEILING;
-}
-
-{ // CK: 체크포인트는 인수인계 문서를 요구한다 — 컷 뒤 남는 건 최근 몇 메시지와 이 투두뿐이다.
-  // 실측 2026-08-30: 예전 문구로 받은 투두에는 쫓던 실패도 직전 시도도 없었고, op:"init" 로
-  // 목록을 통째로 다시 깔아 맥락을 덮었다(한 셀에서 3회).
-  const handlers = {}; const sent = [];
-  try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-  registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 100_000, contextWindow: 131_072 }) });
-  now += 5_000; editOk(handlers, "app/ck.py");   // 컷은 작업이 시작된 뒤에만(CUT0)
-  now += 30_000;
-  handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 101_000, contextWindow: 131_072 }) });
-  const msg = sent[0] ?? "";
-  check("CK1: the checkpoint asks for the failure verbatim", /BLOCKED:.*verbatim/s.test(msg));
-  check("CK2: it asks what was just tried", /TRIED:/.test(msg));
-  check("CK3: it asks for one next action", /NEXT:.*single next action/s.test(msg));
-  // 이 도구에는 append 가 없다(실사용 op: init/done/view/start) — "다시 깔지 마라"는 지킬 수 없는
-  // 지시였다. 계약은 "전부 이월하고 세 항목을 덧붙여라" 로 바뀐다(2026-08-30).
-  check("CK4: it says the list is replaced and everything must be carried forward",
-    /carrying EVERY existing item forward/.test(msg) && /anything you leave out is deleted/.test(msg));
-  check("CK5: it says why — what is missing is lost", /only things left|anything missing from it is gone/i.test(msg));
-}
-
-{ // CUT0: 아무것도 만들지 않은 세션은 자르지 않는다.
-  // 실측 2026-08-30: 읽기 단계에서 컷이 걸린 셀이 "All gates green" 으로 206초 만에 종료했다
-  // (writes 0·산출물 0) — 베이스라인이 초록이라 컷 뒤 문맥만 보면 끝난 것처럼 보인다.
-  const fire = (mutate) => {
-    const handlers = {}; const sent = [];
-    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
-    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
-    const usage = { getContextUsage: () => ({ tokens: 100_000, contextWindow: 131_072 }) };
-    handlers.turn_end({ toolResults: [{}] }, usage);
-    if (mutate) { now += 5_000; editOk(handlers, "app/x.py"); }
-    now += 30_000; handlers.turn_end({ toolResults: [{}] }, usage);
-    return sent;
-  };
-  check("CUT0a: no mutation yet -> the ceiling does not cut", fire(false).length === 0);
-  check("CUT0b: after a real write -> it cuts", fire(true).length === 1);
+  check("OMP1: the extension registers no context handler", handlers.context === undefined);
+  const usage = { getContextUsage: () => ({ tokens: 125_000, contextWindow: 131_072 }) };
+  handlers.turn_end({ toolResults: [{}] }, usage);
+  now += 5_000; editOk(handlers, "app/x.py");
+  now += 30_000; handlers.turn_end({ toolResults: [{}] }, usage);
+  check("OMP2: a nearly full window produces no message", sent.length === 0);
 }
 
 process.exit(failures ? 1 : 0);

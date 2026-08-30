@@ -69,20 +69,11 @@ const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b
 // `cd …/sandbox/backend && make verify` 를 11회 돌리고 루트 게이트는 0회였는데 하네스가 초록으로
 // 셌고, 최종 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
 const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
-const HYGIENE_BUDGET = 50_000;       // session-token growth per hygiene cut
 // 절대 상한(2026-08-30): 성장 기반 예산만으로는 **정체된 세션**을 못 잡는다 — 축소판 첫 셀에서
 // ctx 96,074·턴 183초까지 갔는데 컷이 한 번도 안 걸렸다(증가폭이 예산에 못 미쳐서다).
 // 질병 컷을 되살리지 않고 같은 구멍을 막는 최소 장치다. 창을 모르면(0) 적용하지 않는다.
 // 창의 이 비율을 넘으면 성장과 무관하게 컷. 셀마다 켜고 끌 수 있게 환경변수로 뺀다(0 이면 끔) —
 // 하네스를 고치지 않고 같은 조건에서 두 팔을 번갈아 돌리기 위해서다(2026-08-30 rest 분산 판정용).
-const hygieneCeiling = (): number => {
-  const v = Number(process.env.BENCH_HYGIENE_CEILING);
-  return Number.isFinite(v) && v >= 0 && v <= 1 ? v : 0.6;
-};
-// 70% 는 실측에서 아슬하게 안 걸렸다(2026-08-30 두 셀: ctx 최대 82.8k·88.8k vs 131k 창의 70%=91.7k)
-// — 그 사이 턴은 224초까지 늘어져 있었다. 60%(78.6k)면 두 셀 모두에서 걸렸을 자리다.
-const MAX_HYGIENE = 3;
-const KEEP_RECENT = 4;               // messages kept across a cut
 const END_GATE_MAX = 2;              // red-finish re-drives
 const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
 const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
@@ -98,7 +89,7 @@ export function registerDiscipline(pi: any): void {
   const logPath = process.env.STUCK_RESET_LOG || "";
   const log = (s: string) => { if (logPath) { try { appendFileSync(logPath, `[continuity] ${s}\n`); } catch {} } };
 
-  let endGateSends = 0;
+  let endGateSends = 0, lastTurnAt = Date.now();
   let mutatedEver = false;
   const persisted = loadPersisted();
   let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
@@ -108,14 +99,6 @@ export function registerDiscipline(pi: any): void {
   const testWritten = new Set<string>();
   let redSig: string | null = null;
   let redCmdTk: Set<string> | null = null;
-  let phase: "idle" | "checkpoint" | "cutting" = "idle";
-  let cutIndex = -1;
-  let cutBootstrap: string | null = null;
-  let hygieneCuts = 0;
-  let lastTurnAt = Date.now();
-  let tokensAtCut = 0;
-  let armed = false;
-  let bootstrap: string | null = null;
   const regSnapshot = new Map<string, Set<string>>();
   const regWarned = new Set<string>();
   const regWarnCount = new Map<string, number>();
@@ -145,28 +128,8 @@ export function registerDiscipline(pi: any): void {
     }
   }
 
-  log(`loaded discipline. hygiene=${Math.round(HYGIENE_BUDGET / 1000)}k x${MAX_HYGIENE} endGate=${END_GATE_MAX} regWatch=${regSnapshot.size}files`);
+  log(`loaded discipline. endGate=${END_GATE_MAX} regWatch=${regSnapshot.size}files (context management belongs to omp)`);
 
-  function beginCheckpoint(reason: string) {
-        phase = "checkpoint";
-    bootstrap = `[continuity] Context was cleared because ${reason}. The system prompt is unchanged, `
-      + `and the todo list holds the checkpoint you just wrote — read it and continue from there.\n`
-      + `Step back, reconsider the approach, and continue the remaining work a different way. `
-      + `Re-run the project's verification early to confirm where things stand.`;
-    // 실측 2026-08-30: 이 문구로 받은 투두는 "어디까지 했나"(11단계 계획)만 담고 있었고, 요구한 세
-    // 가지 중 둘(쫓던 실패 인용·직전 시도)이 없었다. 게다가 `op:"init"` 로 목록을 통째로 다시 깔아
-    // 이전 맥락을 덮었다(한 셀에서 3회). 컷 뒤 남는 것은 최근 4개 메시지와 이 투두뿐이므로,
-    // 여기에 없는 것은 사라진다. 그래서 형식을 지정해 요구한다.
-    pi.sendUserMessage(`[continuity] Checkpoint before a context reset (${reason}). `
-      + `The context is about to be cut: after it, the only things left are the last few messages and this todo list, `
-      + `so anything missing from it is gone. Rewrite the list now, carrying EVERY existing item forward with its `
-      + `current state, and append these three (the tool replaces the list, so anything you leave out is deleted):\n`
-      + `  1. BLOCKED: paste the current failure line verbatim (e.g. \`FAIL: …\`), or "none" if nothing is failing.\n`
-      + `  2. TRIED: what you just attempted for it, in one line.\n`
-      + `  3. NEXT: the single next action.\n`
-      + `Then continue working.`);
-    log(`CHECKPOINT requested (${reason})`);
-  }
 
   pi.on("tool_result", (event: any, _ctx: any) => {
     try {
@@ -226,43 +189,11 @@ export function registerDiscipline(pi: any): void {
       turnCount++;
       const now = Date.now();
       const used = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
-      log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);
+      log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);   // 계측만 남긴다 — 컷은 omp 소관
       lastTurnAt = now;
-      if (tokensAtCut === 0 && used > 0) tokensAtCut = used;
 
-      if (phase === "checkpoint") {
-        phase = "cutting"; armed = true;
-        return;
-      }
-      // 런타임이 사용률을 알려주는 방식이 여러 가지다 — 예전 profile.ts 가 쓰던 키 목록을 그대로 따른다.
-      // 실측 2026-08-30: `window`/`max` 만 보다가 ctx 99,993 에서도 상한이 발화하지 못했다(창 미상 처리).
-      const frac = (() => {
-        try {
-          const u = (ctx.getContextUsage?.() ?? {}) as Record<string, unknown>;
-          for (const k of ["percentage", "percent", "usedPercent"]) {
-            const v = Number(u[k]);
-            if (Number.isFinite(v) && v > 0) return v > 1 ? v / 100 : v;
-          }
-          const t = Number(u.tokens ?? u.used);
-          const w = Number(u.contextWindow ?? u.window ?? u.max);
-          return Number.isFinite(t) && Number.isFinite(w) && w > 0 ? t / w : 0;
-        } catch { return 0; }
-      })();
-      const ceil = hygieneCeiling();
-      const overCeiling = ceil > 0 && frac >= ceil;
-      // 아직 아무것도 만들지 않은 세션은 자르지 않는다. 실측 2026-08-30(상한 0.25 프로브):
-      // 읽기 단계에서 컷이 걸리자 남은 문맥이 "베이스라인 초록" 뿐이라 피험자가 과제를 시작도 않고
-      // "All gates green" 으로 종료했다(206초·writes 0·산출물 0). 이 레포가 TAIL-TRIM 으로 한 번
-      // 겪은 실패형과 같다 — 컨텍스트 조작은 진행 중인 작업에만 안전하다.
-      if (phase === "idle" && mutatedEver
-          && (overCeiling || (hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET))) {
-        beginCheckpoint(overCeiling
-          ? `the context is at ~${Math.round(frac * 100)}% of the window (~${Math.round(used / 1000)}k tokens)`
-          : `the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`);
-        return;
-      }
       const prose = !(e.toolResults && e.toolResults.length);
-      if (phase === "idle" && prose && endGateSends < END_GATE_MAX) {
+      if (prose && endGateSends < END_GATE_MAX) {
         if (redSig) {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
@@ -299,35 +230,9 @@ export function registerDiscipline(pi: any): void {
     } catch (e2) { log(`turn_end ERR ${String(e2)}`); }
   });
 
-  pi.on("context", (event: any, ctx: any) => {
-    try {
-      const msgs = event.messages || [];
-      if (armed) {
-        armed = false;
-        cutIndex = Math.max(0, msgs.length - KEEP_RECENT);
-        cutBootstrap = bootstrap;
-        hygieneCuts++;
-        tokensAtCut = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
-        phase = "idle";
-        log(`RESET window @${cutIndex}/${msgs.length} (hygiene cut #${hygieneCuts})`);
-      }
-      if (cutIndex < 0) return undefined;
-      if (cutIndex > msgs.length) { cutIndex = -1; return undefined; }
-      const sys = msgs.filter((m: any) => m.role === "system");
-      const bootMsg = { role: "user", content: cutBootstrap };
-      const seen = new Set<any>();
-      const kept = [...sys, bootMsg, ...msgs.slice(cutIndex)].filter((m) => (seen.has(m) ? false : (seen.add(m), true)));
-      return { messages: kept };
-    } catch (e) { log(`context ERR ${String(e)}`); return undefined; }
-  });
 
   pi.on("agent_end", (e: any) => {
-    log(`agent_end msgs=${(e.messages||[]).length} endGate=${endGateSends} red=${redSig ? "YES" : "no"} phase=${phase}`);
-    cutIndex = -1; cutBootstrap = null; phase = "idle"; armed = false; bootstrap = null;
-    // A released window means a revived session returns at FULL size (125k
-    // measured) while the hygiene baseline still points at the cut-time value,
-    // so the next hygiene cut comes far too late. Re-baseline on the next turn.
-    tokensAtCut = 0;
+    log(`agent_end msgs=${(e.messages||[]).length} endGate=${endGateSends} red=${redSig ? "YES" : "no"}`);
   });
 }
 

@@ -1,0 +1,14 @@
+[continuity] loaded discipline. hygiene=50k x3 endGate=2 regWatch=4files
+[continuity] turn dt=9.3s ctx=30843
+[continuity] turn dt=14.2s ctx=37012
+[continuity] turn dt=25.3s ctx=39816
+[continuity] turn dt=11.0s ctx=41846
+[continuity] turn dt=17.2s ctx=44038
+[continuity] turn dt=11.9s ctx=45884
+[continuity] turn dt=17.2s ctx=46346
+[continuity] turn dt=6.0s ctx=46660
+[continuity] turn dt=13.5s ctx=47260
+[continuity] turn dt=91.7s ctx=48432
+[continuity] CHECKPOINT requested (the context is at ~37% of the window (~48k tokens))
+[continuity] turn dt=34.0s ctx=51643
+[continuity] RESET window @46/50 (hygiene cut #1)
