@@ -520,7 +520,11 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   let timedOut = false;
   const phaseWalls: number[] = [];
   // 셀 훅로그: 모델·과제·시작시각으로 이름을 만든다(캠페인 stem 은 이 스코프에 없다).
-  const hookLogPath = join(BENCH, `cell-${taskName}-${started}.hooklog`);
+  // bench/ 는 결과만 두는 플랫 디렉터리다(bench-results 규칙). 훅로그는 결과가 아니라 진단 로그이니
+  // 레포 밖 런타임 로그 자리에 남긴다 — 셀마다 하나, 행의 시각으로 짝을 찾는다.
+  const hookLogDir = join(homedir(), ".omp", "agent", "logs", "bench-hooklogs");
+  mkdirSync(hookLogDir, { recursive: true });
+  const hookLogPath = join(hookLogDir, `cell-${taskName}-${started}.hooklog`);
   for (const [sessionPrompt, cap] of sessionPlans) {
     const pStart = Date.now();
     const ompArgs = baked ? ["-p", sessionPrompt] : ["-p", sessionPrompt, "--model", model, ...extra];
