@@ -8,6 +8,11 @@
  * most at once is a full-file `write` onto an existing source file; the shell
  * twin is a `>` truncation. Both are blocked with guidance toward targeted
  * edits — `edit` changes survive, wholesale rewrites forget.
+ *
+ * 등록/배선의 판정 기준(2026-08-30 재정립): **줄의 모양이 아니라 항목의 생존**이다. 편집 뒤에도
+ * 같은 형태의 항목이 파일 어딘가에 남으면(중복 제거, 같은 패치 안의 이동) 손실이 아니다. 마지막
+ * 하나가 사라질 때만 막는다. 그리고 조용히 사라지는 곳에서만 막는다 — 테스트 파일의 import 소실은
+ * 수집 단계에서 즉시 터지므로 이 가드의 대상이 아니다.
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -53,7 +58,14 @@ export default function strictAdditiveWrites(pi: any) {
       const fileText = safeRead(abs);
       if (fileText === null) return; // 빈 path→cwd(디렉터리) 등 — EISDIR 클래스 fail-open
       const fileLines = fileText.split("\n");
-      const isImport = (l: string) => /^(from\s+\S+\s+import\b|import\s+\S)/.test(l);
+      // 이 패치가 **더하는** 줄 전부(op 를 가리지 않고 모은다). 한 패치 안에서 옮기는 편집
+      // (여기서 지우고 저기에 다시 넣기)은 손실이 아니다 — 항목 생존 판정에 함께 넣는다.
+      const patchAdds = [...patch.matchAll(/(?:^|\n)PUT \d+(?:\+\d+@?)?(?:\.?=\d+)?\.?:\n((?:(?!PUT \d|CUT \d)[^\n]*(?:\n|$))+)/g)]
+        .flatMap((m) => m[1].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean));
+      // 등록 보호는 **조용히 사라지는 곳** 에만 건다. 테스트 파일에서 import 가 없어지면 수집 단계에서
+      // 즉시 터지고(F821·ImportError) 게이트가 초 단위로 잡는다 — 거기서까지 막으면 자기 파일을 고치는
+      // 정당한 편집이 갇힌다(2026-08-30 실측: 방금 자기가 쓴 test_notice.py 의 import 를 고치다 2회 연속 차단).
+      const isTestPath = /(^|\/)tests?\//.test(path) || /(^|\/)test_[^/]*\.py$/.test(path) || /\.(spec|test)\.[jt]sx?$/.test(path);
       // 의도 프로토콜(사용자 설계 2026-08-28): 차단은 "실수 교체"만 걸러내는 장치다.
       // 진짜 교체 의도는 편집에 `# intent: replace` 마커를 실어 명시하면 통과한다 —
       // 추가를 원하면 삽입형으로, 교체를 원하면 선언하고 교체한다.
@@ -62,18 +74,18 @@ export default function strictAdditiveWrites(pi: any) {
       // 으로 등록 줄이 교체됐는데 파서가 통째로 놓쳤다(2026-08-28 실측, 회귀 1건).
       // 삭제형(`CUT N`, `CUT N.=M`)은 문법에 아예 없었다 — 등록 줄을 지우는 가장 직접적인 형태인데
       // 통과했다(전수 점검에서 154건/66세션). 지운 줄이 등록·import 면 막는다.
-      if (!intendedReplace) {
+      if (!intendedReplace && !isTestPath) {
         for (const cut of patch.matchAll(/(?:^|\n)CUT (\d+)(?:\.?=(\d+))?/g)) {
           const from = Number(cut[1]), to = Number(cut[2] ?? cut[1]);
-          for (let n = from; n <= to; n++) {
-            const line = (fileLines[n - 1] ?? "").trim();
-            if (line && isRegistrationLine(line)) {
-              return {
-                block: true,
-                reason: `\`${path}\` ${n}행을 지운다 — 그 줄은 등록/배선이다(\`${line.slice(0, 60)}\`). ` +
-                  "추가 과제에서 기존 등록은 남는다. 정말 지워야 하면 편집에 `# intent: replace` 를 실어라.",
-              };
-            }
+          const lost = lostEntries(fileLines, from, to, patchAdds);
+          if (lost.length > 0) {
+            return {
+              block: true,
+              reason: `\`${path}\` ${from}${to > from ? `-${to}` : ""}행을 지우면 \`${lost.join(", ").slice(0, 60)}\` 가 ` +
+                "이 파일 어디에도 남지 않는다 — 등록은 누적되는 것이라 사라지면 다른 도메인이 조용히 배선에서 빠진다. " +
+                "옮기는 중이라면 같은 패치에 새 위치의 삽입(`PUT M+1@:`)을 함께 실어라(그러면 통과한다). " +
+                "정말 없애야 하면 `# intent: replace` 를 실어라.",
+            };
           }
         }
       }
@@ -83,15 +95,14 @@ export default function strictAdditiveWrites(pi: any) {
         if (op[2]) continue; // insert form — additive, fine
         if (intendedReplace) continue; // declared intent — the replacement stands
         const rangeEnd = Number(op[3] ?? op[1]);
-        const bodyAll = op[4].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean);
-        for (let n = Number(op[1]); n <= rangeEnd; n++) {
-          const covered = (fileLines[n - 1] ?? "").trim();
-          if (covered && isRegistrationLine(covered) && losesEntries(covered, bodyAll.join("\n"))) {
-            const lost = registrationEntries(covered).filter((e) => !bodyAll.join("\n").includes(e));
+        if (!isTestPath) {
+          const lost = lostEntries(fileLines, Number(op[1]), rangeEnd, patchAdds);
+          if (lost.length > 0) {
             return {
               block: true,
-              reason: `\`${path}\` ${n}행의 등록이 사라진다 — \`${lost.join(", ").slice(0, 60)}\` 가 새 내용에 없다. ` +
-                "기존 항목을 모두 유지한 채 새 이름을 더하라. 정말 지워야 하면 `# intent: replace` 를 실어라.",
+              reason: `\`${path}\` ${op[1]}${rangeEnd > Number(op[1]) ? `-${rangeEnd}` : ""}행을 갈아끼우면 ` +
+                `\`${lost.join(", ").slice(0, 60)}\` 가 이 파일 어디에도 남지 않는다 — 기존 항목을 모두 유지한 채 ` +
+                "새 이름을 더하라(한 줄짜리 목록이면 그 줄에 이름을 덧붙이면 된다). 정말 지워야 하면 `# intent: replace` 를 실어라.",
             };
           }
         }
@@ -112,16 +123,6 @@ export default function strictAdditiveWrites(pi: any) {
         // 등록 줄은 **누적된다** — 그래서 판정은 "같은가"가 아니라 "잃었는가"다. 한 줄짜리 import
         // 목록에 이름을 더하려면 그 줄을 고칠 수밖에 없으므로, 글자 동일성을 요구하면 정당한 배선이
         // 통째로 막힌다(2026-08-30 실측: 그 상태에서 세션이 라우터 등록을 끝내지 못했다).
-        if (isRegistrationLine(target) && losesEntries(target, bodyLines.join("\n"))) {
-          const lost = registrationEntries(target).filter((e) => !bodyLines.join("\n").includes(e));
-          return {
-            block: true,
-            reason:
-              `this edit drops \`${lost.join(", ").slice(0, 60)}\` from a registration line ` +
-              `(\`${target.slice(0, 70)}\`) — registries accumulate: keep every existing entry and add yours ` +
-              "alongside. If removal is truly intended, resend with a `# intent: replace` comment line.",
-          };
-        }
         const sibling = bodyLines.find((b) => siblingSwap(target, b));
         if (sibling) {
           return {
@@ -131,15 +132,6 @@ export default function strictAdditiveWrites(pi: any) {
               "if you meant to ADD, keep the old line and use the insert form " +
               `(\`PUT ${op[1]}+1@:\`) for the new one. If you truly mean to REPLACE it, resend the same ` +
               "edit with a `# intent: replace` comment line included.",
-          };
-        }
-        if (isImport(target) && bodyLines.some(isImport) && losesEntries(target, bodyLines.join("\n"))) {
-          return {
-            block: true,
-            reason:
-              `this edit replaces an existing import (\`${target.slice(0, 60)}\`) with a new one — ` +
-              "if you meant to ADD, keep the old line and insert yours next to it " +
-              `(\`PUT ${op[1]}+1@:\`). If you truly mean to replace it, resend with a \`# intent: replace\` comment.`,
           };
         }
       }
@@ -230,39 +222,47 @@ export default function strictAdditiveWrites(pi: any) {
   });
 }
 
-/** 등록·배선 줄(누적되는 레지스트리 항목)인가 — 경로가 아니라 모양으로 판정한다. */
-/**
- * 등록 줄이 담고 있던 **항목**들. import 목록의 이름, `include_router(x.router)` 의 `x`,
- * `XDep = Annotated[...]` 의 좌변처럼 "누적되는 것"을 뽑는다.
- */
-function registrationEntries(line: string): string[] {
-  const imp = /^from\s+\S+\s+import\s+(.+)$/.exec(line);
-  if (imp) return imp[1].split(",").map((x) => x.trim().replace(/\s+as\s+\S+$/, "")).filter(Boolean);
-  const call = /\b(?:include_router|add_middleware|add_api_route|register|add_url_rule|mount)\s*\(\s*([A-Za-z_][\w.]*)/.exec(line);
-  if (call) return [call[1]];
-  const dep = /^(\w+Dep)\s*=/.exec(line);
-  if (dep) return [dep[1]];
-  const plain = /^import\s+(\S+)/.exec(line);
-  if (plain) return [plain[1]];
-  return [line];
-}
 
 /**
- * 교체가 **손실인가**. 항목이 하나도 사라지지 않으면 손실이 아니다.
+ * 등록 항목을 **형태와 함께** 식별한다 — `import:User`, `register:user`, `dep:SessionDep`.
  *
- * 이 판정이 "옛 줄이 글자 그대로 남아 있는가" 였을 때, `from app.routers import a, b` 에 이름을
- * 하나 더하는 정당한 편집이 막혔다 — 한 줄짜리 목록에서 "나란히 추가"는 그 줄을 고치는 것뿐인데,
- * 안내는 실행 불가능한 지시를 하고 있었다(2026-08-30 실측: 배선 단계에서 세션이 갇혔다).
+ * 형태를 붙이는 이유: `include_router(user.router)` 를 `include_router(notice.router)` 로 바꾸면
+ * `user` 는 파일 위쪽 import 목록에 글자로는 여전히 있다. 형태를 무시하고 "파일 어딘가에 있나"만
+ * 보면 실측된 회귀(라우터 등록 소실, 2026-08-28)가 그대로 통과한다.
  */
-function losesEntries(oldLine: string, bodyText: string): boolean {
-  return registrationEntries(oldLine).some((e) => !new RegExp(`(^|[^\\w.])${e.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w]|$)`).test(bodyText));
+function entryKeys(line: string): string[] {
+  const t = line.trim();
+  const imp = /^from\s+\S+\s+import\s+(.+)$/.exec(t);
+  if (imp) return imp[1].replace(/[()]/g, "").split(",").map((x) => x.trim().replace(/\s+as\s+\S+$/, "")).filter(Boolean).map((e) => `import:${e}`);
+  const plain = /^import\s+(\S+)/.exec(t);
+  if (plain) return [`import:${plain[1]}`];
+  const call = /\b(?:include_router|add_middleware|add_api_route|register|add_url_rule|mount)\s*\(\s*([A-Za-z_][\w.]*)/.exec(t);
+  if (call) return [`register:${call[1]}`];
+  const dep = /^(\w+Dep)\s*=/.exec(t);
+  if (dep) return [`dep:${dep[1]}`];
+  return [];
 }
 
-function isRegistrationLine(l: string): boolean {
-  return /^(from\s+\S+\s+import\b|import\s+\S)/.test(l)
-    || /^\w+Dep\s*=\s*Annotated\b/.test(l)
-    || /\b(include_router|add_middleware|add_api_route|register|add_url_rule|mount)\s*\(/.test(l);
+/**
+ * `from`..`to` 행을 지우거나 갈아끼운 뒤, **이 파일 어디에도 남지 않는** 등록 항목.
+ *
+ * 판정이 "이 줄이 등록인가" 였을 때 정당한 편집 셋이 갇혔다(2026-08-30 실측):
+ *  - 자기가 실수로 넣은 중복 등록(`include_router(health.router)` 가 이미 아래에 있는데 위에 또)을
+ *    지우지 못했다 — 잃는 것이 없는데도 "그 줄은 등록이다" 로 막혔다.
+ *  - 한 패치에서 옮기는 편집(여기서 CUT, 저기에 PUT)이 CUT 만 보고 막혔다.
+ *  - 방금 자기가 쓴 테스트 파일의 import 를 고치다 막혔다(호출부 `isTestPath` 로 제외).
+ * 남는지만 본다 — 중복 제거·이동은 손실이 아니고, 마지막 하나가 사라지는 것만 손실이다.
+ */
+function lostEntries(fileLines: string[], from: number, to: number, adds: string[]): string[] {
+  const removed: string[] = [];
+  for (let n = from; n <= to; n++) removed.push(...entryKeys(fileLines[n - 1] ?? ""));
+  if (removed.length === 0) return [];
+  const surviving = new Set<string>();
+  fileLines.forEach((l, i) => { if (i + 1 < from || i + 1 > to) for (const k of entryKeys(l)) surviving.add(k); });
+  for (const l of adds) for (const k of entryKeys(l)) surviving.add(k);
+  return [...new Set(removed.filter((k) => !surviving.has(k)))].map((k) => k.split(":").slice(1).join(":"));
 }
+
 
 function siblingSwap(oldLine: string, newLine: string): boolean {
   if (oldLine === newLine) return false;

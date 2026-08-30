@@ -156,4 +156,34 @@ check("42 CUT 으로 등록 줄 삭제는 BLOCK",
 check("43 의도 선언이면 교체도 통과",
   wire(`[${M}#A]\n# intent: replace\nPUT 2.=2:\napi_router.include_router(notice.router)`) === undefined);
 
+
+// 44-50: 판정은 "이 줄이 등록인가"가 아니라 "이 항목이 편집 뒤에도 남는가"다(2026-08-30 재정립).
+// 실측된 세 충돌을 그대로 케이스로 박는다 — 셋 다 잃는 것이 없는데 막혀서 세션이 갇혔다.
+writeFileSync(FIX + "/backend/app/main.py",
+  "from app.routers import auth, batch, health, integration, user\n"
+  + "api_router.include_router(health.router)\n"       // 2행: 실수로 위쪽에 낀 중복 등록
+  + "x = 1\n"
+  + "api_router.include_router(user.router)\n"
+  + "api_router.include_router(health.router)\n");     // 5행: 제자리 등록
+check("44 중복 등록 삭제는 통과(같은 항목이 5행에 남는다)",
+  wire(`[${M}#A]\nCUT 2`) === undefined);
+check("45 마지막 하나 삭제는 BLOCK(user 가 사라진다)",
+  wire(`[${M}#A]\nCUT 4`)?.block === true);
+check("46 같은 패치 안의 이동은 통과(CUT + 아래에 다시 등록)",
+  wire(`[${M}#A]\nCUT 4\nPUT 5+1@:\napi_router.include_router(user.router)`) === undefined);
+check("47 import 목록에 글자가 남아도 등록 소실은 BLOCK(형태를 구분한다)",
+  wire(`[${M}#A]\nPUT 4.=4:\napi_router.include_router(notice.router)`)?.block === true);
+
+// 테스트 파일: import 가 사라지면 수집 단계에서 즉시 터진다 — 조용한 손실이 아니므로 가드 대상이 아니다.
+mkdirSync(FIX + "/backend/tests/services", { recursive: true });
+writeFileSync(FIX + "/backend/tests/services/test_notice.py",
+  "import pytest\nfrom app.core.exceptions import NotFoundError\nfrom app.services.notice import NoticeService\n\ndef test_x():\n    pass\n");
+const T = "backend/tests/services/test_notice.py";
+check("48 테스트 파일의 import 교체는 통과(수집에서 터지는 손실)",
+  wire(`[${T}#A]\nPUT 2.=2:\nfrom sqlalchemy import select, update`) === undefined);
+check("49 테스트 파일의 import 삭제도 통과",
+  wire(`[${T}#A]\nCUT 2`) === undefined);
+check("50 app 트리에서는 같은 편집이 그대로 BLOCK",
+  wire(`[${M}#A]\nPUT 1.=1:\nfrom sqlalchemy import select`)?.block === true);
+
 process.exit(bad ? 1 : 0);

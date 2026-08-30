@@ -184,7 +184,7 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
 | +-- strict-backend-migrations.ts    # Backend: blocks edits only to upstream migration files
 | +-- strict-no-subagents.ts        # Cross-cutting: blocks task (subagent) creation
 | +-- strict-no-vcs-publish.ts      # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
-| +-- strict-additive-writes.ts # Cross-cutting: blocks an edit that replaces or deletes a registration/import line instead of adding alongside
+| +-- strict-additive-writes.ts # Cross-cutting: blocks an edit only when a registration/import entry would survive nowhere in the file (dedupe and same-patch moves pass; tests/ is exempt — a lost import there fails loudly at collection)
 | +-- strict-backend-app-structure.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
 | +-- strict-tooling.ts            # Cross-cutting: blocks writes of Python/shell tooling and root script dirs outside .omp/hooks/ (write only — an existing file is fixed forward)
 +-- post/
