@@ -250,7 +250,12 @@ export function registerDiscipline(pi: any): void {
       })();
       const ceil = hygieneCeiling();
       const overCeiling = ceil > 0 && frac >= ceil;
-      if (phase === "idle" && (overCeiling || (hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET))) {
+      // 아직 아무것도 만들지 않은 세션은 자르지 않는다. 실측 2026-08-30(상한 0.25 프로브):
+      // 읽기 단계에서 컷이 걸리자 남은 문맥이 "베이스라인 초록" 뿐이라 피험자가 과제를 시작도 않고
+      // "All gates green" 으로 종료했다(206초·writes 0·산출물 0). 이 레포가 TAIL-TRIM 으로 한 번
+      // 겪은 실패형과 같다 — 컨텍스트 조작은 진행 중인 작업에만 안전하다.
+      if (phase === "idle" && mutatedEver
+          && (overCeiling || (hygieneCuts < MAX_HYGIENE && tokensAtCut > 0 && used - tokensAtCut >= HYGIENE_BUDGET))) {
         beginCheckpoint(overCeiling
           ? `the context is at ~${Math.round(frac * 100)}% of the window (~${Math.round(used / 1000)}k tokens)`
           : `the context grew by ~${Math.round((used - tokensAtCut) / 1000)}k tokens since the last cut`);

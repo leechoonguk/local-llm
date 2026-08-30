@@ -359,6 +359,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     ctxTokens = 30_000; handlers.turn_end({ toolResults: [{}] }, ctx);
     for (let i = 0; i < 4; i++) { now += 600_000; handlers.turn_end({ toolResults: [{}] }, ctx); }
     check("N4: a stalled session with no context growth is never cut", handlers.context({ messages: msgs(30) }, ctx) === undefined);
+    // 컷은 진행 중인 작업에만 적용된다(CUT0) — 각 케이스에 실제 쓰기를 하나 넣는다.
+    now += 5_000; editOk(handlers, "app/n5.py");
     ctxTokens = 30_000 + 55_000; now += 30_000; handlers.turn_end({ toolResults: [{}] }, ctx);
     check("N5: +55k growth still checkpoints (the one context job)", sent.length === 1 && /Checkpoint before a context reset/.test(sent[0] ?? ""));
     ctxTokens = 30_000; }
@@ -370,6 +372,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
     registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
     handlers.turn_end({ toolResults: [{}] }, ctxWin(80_000, 131_072));   // 첫 턴이 기준선을 잡는다
+    // 컷은 진행 중인 작업에만 적용된다(CUT0) — 각 케이스에 실제 쓰기를 하나 넣는다.
+    now += 5_000; editOk(handlers, "app/hc1.py");
     now += 30_000;
     handlers.turn_end({ toolResults: [{}] }, ctxWin(82_000, 131_072));   // 성장 2k — 예산에 한참 못 미친다
     check("HC1: past 60% of the window, a barely-growing session is still cut",
@@ -398,6 +402,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
     try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
     registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
     handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => usage });
+    now += 5_000; editOk(handlers, "app/hc.py");   // 컷은 작업이 시작된 뒤에만(CUT0)
     now += 30_000;
     handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => usage });
     return sent;
@@ -413,6 +418,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
   registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
   handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 120_000, contextWindow: 131_072 }) });
+  now += 5_000; editOk(handlers, "app/hc7.py");
   now += 30_000;
   handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 121_000, contextWindow: 131_072 }) });
   check("HC7: ceiling 0 disables the absolute cut (growth budget still applies)", sent.length === 0);
@@ -426,6 +432,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
   registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
   handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 100_000, contextWindow: 131_072 }) });
+  now += 5_000; editOk(handlers, "app/ck.py");   // 컷은 작업이 시작된 뒤에만(CUT0)
   now += 30_000;
   handlers.turn_end({ toolResults: [{}] }, { getContextUsage: () => ({ tokens: 101_000, contextWindow: 131_072 }) });
   const msg = sent[0] ?? "";
@@ -437,6 +444,23 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("CK4: it says the list is replaced and everything must be carried forward",
     /carrying EVERY existing item forward/.test(msg) && /anything you leave out is deleted/.test(msg));
   check("CK5: it says why — what is missing is lost", /only things left|anything missing from it is gone/i.test(msg));
+}
+
+{ // CUT0: 아무것도 만들지 않은 세션은 자르지 않는다.
+  // 실측 2026-08-30: 읽기 단계에서 컷이 걸린 셀이 "All gates green" 으로 206초 만에 종료했다
+  // (writes 0·산출물 0) — 베이스라인이 초록이라 컷 뒤 문맥만 보면 끝난 것처럼 보인다.
+  const fire = (mutate) => {
+    const handlers = {}; const sent = [];
+    try { rmSync(".omp/state/discipline.json"); } catch { /* 없으면 그만 */ }
+    registerDiscipline({ on: (e, h) => { handlers[e] = h; }, sendUserMessage: (m) => sent.push(m) });
+    const usage = { getContextUsage: () => ({ tokens: 100_000, contextWindow: 131_072 }) };
+    handlers.turn_end({ toolResults: [{}] }, usage);
+    if (mutate) { now += 5_000; editOk(handlers, "app/x.py"); }
+    now += 30_000; handlers.turn_end({ toolResults: [{}] }, usage);
+    return sent;
+  };
+  check("CUT0a: no mutation yet -> the ceiling does not cut", fire(false).length === 0);
+  check("CUT0b: after a real write -> it cuts", fire(true).length === 1);
 }
 
 process.exit(failures ? 1 : 0);
