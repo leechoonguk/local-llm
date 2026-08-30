@@ -225,6 +225,20 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("R2b: fresh gate after the notice -> finish is silent", sent.length === 1);
 }
 
+{ // S1: 사용자가 Esc 로 끊은 턴은 마감 신호가 아니다 (2026-08-30)
+  // 중단된 턴에는 도구 결과가 없어 prose 판정이 참이 된다 — 가드가 없으면 마감 게이트가 사용자
+  // 메시지를 밀어 넣어 방금 취소한 작업을 다시 굴린다(사용자에겐 Esc 가 안 먹는 것으로 보인다).
+  const { handlers, sent } = makePi();
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  handlers.turn_end({ message: { role: "assistant", stopReason: "aborted" } }, ctx);
+  check("S1a: aborted turn -> silent (Esc 가 막히지 않는다)", sent.length === 0);
+  handlers.turn_end({ message: { role: "assistant", stopReason: "error" } }, ctx);
+  check("S1b: errored turn -> silent", sent.length === 0);
+  handlers.turn_end({ message: { role: "assistant", stopReason: "end_turn" } }, ctx);
+  check("S1c: 정상 마감은 그대로 막힌다(가드가 게이트를 죽이지 않는다)",
+    sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
+}
+
 { // P6: a Dep-alias replacement in services.py is announced (non-import wiring line)
   const { mkdirSync, writeFileSync, rmSync } = await import("node:fs");
   const FIX = join(FIXROOT, "regfix6");

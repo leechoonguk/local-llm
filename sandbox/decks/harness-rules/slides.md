@@ -96,7 +96,7 @@ style: |
 <!-- sync: root-git-workflow.md=d623ac8f064686ae -->
 <!-- sync: root-makefile.md=eb585864798e1655 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
-<!-- sync: strict-additive-writes.ts=a51e0c8ba3c78bb0 -->
+<!-- sync: strict-additive-writes.ts=cc961137aac7457d -->
 <!-- sync: strict-backend-app-structure.ts=8f7a405fd926c26f -->
 <!-- sync: strict-backend-migrations.ts=c61439345aa57805 -->
 <!-- sync: strict-command-routing.ts=db92c85fa488dda3 -->
@@ -133,7 +133,7 @@ style: |
 <!-- sync: check-environment.ts=06cbda65a3995f6e -->
 <!-- sync: check-frontend-code.ts=8d2638d68947d133 -->
 <!-- sync: check-makefiles.ts=a232a657107e6577 -->
-<!-- sync: check-omp-hooks.ts=9791280e54f2fb02 -->
+<!-- sync: check-omp-hooks.ts=9d7449f363a47750 -->
 <!-- sync: check-omp-rules.ts=385339b1dd762c2f -->
 <!-- sync: check-omp-skills.ts=67831f31a4b0b420 -->
 <!-- sync: check-omp-types.ts=8171ad53424a7feb -->
@@ -183,7 +183,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=41c16a5b088933a3 -->
+<!-- sync: extensions/continuity/=2aba6b3b66c007a3 -->
 
 # 하네스 룰 & 훅 아키텍처
 
@@ -514,7 +514,7 @@ flowchart TB
 | 세션을 다시 열면 처음부터 | 브리핑을 다시 타이핑 | 도착 시 골 카드 + "커밋되지 않은 변경이 남아 있다"를 스스로 게시 (`git status`만 읽으므로 밀리초; 게이트는 정착 시점에만) |
 | 작은 모델은 임계 전에 무너짐 | OMP 임계까지 대기 | 컨텍스트 창 < 200k면 **55%에서 선제 압축** (압축 세대당 1회, `/model` 전환에 자동 추종) |
 
-| 임계값이 근거 없는 상수 | 주석에만 이유 | **개입 결과 원장** — 개입 시 `kinds/sigs/counts`를 적고, 다음 턴이 `broke`/`failed`를 판정. `make continuity-report`가 종류별 break-rate·발화 시점 count를 표로 출력 |
+| 임계값이 근거 없는 상수 | 주석에만 이유 | 임계는 그 값이 잡은 실패를 주석에 적고, 경계는 합성 프루프가 고정한다 — 값이 바뀌면 프루프가 먼저 깨진다 |
 
 <div class="muted small">**원장 판독** — break-rate가 낮으면 그 신호가 루프가 아니거나 개입이 틀린 것이고, 항상 높은데 발화 count가 크면 더 일찍 잡을 수 있다는 뜻입니다. 진전이 없는데 같은 시그니처가 다시 오거나 3턴이 지나면 `failed`로 닫히므로, 성공만 기록되는 원장이 되지 않습니다.</div>
 

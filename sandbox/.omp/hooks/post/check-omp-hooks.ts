@@ -748,29 +748,6 @@ function checkAuthoringInvariants(actualFiles: Set<string>): string[] {
     }
   }
 
-  // 3. A loop detector nobody produces or judges is dead weight that still ships
-  //    in the state blob and the report vocabulary.
-  // Coverage is measured by the self-test's own run (it fails when a declared
-  // kind never fires), so this half only asks the static question: does anything
-  // emit the kind at all? Measured: 'oscillation' is emitted, judged by nobody.
-  const statePath = join(ompDir, "extensions", "continuity", "state.ts");
-  if (existsSync(statePath)) {
-    const declared = /export type LoopKind =([^;]+);/.exec(readFileSync(statePath, "utf-8"));
-    const producers = ["index.ts", "detectors.ts"]
-      .map((name) => join(ompDir, "extensions", "continuity", name))
-      .filter((path) => existsSync(path))
-      .map((path) => readFileSync(path, "utf-8"))
-      .join("\n");
-    for (const match of (declared?.[1] ?? "").matchAll(/"([A-Za-z]+)"/g)) {
-      const kind = match[1];
-      if (!new RegExp(`kind: "${kind}"`).test(producers)) {
-        issues.push(
-          `extensions/continuity: LoopKind '${kind}' is declared but nothing produces it — ` +
-            "a kind no detector emits cannot be judged by make continuity-report",
-        );
-      }
-    }
-  }
   return issues;
 }
 

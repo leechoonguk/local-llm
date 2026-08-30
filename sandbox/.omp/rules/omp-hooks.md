@@ -649,15 +649,14 @@ These exist because the harness's own measurements say each class can grow. From
 | Every post hook declares a path scope (`touchesPath`/`touchesStrict`) or a `// hook-scope: global — <reason>` | a check that runs on events outside its domain spends the agent's wall clock, not just context | one write cost 6.8s of hook time; the meta checks in it (2.7s `check-omp-hooks`, 0.4s `check-omp-types`) had nothing to do with the edited file (2026-08-29) |
 | Only `post/check-verify.ts` may execute the project gate (`make`, `pytest`, `ruff`, `pyright`, `npm`, `uv`) | the gate is 54% of all hook time (1,120s of 2,058s) and a second runner races the agent's own `make` | one owner today |
 
-마지막 항목은 2026-08-29 축소로 사라졌다: 루프 감지기(`LoopKind`)와 자기검사(`continuity-selftest`)는
-확장과 함께 제거됐다 — 개입이 도구 호출 2,266건을 취소했고, rung-1 증거의 1,075건이 그 취소로
-재발행된 호출이었다(자기 피해를 루프로 읽었다). 남은 신호의 경계는 이 워크스페이스 밖의 합성 프루프가 고정한다(그 관리 주체는 이 프로젝트가 아니다).
+확장(`extensions/continuity/`)이 내보내는 신호는 둘뿐이다 — 배선 소실 경고(REG-WATCH)와 마감 게이트.
+둘 다 도구 호출을 취소하지 않고 컨텍스트를 건드리지 않는다. 창 관리는 omp 소관이다.
 
 ## Never Do These
 
 - Run the project gate (`make verify`, `make test`, `pytest`, `ruff`, `pyright`,
   `npm run build`) from any post hook except `check-verify` — read files instead
-- Declare a `LoopKind` no detector emits, or one no self-test case drives
+- Cancel or preempt the agent's own tool calls from an extension — 신호는 밀기만 한다
 - Put blocking logic in post hooks — they can't block tool calls
 - Mix pre and post hooks in the same directory
 - Reference `make verify-rules` or `scripts/verify_rules.ts` — they do not exist; use `make verify`

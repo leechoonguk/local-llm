@@ -4,7 +4,7 @@
  * 규칙: .claude/rules/live-sync.md
  *  - omp: `omp config path`(없으면 ~/.omp/agent) 의 models.yml 이 omp/models.yml 과 바이트 동일,
  *    config.yml 이 config.fragment.yml 의 modelRoles(default/tiny)·defaultThinkingLevel 을 담는다
- *  - oMLX: ~/.omlx/model_settings.json·model_profiles.json 이 레포와 JSON 동일, settings.json 의 port /
+ *  - oMLX: ~/.omlx/model_settings.json·model_profiles.json 이 레포가 선언한 키마다 같은 값(앱이 채운 기본값은 드리프트 아님), settings.json 의 port /
  *    memory_guard_tier / hot_cache_max_size 가 install.sh 가 쓰는 값, 모델·드래프터가 앱 스토어(~/.omlx/models)나 HF 캐시에 있다
  *  - Ollama: LaunchAgent plist 설치 + 자리표시자 치환. 서버가 떠 있으면(127.0.0.1:11434, 2s)
  *    Modelfile 마다 모델이 있고 num_ctx/num_predict/샘플링이 Modelfile 과 같다. 서버가 없으면 그 부분은 건너뛴다
@@ -69,7 +69,15 @@ function checkOmlx(root: string): Issue[] {
   for (const f of ["model_settings.json", "model_profiles.json"]) {
     const src = jsonOf(read(root, `omlx/${f}`)), live = existsSync(join(dir, f)) ? jsonOf(readFileSync(join(dir, f), "utf-8")) : null;
     if (live === null) issues.push(`oMLX: ${dir}/${f} 이 없다 — cp omlx/${f} ${dir}/${f}`);
-    else if (canon(src) !== canon(live)) issues.push(`oMLX: ${dir}/${f} 이 omlx/${f} 과 다르다 — cp omlx/${f} ${dir}/${f} 후 omlx restart (메뉴바 앱)`);
+    else {
+      // 바이트/JSON 동일이 아니라 **부분집합** 으로 본다. oMLX 앱은 파일을 다시 쓸 때 자기 기본값
+      // 수십 개(qwen35_ane_prefill_*, dflash_*, is_favorite …)를 채워 넣는다 — 그건 우리 설정이 아니라
+      // 앱의 내부 기본값이고, 앱 버전이 오를 때마다 레포에 베껴 넣으면 드리프트 신호가 잡음이 된다.
+      // 계약은 "레포가 선언한 키는 라이브에서 그 값이어야 한다" 이다(2026-08-30).
+      for (const path of mismatches(src, live, "")) {
+        issues.push(`oMLX: ${dir}/${f} 의 ${path} 가 omlx/${f} 와 다르다 — cp omlx/${f} ${dir}/${f} 후 omlx restart (메뉴바 앱)`);
+      }
+    }
   }
   const settings = existsSync(join(dir, "settings.json")) ? jsonOf(readFileSync(join(dir, "settings.json"), "utf-8")) : null;
   const install = read(root, "omlx/install.sh") ?? "";
@@ -147,6 +155,24 @@ function parseParams(text: string): Record<string, string> {
 }
 
 /** 키 순서 무관 비교용 정렬 직렬화 — oMLX 가 저장하며 키 순서를 바꾼다. */
+/**
+ * 레포(src)가 선언한 키만 라이브(live)와 비교해, 어긋난 키 경로를 돌려준다.
+ * 라이브에만 있는 키는 앱 기본값이므로 보지 않는다.
+ */
+function mismatches(src: unknown, live: unknown, path: string): string[] {
+  if (src === null || typeof src !== "object" || Array.isArray(src)) {
+    return canon(src) === canon(live) ? [] : [path === "" ? "값" : path];
+  }
+  if (live === null || typeof live !== "object" || Array.isArray(live)) return [path === "" ? "값" : path];
+  const out: string[] = [];
+  for (const k of Object.keys(src as Rec)) {
+    if (k === "created_at" || k === "updated_at") continue; // 앱이 파일을 쓸 때 찍는 도장 — 설정이 아니다
+    if (!(k in (live as Rec))) { out.push(`${path}${path === "" ? "" : "."}${k} (라이브에 없음)`); continue; }
+    out.push(...mismatches((src as Rec)[k], (live as Rec)[k], `${path}${path === "" ? "" : "."}${k}`));
+  }
+  return out;
+}
+
 function canon(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
   if (v && typeof v === "object") return `{${Object.keys(v as Rec).sort().map((k) => `${JSON.stringify(k)}:${canon((v as Rec)[k])}`).join(",")}}`;

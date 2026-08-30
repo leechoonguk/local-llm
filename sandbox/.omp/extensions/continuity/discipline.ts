@@ -17,47 +17,14 @@
  *  5. Destruction is blocked, not advised (strict-* pre hooks + the verify
  *     gate). This module only nudges and cuts; it never blocks.
  *
- * Signals (all sickness- or blindness-triggered; healthy sessions pay zero):
- *  - VERIFY-NUDGE  once: mutations ran VERIFY_NUDGE_MS with no verification
- *    observed. Basis: every near-miss ran its first verification 25+ min in.
- *  - TEST-NUDGE    once: SRC_BEFORE_TESTS+ source files written, zero files
- *    under a tests/ directory, TEST_NUDGE_MS after the first mutation.
- *    Basis: every timeout died in a late test pile (53-57% coverage, NameError
- *    against 30-minute-old code); a cell was observed at minute 26 with zero
- *    test files while the doc directive for the same behavior went unadopted.
- *  - SICKNESS CUT  stall (no successful mutation for STALL_MS) or red-age
- *    (verification failing for RED_AGE_MS). Two-phase: checkpoint request with
- *    context intact, then a persistent window cut; canceled if the session
- *    recovers inside the checkpoint turn (measured: a cut once fired after
- *    green). Windows persist until superseded (measured: one-shot rewrites
- *    lasted a single call, ctx 80k->22k->81k) and are released at agent_end
- *    (measured: the injected bootstrap re-drove a finished session to the cap).
- *  - HYGIENE CUT   context grew HYGIENE_BUDGET since the last cut. Basis:
- *    without cuts ctx hit 101k and dt crawled to 308s; a cut costs ~6.5s vs
- *    omp compaction's 48.5s and recovers dt 2-4x (119.7s -> 3.5-17s).
- *  - END-GATES     a prose finish while red is re-driven (END_GATE_MAX);
- *    any mutated finish gets ONE full-verification re-drive. Basis: scope
- *    green (a passing subset cleared red while the gate failed), a finish
- *    with api/notice.http missing, and a hidden 57%-coverage fake-done were
- *    each caught live.
- *  - OPENING-BRIEF one message at the first turn: the measured recipe of the
- *    fastest green cell (spontaneous first verification at +9.2m, tests
- *    riding with their layers, 32 writes, 21.2-minute finish). Every nudge
- *    fires 10-15 minutes in — after the opening has already set the
- *    trajectory; this moves the proven message channel to minute zero.
- *  - REG-WATCH    a mutation touching a registration file (alembic/env.py,
- *    tests/conftest.py) is followed by an import-line diff against the
- *    session-start snapshot; a vanished line gets one immediate message.
- *    Basis: the single most frequent regression (a registration import
- *    removed — four occurrences) slipped past three guard vectors (edit
- *    swap, two-step remove+add, bash sed) and was only caught by verify
- *    20+ minutes later; the runtime-message channel is the one that works.
- *  - Guards: truncated pipelines (| tail/head/...) never clear red (measured
- *    fake green via `make verify | tail -30`); tool-policy blocks are not
- *    task failures.
+ * 남은 신호는 둘뿐이다. 건강한 세션은 아무 메시지도 받지 않는다.
  *
- * Knobs are fixed constants (local bench target only — the config/profile
- * layer was reverted by user decision). Logging only when STUCK_RESET_LOG set.
+ *  - REG-WATCH   배선 파일(import·라우터 등록·DI 별칭)에서 기존 등록이 사라지면 즉시 알린다.
+ *    등록은 누적되는 것이라 교체는 다른 도메인을 라우팅에서 지운다. 파일별 상한이 있다.
+ *  - 마감 게이트  변경 이후 프로젝트 루트 게이트가 성공하지 않았는데 세션이 끝나려 하면 막는다.
+ *    빨간 게이트 위에서 "끝났다"고 선언하는 것을 잡는 장치다(END_GATE_MAX 만큼 재구동).
+ *
+ * 이 모듈은 밀기만 하고 막지 않는다. 컨텍스트 조작은 하지 않는다 — 창 관리는 omp 소관이다.
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -191,6 +158,13 @@ export function registerDiscipline(pi: any): void {
       const used = (() => { try { return ctx.getContextUsage?.()?.tokens ?? 0; } catch { return 0; } })();
       log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);   // 계측만 남긴다 — 컷은 omp 소관
       lastTurnAt = now;
+
+      // 사용자가 Esc 로 끊은 턴은 "끝냈다"가 아니다. 중단된 턴에도 도구 결과가 없으므로 아래 prose
+      // 판정이 그대로 참이 되고, 마감 게이트가 사용자 메시지를 밀어 넣어 방금 취소한 작업을 다시
+      // 굴린다 — 사용자에게는 Esc 가 먹지 않는 것으로 보인다. omp 자신도 turn_end 직후 같은 필드를
+      // 보고 진행을 멈춘다(`stopReason === "aborted" || "error"`). 계측만 남기고 신호는 내지 않는다.
+      const stopReason = String(e.message?.stopReason ?? e.stopReason ?? "");
+      if (stopReason === "aborted" || stopReason === "error") { log(`turn interrupted (${stopReason}) — 신호 없음`); return; }
 
       const prose = !(e.toolResults && e.toolResults.length);
       if (prose && endGateSends < END_GATE_MAX) {
