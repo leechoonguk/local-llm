@@ -1,0 +1,11 @@
+id: frontend-screen-raw-datagrid
+valid:
+  - |
+    export default function UserList() {
+      return <ServerDataGrid rows={rows} columns={columns} paginationMeta={paginationMeta} />
+    }
+invalid:
+  - |
+    export default function UserList() {
+      return <DataGrid rows={rows} columns={columns} paginationMode="server" />
+    }

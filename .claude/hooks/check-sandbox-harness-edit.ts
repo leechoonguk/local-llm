@@ -13,7 +13,7 @@
  * git 이 없거나 sandbox 가 없는 호스트에서는 skip 한다.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
@@ -66,10 +66,11 @@ for (const line of log === "" ? [] : log.split("\n")) {
   // 사고의 지문은 **진행 중이던 과제 산출물이 새로 추가된 것**이다 — 도메인 계층·테스트·마이그레이션.
   const added = sh("git", ["show", "--pretty=", "--name-only", "--diff-filter=A", hash])
     .split("\n").map((l) => l.trim()).filter(Boolean);
-  const artifactAdded = added.filter((f) =>
-    /^sandbox\/backend\/app\/(models|schemas|repositories|services|routers)\//.test(f) ||
-    f.startsWith("sandbox/backend/tests/") ||
-    f.startsWith("sandbox/backend/alembic/versions/"));
+  // 위험의 실체는 도메인 경로 일반이 아니라 **현재 벤치 과제의 정답이 트리에 남는 것**이다
+  // (2026-09-01 정밀화). 기준선 채택 커밋(fas 소스 통째 이식)은 마이그레이션 수십 개를 정당하게
+  // 더한다 — 경로 휴리스틱은 그걸 사고로 읽었다. 사고였던 notice 커밋은 그때의 과제 정답을
+  // 담았었다: 판정은 reference/*.manifest.json 의 added 목록과의 교집합으로 한다.
+  const artifactAdded = added.filter((f) => taskAnswers().has(f.replace(/^sandbox\//, "")));
   // 이미 지나간 커밋을 영구히 빨갛게 두지 않는다 — 문제는 커밋 자체가 아니라 **그 산출물이 지금도
   // 트리에 남아 있는 것**이다(그 상태에서 셀을 띄우면 과제가 절반 끝나 있다). 남아 있을 때만 막는다.
   const stillPresent = artifactAdded.filter((f) => existsSync(join(ROOT, f)));
@@ -86,3 +87,19 @@ if (issues.length > 0) {
   process.exit(1);
 }
 console.log("check-sandbox-harness-edit: OK");
+
+/** 현재 벤치 과제들의 기대 산출물(정답) 경로 — reference/*.manifest.json 의 added 합집합. */
+function taskAnswers(): Set<string> {
+  const out = new Set<string>();
+  const dir = join(ROOT, ".claude", "skills", "llm-bench", "reference");
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".manifest.json")) continue;
+      try {
+        const m = JSON.parse(readFileSync(join(dir, f), "utf-8")) as { added?: string[] };
+        for (const rel of m.added ?? []) out.add(rel);
+      } catch { /* 깨진 매니페스트는 check-bench-tasks 소관 */ }
+    }
+  } catch { /* reference 없음 */ }
+  return out;
+}
