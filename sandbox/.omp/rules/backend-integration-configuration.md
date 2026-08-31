@@ -1,9 +1,9 @@
 ---
 description: Database-managed IntegrationClient configuration — provider, named secrets, operations, unified wire fields
 globs:
-      - backend/app/models/integration.py
-      - backend/app/schemas/integration.py
-      - backend/app/repositories/integration.py
+      - backend/app/models/integration/*.py
+      - backend/app/schemas/integration/*.py
+      - backend/app/repositories/integration/*.py
       - backend/app/services/integration.py
       - backend/app/routers/integration.py
       - backend/app/core/integration.py
@@ -26,6 +26,17 @@ there is no configuration revision, configuration cache, or invalidation path.
 ## Data Model
 
 - `integration_provider` owns `code`, HTTPS `base_url`, display name, and enablement.
+  **A provider is a portal, never a dataset**: one host and one credential, with an
+  operation per dataset under it. The seeded row read
+  `공공데이터포털 식품영양성분DB` / `data-go-kr-food-nutrition`, which named a
+  dataset in the provider — and a dataset in the provider leaves the portal's second
+  dataset nowhere to go but a duplicate provider row holding a second copy of the
+  same `service-key`. It is now `공공데이터포털` / `data-go-kr`, and the dataset is
+  what its endpoint already says: `search-food-nutrition` on
+  `/1471000/FoodNtrCpntDbInfo02/…`. The sibling portal is the shape that works —
+  `mfds-food-safety-korea` carries four operations under one key.
+  `check-backend-migrations` reads this **by host**, because the name is the thing
+  that drifted: two provider seeds resolving to one `base_url` host are refused.
 - `integration_secret` owns one **named** credential per provider (`(provider_id, name)`
   unique). A field references it by FK, so a key is rotated in one place, survives a
   full replacement of an operation's fields, and is stored once no matter how many
@@ -163,7 +174,7 @@ The previous five-table shape failed in four ways this design fixes:
 
 ### Two Writers, One Definition of Valid
 
-The four tables have two writers: alembic seeds, and `POST/PATCH /integration/`. A
+The four tables have two writers: alembic seeds, and `POST/PUT /integration/`. A
 migration reaches them through the DB `CHECK` alone — it never meets the Pydantic
 literals or `IntegrationService`'s validation. So the same invariant is written three
 times, and a capability added to two of them leaves the third refusing rows the
@@ -186,9 +197,9 @@ capability is added, move all three layers and let this test decide:
 
 | Layer | File |
 |---|---|
-| DB `CHECK` | the migration + `models/integration.py` |
+| DB `CHECK` | the migration + `models/integration/*.py` |
 | write-time validation | `services/integration.py` |
-| request/response schema | `schemas/integration.py` |
+| request/response schema | `schemas/integration/*.py` |
 
 ## Runtime Contract
 
@@ -305,7 +316,7 @@ Configuration mirrors the provider's published spec, not a hand-picked subset:
 
 ## Schema Naming and Ordering
 
-`schemas/integration.py` follows the `backend-domain.md` suffix convention
+`schemas/integration/*.py` follows the `backend-domain.md` suffix convention
 exactly — every HTTP-facing class carries a `Request` or `Response` suffix:
 
 - Request side: `IntegrationCreateRequest`, `IntegrationUpdateRequest`,
@@ -338,6 +349,19 @@ Machine-checked by `check-backend-integration-configuration.ts`.
   `_replace_` migrations supersede `_seed_` migrations for contract-test anchors.
   An operation replace runs **before** the field seed it owns: deleting the
   operation row cascades its fields away.
+- **Correcting a provider row in place uses a `_correct_` revision, never a
+  `_replace_`.** A provider replace deletes the row and the cascade takes every
+  operation seeded before it, so a change that touches no operation — a wrong
+  `display_name`, a `code` that names a different portal than its own `base_url`
+  — is an UPDATE on the seeded id. The seed string in `PROVIDER_ID` keeps its
+  historical spelling: it is the primary key thirty revisions derive ids from.
+  `check-backend-migrations` rejects a delete inside a `_correct_` upgrade.
+  Corrections are **cumulative, not superseding**: `_replay_newest_integration_seeds`
+  takes the newest seed per (owner, table) *and* every later correction, in
+  revision order. Replaying only the newest file would run the UPDATE without the
+  INSERT it corrects and leave the row absent — and skipping corrections entirely
+  left the replayed database answering `mfds-food-nutrition` (measured) while every
+  real database answered `data-go-kr`.
 - Register all four models in `alembic/env.py` and test conftest metadata.
 - Integration unit tests (`tests/core/test_integration.py`) cover
   `IntegrationClient` mechanics: request rendering, request-schema failure,

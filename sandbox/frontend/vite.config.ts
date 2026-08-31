@@ -11,12 +11,14 @@ export default defineConfig({
     },
   },
   server: {
-    port: 15173,
+    port: 25173,
     proxy: {
+      // The backend mounts its API at /api/v1 (API_V1_PREFIX in main.py), so the
+      // path is passed through unchanged. Rewriting /api away sent every request
+      // one level too high and answered 404.
       '/api': {
-        target: 'http://localhost:18000',
+        target: 'http://localhost:28000',
         changeOrigin: true,
-        rewrite: (p) => p.replace(/^\/api/, ''),
       },
     },
   },

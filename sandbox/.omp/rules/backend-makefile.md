@@ -22,17 +22,17 @@ enforces it on the root, backend, frontend and decks Makefiles.
 |---|---|---|
 | `make help` | `grep -E 'target:.*?## .*'` | Show this help |
 | `make install` | `uv sync` | Install Python dependencies |
-| `make dev` | `start.sh` | Migrate + uvicorn :18000 (reload mode) |
+| `make dev` | `ENV=local BACKEND_PORT=… start.sh` | Migrate + uvicorn on `BACKEND_PORT` from the root `.env` (28000), reload. `ENV=local` is set by the target, so an exported `ENV=production` cannot turn the local target into a container run |
 | `make migrate` | `alembic upgrade head` | Apply pending migrations |
 | `make migrate-down` | `alembic downgrade -1` | Roll back the most recent migration |
 | `make migrate-gen` | `alembic revision --autogenerate` | Auto-generate migration from model changes |
 | `make verify` | `lint + typecheck + test` | Full quality gate (fail-fast) |
+| `make down` | `lsof -ti:$(BACKEND_PORT)` + `xargs kill -9` | Stop backend (kill uvicorn on the same port `dev` used) |
+| `make test` | `pytest -q` | Run tests (100% coverage gate) |
 | `make test-fast` | `pytest -q --no-cov $(t)` | Tests without the coverage gate; `t="tests/..."` scopes to one file |
 | `make verify-fast` | `lint typecheck test-fast` | 반복 개발용 빠른 게이트 — 커버리지 게이트 없이 린트·타입·테스트만. 마감은 여전히 루트 `make verify` 가 판정한다 |
-| `make down` | `lsof -ti:18000` + `xargs kill -9` | Stop backend (kill uvicorn) |
-| `make test` | `pytest -q` | Run tests (100% coverage gate) |
-| `make lint` | `ruff check app alembic tests` | Lint Python code (incl. tests) |
 | `make fix` | `ruff check --fix` + `ruff format` (app tests — alembic 제외) | Auto-fix lint findings and formatting; migrations are immutable artifacts |
+| `make lint` | `ruff check app alembic tests` | Lint Python code (incl. tests) |
 | `make typecheck` | `pyright` | Type-check Python code (incl. tests) |
 | `make clean` | `rm -rf .coverage .pytest_cache .ruff_cache __pycache__` | Remove test, lint, coverage, and Python caches |
 

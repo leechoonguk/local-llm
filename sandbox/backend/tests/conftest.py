@@ -15,14 +15,13 @@ from sqlalchemy.pool import StaticPool
 from app.core.settings import Settings, settings
 from app.main import app
 from app.models.base import Base
-from app.models.batch import Batch  # noqa: F401 — register model on metadata
-from app.models.integration import (  # noqa: F401 — register models on metadata
-    Integration,
-    IntegrationField,
-    IntegrationOperation,
-    IntegrationSecret,
-)
-from app.models.user import User  # noqa: F401 — register model on metadata
+from app.models.batch import Batch  # noqa: F401 — on metadata
+from app.models.integration.call import IntegrationCall  # noqa: F401 — on metadata
+from app.models.integration.field import IntegrationField  # noqa: F401 — on metadata
+from app.models.integration.operation import IntegrationOperation  # noqa: F401 — on metadata
+from app.models.integration.provider import Integration  # noqa: F401 — on metadata
+from app.models.integration.secret import IntegrationSecret  # noqa: F401 — on metadata
+from app.models.user import User  # noqa: F401 — on metadata
 
 
 # Prevent scheduler from starting during tests
@@ -84,11 +83,11 @@ def auth_headers(client: TestClient) -> dict[str, str]:
     """Create a test user and return Bearer auth headers."""
     client.post(
         "/api/v1/user/",
-        json={"username": "tester", "email": "tester@example.com", "password": "secret"},
+        json={"username": "tester", "email": "tester@example.com", "password": "secret-pass"},
     )
     response = client.post(
         "/api/v1/auth/login",
-        data={"username": "tester", "password": "secret"},
+        data={"username": "tester", "password": "secret-pass"},
     )
     token = response.json()["access_token"]
     return {"Authorization": f"Bearer {token}"}

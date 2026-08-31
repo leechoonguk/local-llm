@@ -10,6 +10,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 
 # ============================================================
+# Constants
+# ============================================================
+
+# A parent's collection of child rows: deleted with the parent, and orphans
+# deleted when detached. Declared once here because every model file that owns
+# children spells the same intent.
+CHILD_CASCADE = "all, delete-orphan"
+
+
+# ============================================================
 # Classes
 # ============================================================
 

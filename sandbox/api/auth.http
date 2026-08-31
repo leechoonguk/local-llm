@@ -16,7 +16,7 @@ Content-Type: application/json
 {
   "username": "auth-actor-{{$guid}}",
   "email": "auth-actor-{{$guid}}@example.com",
-  "password": "secret"
+  "password": "secret-pass"
 }
 
 
@@ -25,7 +25,7 @@ Content-Type: application/json
 POST {{base}}/auth/login
 Content-Type: application/x-www-form-urlencoded
 
-username={{createActor.response.body.username}}&password=secret
+username={{createActor.response.body.username}}&password=secret-pass
 
 ### 3. 로그인 — 401 (비밀번호 불일치)
 POST {{base}}/auth/login

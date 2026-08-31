@@ -27,8 +27,8 @@ enforces it on the root, backend, frontend and decks Makefiles.
 |---|---|---|
 | `make help` | `grep -E 'target:.*?## .*'` | Show this help |
 | `make install` | `npm install` | Install frontend dependencies |
-| `make dev` | `npx vite` | Vite dev server (:15173) |
-| `make down` | `lsof -ti:15173` + `xargs kill -9` | Stop frontend (kill Vite) |
+| `make dev` | `npx vite` | Vite dev server on the port in `vite.config.ts` (25173) |
+| `make down` | `lsof -ti:$(FRONTEND_PORT)` + `xargs kill -9` | Stop frontend — the port is read from `vite.config.ts`, so `down` cannot target a stale one |
 | `make verify` | `lint + typecheck + build` | Full quality gate (fail-fast) |
 | `make lint` | `npx eslint .` | ESLint check |
 | `make typecheck` | `npx tsc --noEmit` | TypeScript type check |
@@ -37,8 +37,8 @@ enforces it on the root, backend, frontend and decks Makefiles.
 
 ## Development Commands
 
-1. **Start dev server**: `make dev` — Vite on :15173
-2. **Stop dev server**: `make down` — kill Vite process on :15173
+1. **Start dev server**: `make dev` — Vite on the configured port (25173)
+2. **Stop dev server**: `make down` — kill Vite on that same port
 3. **Verify**: `make verify` — lint → typecheck → build (fail-fast)
 4. **Build**: `make build` — production assets to `frontend/dist/`
 5. **Install**: `make install` — install npm dependencies
@@ -46,7 +46,7 @@ enforces it on the root, backend, frontend and decks Makefiles.
 ## Project Structure
 
 - `frontend/src/` — source files (`.tsx`, `.css`)
-- `frontend/vite.config.ts` — Vite config (port 15173, `/api` proxy → :18000)
+- `frontend/vite.config.ts` — Vite config (port 25173, `/api` proxy → :28000)
 - `frontend/tsconfig.json` — TypeScript config (ES2022, strict, `@/*` alias)
 - `frontend/package.json` — npm package config
 
@@ -58,10 +58,10 @@ This rule only covers Makefile targets and the dev workflow.
 
 ## API Proxy
 
-The `/api/*` → `http://localhost:18000` proxy (dev + nginx) is documented in
+The `/api/*` → `http://localhost:28000` proxy (dev + nginx) is documented in
 `frontend-code-conventions.md` — that rule is the single source.
 
-In development: `make dev` starts Vite (:15173), `make down` stops it; proxy `/api` to backend.
+In development: `make dev` starts Vite (:25173), `make down` stops it; proxy `/api` to backend.
 In production: Nginx serves frontend and proxies `/api` to backend.
 
 ## Never Do These

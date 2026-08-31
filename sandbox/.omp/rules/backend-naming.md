@@ -23,7 +23,7 @@ prefixed with its domain (checked by `naming/var-name.yml`):
 |---|---|---|
 | Router param | `<domain>_service: XxxServiceDep` | `batch_service: BatchServiceDep` |
 | Local var (batch/services) | `<domain>_service = XxxService(session)` | `batch_service = BatchService(session)` |
-| Batch repository access | `<domain>_service.<domain>_repository.<method>()` | `batch_service.item_repository.find_stale(...)` |
+| Batch repository access | `<domain>_service.<domain>_repository.<method>()` | `batch_service.batch_repository.find_stale(...)` |
 
 Never a bare `service`.
 
@@ -34,7 +34,7 @@ Every internal collaborator is prefixed with its domain
 
 | Member | Pattern | Example |
 |---|---|---|
-| Own repository | `self.<name>_repository` | `self.item_repository = ItemRepository(session)` |
+| Own repository | `self.<name>_repository` | `self.batch_repository = BatchRepository(session)` |
 | Other repository | `self.<other>_repository` | `self.user_repository = UserRepository(session)` |
 | Other service | `self.<other>_service` | `self.user_service = UserService(session)` |
 
@@ -79,7 +79,7 @@ from __future__ import annotations
 # Classes
 # ============================================================
 
-class Item(Base, AuditMixin):
+class Batch(Base, AuditMixin):
     ...
 ```
 

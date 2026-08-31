@@ -37,11 +37,12 @@ backend/tests/
 │   ├── test_<domain>.py     # one per CRUD domain — 10 standard cases
 │   └── test_auth.py         # auth standard (login, /auth/me, 401 paths)
 ├── batch/                   # batch job tests
-│   └── test_<module>.py     # mirrors app/batch/<module>.py (e.g. test_items.py)
+│   └── test_<module>.py     # mirrors app/batch/<module>.py (e.g. test_batches.py)
 ├── repositories/            # repository unit tests — one file per source module
 │   └── test_batch.py  test_user.py
 ├── services/                # service unit tests — one file per source module
-│   └── test_batch.py  test_user.py
+│   ├── test_batch.py  test_user.py
+│   └── integration/         # multi-file domain — mirrors app/services/integration/
 └── core/                    # core unit tests
     ├── test_exceptions.py   # domain exceptions + handler registration
     ├── test_security.py     # password hashing + JWT
@@ -57,7 +58,7 @@ backend/tests/
 | `tests/core/` | core modules (exceptions/security/settings) | `test_<module>.py` (mirrors `app/core/`) |
 
 Each subdirectory has an `__init__.py` — pytest needs unique module basenames
-across directories (`test_item.py` exists in api/, repositories/, services/).
+across directories (`test_batch.py` exists in api/, repositories/, services/).
 
 ## API Test Standard (`tests/api/test_<domain>.py`)
 
@@ -76,19 +77,16 @@ Every CRUD domain test file follows the same pattern:
 
 Fixtures: `client` (in-memory SQLite) + `auth_headers` (Bearer token).
 
-**Case detection matches test function names**, not behavior: the gate looks for
-`def test_create_…`, `def test_get_…` / `def test_get_…not_found`,
-`def test_update_…` / `def test_update_…not_found`, `def test_delete_…` /
-`def test_delete_…not_found`, and `def test_create_…422` (or a
-`status_code == 422` assertion). A 404 case named `test_get_missing_x` will not
-be counted — the name must contain `not_found`.
+**The ten cases are the one-table standard.** A domain that owns several model
+files is not a one-resource CRUD API, so the ten test-name patterns and the
+per-table repository test file do not describe it — its behavioral contract
+does. Which standard applies is decided structurally, by how many model files
+the domain owns (`aggregateDomains()` in `lib/backend-domain-structure.ts`),
+never by a domain name in a hook.
 
-**Specialized aggregate exception:** `integration` is a five-table configuration
-aggregate, not a simple resource. Its API, service, and core tests are governed
-by `backend-integration-configuration.md`; they require behavioral contract
-coverage rather than the ten one-resource CRUD test-name patterns or a separate
-repository test file. `check-backend-integration-configuration.ts` validates
-this exception.
+`integration` is the current multi-file domain: its API, service, and core
+tests are governed by `backend-integration-configuration.md` and validated by
+`check-backend-integration-configuration.ts`.
 
 ## Auth Test Standard (`tests/api/test_auth.py`)
 
@@ -103,11 +101,11 @@ this exception.
 
 ## Batch Job Test Standard (`tests/batch/test_<module>.py`)
 
-- One file per source module: `app/batch/items.py` → `tests/batch/test_items.py`
+- One file per source module: `app/batch/batches.py` → `tests/batch/test_batches.py`
 - Swap `app.batch.<name>.engine` for an in-memory engine (fixture)
 - Seed rows, backdate `created_at` via `__table__.update()`
 - Assert the job's count/status return
-- Cover the `except NotFoundError` skip path (monkeypatch `delete_item`)
+- Cover the `except NotFoundError` skip path (monkeypatch `delete_batch`)
 
 ## Repository Test Standard (`tests/repositories/test_<module>.py`)
 

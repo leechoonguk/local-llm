@@ -28,8 +28,9 @@ from app.core.exceptions import (
     IntegrationRateLimitError,
     IntegrationTimeoutError,
 )
-from app.models.integration import IntegrationField, IntegrationOperation
-from app.repositories.integration import IntegrationRepository
+from app.models.integration.field import IntegrationField
+from app.models.integration.operation import IntegrationOperation
+from app.repositories.integration.operation import IntegrationOperationRepository
 
 
 # ============================================================
@@ -52,6 +53,16 @@ PAGING_FAMILIES: dict[str, frozenset[str]] = {
 
 PAGING_KEYS = frozenset(key for family in PAGING_FAMILIES.values() for key in family)
 
+# How much of a failing provider's answer travels back to the caller. The whole
+# point is that "the call failed" was unactionable, and the whole body is not the
+# fix either: one XML page of this provider is 40KB, and an error payload nobody
+# can read is the same defect with more bytes.
+UPSTREAM_BODY_LIMIT = 2000
+
+# What a recorded failure's detail may carry: the column is String(512), and a
+# detail longer than a sentence is a body in the wrong field.
+ERROR_DETAIL_LIMIT = 512
+
 
 # ============================================================
 # Classes
@@ -66,8 +77,50 @@ class IntegrationExecutionResult:
     status_code: int
 
 
+@dataclass(frozen=True)
+class _SentRequest:
+    """What left the process, kept so the record can be written after the answer."""
+
+    method: str
+    url: str
+    headers: dict[str, str]
+    params: dict[str, str]
+    body: object
+    request_id: str | None
+
+
+@dataclass(frozen=True)
+class IntegrationExchange:
+    """One executed call, as the caller may store it.
+
+    The client owns the scrubbing because it is the only place that knows which
+    secret values it resolved: the URL carries the credential as a path segment
+    for these providers, so a raw URL in a log is the key in a log.
+    """
+
+    method: str
+    url: str
+    request_headers: dict[str, str]
+    request_body: object
+    status_code: int | None
+    response_headers: dict[str, str] | None
+    response_body: str | None
+    outcome: str
+    duration_ms: int
+    attempts: int
+    request_id: str | None
+    error_code: str | None
+    error_detail: str | None
+
+
 class IntegrationClient:
     """Execute one database-configured external HTTP operation."""
+
+
+    @property
+    def last_exchange(self) -> IntegrationExchange | None:
+        """What the last `execute` sent and received, or None before the first call."""
+        return self._exchange
 
     def __init__(
         self,
@@ -79,6 +132,12 @@ class IntegrationClient:
         self.provider = operation.provider.code
         self._owns_client = client is None
         self._client = client or httpx2.AsyncClient()
+        # The secret values this client has sent, so a failing provider's body can
+        # be handed back without the credential it echoed. Per client, cleared at
+        # the start of every execute.
+        self._sent_secrets: set[str] = set()
+        # The last exchange this client performed, for a caller that stores it.
+        self._exchange: IntegrationExchange | None = None
 
     @classmethod
     async def from_database(
@@ -89,12 +148,13 @@ class IntegrationClient:
         operation_code: str,
         client: httpx2.AsyncClient | None = None,
     ) -> IntegrationClient:
-        operation = await IntegrationRepository(session).get_operation(
+        operation = await IntegrationOperationRepository(session).get_operation(
             provider_code, operation_code
         )
         if operation is None or not operation.provider.enabled or not operation.enabled:
             raise IntegrationConfigurationError("Integration operation is unavailable")
         return cls(operation=operation, client=client)
+
 
     async def aclose(self) -> None:
         """Close a client owned by this integration instance."""
@@ -108,6 +168,8 @@ class IntegrationClient:
         context: Mapping[str, object] | None = None,
     ) -> IntegrationExecutionResult:
         """Render, execute, validate, and normalize a configured operation."""
+        self._sent_secrets.clear()
+        self._exchange = None
         request_context = dict(context or {})
         request_id = structlog.contextvars.get_contextvars().get("request_id")
         if request_id is not None:
@@ -121,6 +183,17 @@ class IntegrationClient:
         timeout = httpx2.Timeout(
             self.operation.read_timeout_ms / 1000,
             connect=self.operation.connect_timeout_ms / 1000,
+        )
+        # The whole call, not one attempt: a retried call took the time it took,
+        # and the log is read to answer "why was that request slow".
+        call_started = perf_counter()
+        sent = _SentRequest(
+            method=self.operation.method,
+            url=url,
+            headers=headers,
+            params=params,
+            body=body,
+            request_id=None if request_id is None else str(request_id),
         )
 
         attempt = 0
@@ -141,6 +214,7 @@ class IntegrationClient:
                     await self._backoff(attempt)
                     attempt += 1
                     continue
+                self._record(sent, call_started, attempt, "TIMEOUT", None)
                 raise IntegrationTimeoutError(
                     self.provider, self.operation.code, "External API timed out"
                 ) from exc
@@ -150,24 +224,63 @@ class IntegrationClient:
                     await self._backoff(attempt)
                     attempt += 1
                     continue
+                self._record(sent, call_started, attempt, "UNREACHABLE", None)
                 raise IntegrationError(
                     self.provider, self.operation.code, "External API unreachable"
                 ) from exc
 
             self._log("integration_response", started, attempt, status=response.status_code)
             if response.is_success:
-                return self._normalize_response(response)
+                # One choke point for the mapping failures: the envelope refusal,
+                # the unparseable body, the root that is not a page, the missing
+                # required column. Each of them raises from a helper that was
+                # handed the payload and not the response, and each of them is a
+                # verdict about *this* answer - so the answer is attached here
+                # instead of threading a response through six signatures.
+                try:
+                    result = self._normalize_response(response)
+                except IntegrationError as exc:
+                    if exc.status_code is None:
+                        exc.status_code = response.status_code
+                        exc.body = self._upstream_body(response)
+                    # HTTP said yes and the contract said no: the log calls that
+                    # REFUSED, because "200" alone would hide it.
+                    self._record(
+                        sent,
+                        call_started,
+                        attempt,
+                        "REFUSED",
+                        response,
+                        error_code="integration_error",
+                        error_detail=exc.detail,
+                    )
+                    raise
+                self._record(sent, call_started, attempt, "SUCCESS", response)
+                return result
             if response.status_code == 429:
                 retry_after = self._retry_after(response)
                 if self.operation.idempotent and attempt < self.operation.max_retries:
                     await self._backoff(attempt, retry_after)
                     attempt += 1
                     continue
+                # Recorded by value, then raised as its own class: a stored
+                # instance would hide which exception this is (instance-raise.yml).
+                self._record(
+                    sent,
+                    call_started,
+                    attempt,
+                    "RATE_LIMITED",
+                    response,
+                    error_code="integration_rate_limited",
+                    error_detail="External API rate limited",
+                )
                 raise IntegrationRateLimitError(
                     self.provider,
                     self.operation.code,
                     "External API rate limited",
                     retry_after=retry_after,
+                    status_code=response.status_code,
+                    body=self._upstream_body(response),
                 )
             if (
                 response.status_code in RETRYABLE_STATUS_CODES
@@ -177,11 +290,83 @@ class IntegrationClient:
                 await self._backoff(attempt)
                 attempt += 1
                 continue
+            self._record(
+                sent,
+                call_started,
+                attempt,
+                "REFUSED",
+                response,
+                error_code="integration_error",
+                error_detail=f"External API error: HTTP {response.status_code}",
+            )
             raise IntegrationError(
                 self.provider,
                 self.operation.code,
                 f"External API error: HTTP {response.status_code}",
+                status_code=response.status_code,
+                body=self._upstream_body(response),
             )
+
+    def _record(
+        self,
+        sent: _SentRequest,
+        started: float,
+        attempt: int,
+        outcome: str,
+        response: httpx2.Response | None,
+        *,
+        error_code: str | None = None,
+        error_detail: str | None = None,
+    ) -> None:
+        """Remember this exchange, scrubbed, for a caller that wants to store it.
+
+        Held on the client rather than returned: `execute` already returns a result
+        and raises six ways, and threading a second value through every one of them
+        is how the log ends up missing exactly the failures it exists for.
+        """
+        query = "&".join(f"{key}={value}" for key, value in sent.params.items())
+        self._exchange = IntegrationExchange(
+            method=sent.method,
+            url=self._scrub(sent.url if query == "" else f"{sent.url}?{query}"),
+            request_headers={key: self._scrub(value) for key, value in sent.headers.items()},
+            request_body=self._scrub_body(sent.body),
+            status_code=None if response is None else response.status_code,
+            response_headers=(
+                None
+                if response is None
+                else {key: value for key, value in response.headers.items()}
+            ),
+            response_body=None if response is None else self._upstream_body(response),
+            outcome=outcome,
+            duration_ms=round((perf_counter() - started) * 1000),
+            attempts=attempt + 1,
+            request_id=sent.request_id,
+            error_code=error_code,
+            error_detail=None if error_detail is None else error_detail[:ERROR_DETAIL_LIMIT],
+        )
+
+    def _scrub(self, text: str) -> str:
+        for secret in self._sent_secrets:
+            if secret:
+                text = text.replace(secret, "***")
+        return text
+
+    def _scrub_body(self, body: object) -> object:
+        """Scrub the rendered body, which may carry a SECRET field of its own."""
+        if isinstance(body, dict):
+            return {
+                key: self._scrub(value) if isinstance(value, str) else value
+                for key, value in body.items()
+            }
+        return self._scrub(body) if isinstance(body, str) else body
+
+    def _upstream_body(self, response: httpx2.Response) -> str:
+        """A failing provider's own answer, scrubbed and bounded.
+
+        Scrubbed before truncation, not after: truncating first can cut a
+        credential in half and hand back the front of it.
+        """
+        return self._scrub(response.text)[:UPSTREAM_BODY_LIMIT]
 
     def _request_fields(self) -> list[IntegrationField]:
         return sorted(
@@ -285,6 +470,10 @@ class IntegrationClient:
                     f"Configured integration secret is unavailable: {field.key}"
                 )
             value = secret.value
+            # Remembered for one purpose: scrubbing it back out of a failing
+            # provider's body before that body reaches the caller. The key travels
+            # as a path segment, and providers echo their request.
+            self._sent_secrets.add(str(secret.value))
         else:
             value = context.get(field.key)
         if value is None and field.required:

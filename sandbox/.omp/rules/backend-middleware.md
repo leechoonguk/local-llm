@@ -24,14 +24,14 @@ Per FastAPI docs (`CORSMiddleware`):
 ```python
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,  # dev: ["http://localhost:15173"]
+    allow_origins=settings.cors_origins,  # dev: ["http://localhost:25173"]
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 ```
 
-- `allow_origins` from settings; dev includes `http://localhost:15173` (Vite)
+- `allow_origins` from settings; dev includes `http://localhost:25173` (Vite)
 
 ### 2. CSRF Protection
 

@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import cast
 
 import httpx2
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy.exc import IntegrityError
+
+from app.repositories.integration.provider import IntegrationProviderRepository
 
 
 def integration_payload() -> dict[str, object]:
@@ -182,12 +186,16 @@ def test_integration_configuration_rejects_invalid_values(
 
     Both would be stored and then trusted by the transport — one sends
     credentials in clear text, the other lets configuration forge auth.
+
+    The codes differ on purpose: a form can point at the `base_url` input for
+    the first, while the second is a field-level mistake with no input of its
+    own, so it carries the generic configuration code.
     """
     invalid_url = integration_payload()
     invalid_url["base_url"] = "http://partner-api.freshplate.example"
     response = client.post("/api/v1/integration/", json=invalid_url, headers=auth_headers)
     assert response.status_code == 422
-    assert response.json()["code"] == "integration_configuration_invalid"
+    assert response.json()["code"] == "provider_base_url_invalid"
 
     invalid_header = integration_payload()
     operations = invalid_header["operations"]
@@ -392,6 +400,25 @@ def test_integration_secret_endpoints(client: TestClient, auth_headers: dict[str
         == 422
     )
 
+    # Rotation answers 200 and still hides the value; an edit without one is legal,
+    # because the value is write-only and a caller relabelling cannot resend it.
+    rotated = client.put(
+        f"/api/v1/integration/{integration_id}/secrets/reporting-key",
+        json={"value": "rotated-key", "description": "rotated"},
+        headers=auth_headers,
+    )
+    assert rotated.status_code == 200
+    assert "value" not in rotated.json()
+    assert rotated.json()["description"] == "rotated"
+
+    relabelled = client.put(
+        f"/api/v1/integration/{integration_id}/secrets/reporting-key",
+        json={"description": "kept"},
+        headers=auth_headers,
+    )
+    assert relabelled.status_code == 200
+    assert relabelled.json()["description"] == "kept"
+
     # The unreferenced secret goes; the one a request field names is protected.
     removed = client.delete(
         f"/api/v1/integration/{integration_id}/secrets/reporting-key", headers=auth_headers
@@ -433,6 +460,14 @@ def test_integration_secret_endpoints_reject_unknown_targets(
         ).status_code
         == 404
     )
+    assert (
+        client.put(
+            f"/api/v1/integration/{missing}/secrets/whatever",
+            json={"value": "v"},
+            headers=auth_headers,
+        ).status_code
+        == 404
+    )
 
     created = client.post("/api/v1/integration/", json=integration_payload(), headers=auth_headers)
     integration_id = created.json()["id"]
@@ -442,3 +477,86 @@ def test_integration_secret_endpoints_reject_unknown_targets(
         ).status_code
         == 404
     )
+    assert (
+        client.put(
+            f"/api/v1/integration/{integration_id}/secrets/absent",
+            json={"value": "v"},
+            headers=auth_headers,
+        ).status_code
+        == 404
+    )
+
+
+def test_integration_update_replaces_operations(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """Re-sending an operation replaces it instead of colliding with itself.
+
+    Measured before the fix: the unit of work inserted the new rows before
+    deleting the old ones, so a payload carrying an existing code violated
+    uq_integration_operation_provider_code and surfaced as a 500 - which is
+    every edit the UI makes, because the array is sent whole.
+    """
+    created = client.post(
+        "/api/v1/integration/", json=integration_payload(), headers=auth_headers
+    ).json()
+    operations = created["operations"]
+    assert len(operations) == 1
+    kept_fields = len(operations[0]["fields"])
+    assert kept_fields > 0
+
+    same = _as_operation_request(operations[0])
+    added = {**same, "code": "added-operation", "fields": []}
+    provider_id = created["id"]
+    response = client.patch(
+        f"/api/v1/integration/{provider_id}",
+        json={"operations": [same, added]},
+        headers=auth_headers,
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert {op["code"] for op in body["operations"]} == {same["code"], "added-operation"}
+    replaced = next(op for op in body["operations"] if op["code"] == same["code"])
+    assert len(replaced["fields"]) == kept_fields
+
+    dropped = client.patch(
+        f"/api/v1/integration/{provider_id}",
+        json={"operations": [same]},
+        headers=auth_headers,
+    )
+    assert dropped.status_code == 200
+    assert [op["code"] for op in dropped.json()["operations"]] == [same["code"]]
+
+
+def _as_operation_request(operation: dict[str, object]) -> dict[str, object]:
+    """The read model minus the columns the server owns."""
+    server_owned = {"id", "created_at", "updated_at", "created_by", "updated_by", "version"}
+    request = {key: value for key, value in operation.items() if key not in server_owned}
+    fields = request.get("fields")
+    if isinstance(fields, list):
+        request["fields"] = [
+            {key: value for key, value in field.items() if key not in server_owned}
+            for field in fields
+        ]
+    return request
+
+def test_driver_constraint_violation_is_a_conflict(
+    client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A constraint the service did not pre-check answers 409, never a 500.
+
+    Every constraint this app can violate is validated before the insert, so the
+    driver only raises on a race - two requests creating the same code at once.
+    That is why the mapping is asserted here instead of provoked: the caller must
+    be able to tell a conflict from a broken server either way.
+    """
+
+    async def raise_integrity(*_args: object, **_kwargs: object) -> None:
+        raise IntegrityError("INSERT", {}, Exception("duplicate key"))
+
+    monkeypatch.setattr(IntegrationProviderRepository, "create", raise_integrity)
+    response = client.post(
+        "/api/v1/integration/", json=integration_payload(), headers=auth_headers
+    )
+    assert response.status_code == 409
+    assert response.json()["code"] == "conflict"

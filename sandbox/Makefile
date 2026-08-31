@@ -1,4 +1,4 @@
-.PHONY: verify-fast probe-external-api check-omp-types hook-report check-api-flow-verbose help build up down infra-up infra-down db-init db-query logs ps clean docker-clean verify check-backend-domain check-backend-migrations check-backend-table-design check-backend-auth check-backend-exceptions check-backend-api-http check-backend-router-params check-backend-naming check-backend-transaction check-backend-batch check-backend-tests check-backend-middleware check-backend-app-setup check-backend-core-config check-backend-rate-limit check-backend-background-tasks check-backend-ownership check-backend-audit-log check-backend-redis-cache check-backend-file-upload check-backend-sse check-backend-api-keys check-backend-integration check-backend-integration-configuration check-environment check-code-layout check-tooling check-frontend-code check-ast-rules check-omp-types check-omp-hooks check-omp-rules check-omp-skills check-makefiles check-decks-sync check-verify endure-arm endure hook-report check-api-flow check-api-flow-verbose probe-external-api %
+.PHONY: verify-fast probe-external-api check-omp-types hook-report check-api-flow-verbose help build up down infra-up infra-down db-init db-query logs ps clean docker-clean verify check-backend-domain check-backend-migrations check-backend-table-design check-backend-auth check-backend-exceptions check-backend-api-http check-backend-router-params check-backend-naming check-backend-transaction check-backend-batch check-backend-tests check-backend-middleware check-backend-app-setup check-backend-core-config check-backend-rate-limit check-backend-background-tasks check-backend-ownership check-backend-audit-log check-backend-redis-cache check-backend-file-upload check-backend-sse check-backend-api-keys check-backend-integration check-backend-integration-configuration check-environment check-code-layout check-tooling check-frontend-code check-backend-model-files check-backend-repository-files check-backend-service-injection check-frontend-domain check-frontend-api-layer check-frontend-screens check-frontend-design check-frontend-components check-frontend-routing check-frontend-contract check-frontend-types check-frontend-i18n check-ast-rules check-omp-types check-omp-hooks check-omp-rules check-omp-skills check-makefiles check-decks-sync check-verify endure-arm endure hook-report check-api-flow check-api-flow-verbose probe-external-api %
 
 DC := docker compose
 
@@ -130,6 +130,42 @@ check-tooling: ## Check tooling language policy (TypeScript hooks, no Python scr
 check-frontend-code: ## Check frontend code conventions
 	node .omp/hooks/post/check-frontend-code.ts
 
+check-backend-model-files: ## Check model files (one table, one class, one file)
+	node .omp/hooks/post/check-backend-model-files.ts
+
+check-backend-repository-files: ## Check repository files (one repository, one table, named after it)
+	node .omp/hooks/post/check-backend-repository-files.ts
+
+check-backend-service-injection: ## Check no service injects another service
+	node .omp/hooks/post/check-backend-service-injection.ts
+
+check-frontend-domain: ## Check the frontend 6-layer domain pattern
+	node .omp/hooks/post/check-frontend-domain.ts
+
+check-frontend-api-layer: ## Check the frontend API layer (one client, keys, invalidation)
+	node .omp/hooks/post/check-frontend-api-layer.ts
+
+check-frontend-screens: ## Check the per-screen-type templates
+	node .omp/hooks/post/check-frontend-screens.ts
+
+check-frontend-design: ## Check the design system (theme tokens, metrics, component vocabulary)
+	node .omp/hooks/post/check-frontend-design.ts
+
+check-frontend-components: ## Check component boundaries (no shape written twice)
+	node .omp/hooks/post/check-frontend-components.ts
+
+check-frontend-routing: ## Check paths ↔ routes ↔ navigation and the layout guards
+	node .omp/hooks/post/check-frontend-routing.ts
+
+check-frontend-contract: ## Check frontend types/endpoints against the backend schemas/routers
+	node .omp/hooks/post/check-frontend-contract.ts
+
+check-frontend-types: ## Check request/response types, nullability, optionality, verbs and query params
+	node .omp/hooks/post/check-frontend-types.ts
+
+check-frontend-i18n: ## Check locale parity, referenced keys and hardcoded text
+	node .omp/hooks/post/check-frontend-i18n.ts
+
 check-ast-rules: ## Prove every ast-grep rule fires (valid/invalid cases)
 	node .omp/hooks/post/check-ast-rules.ts
 
@@ -171,4 +207,4 @@ probe-external-api: ## Measure a provider before integrating it (usage: make pro
 	@node .omp/hooks/lib/backend-external-api-probe.ts --url '$(url)' \
 		$(if $(filter),--filter '$(filter)') $(if $(since),--since '$(since)') $(if $(root),--root '$(root)')
 
-verify: check-backend-domain check-backend-migrations check-backend-table-design check-backend-auth check-backend-exceptions check-backend-api-http check-backend-router-params check-backend-naming check-backend-transaction check-backend-batch check-backend-tests check-backend-middleware check-backend-app-setup check-backend-core-config check-backend-rate-limit check-backend-background-tasks check-backend-ownership check-backend-audit-log check-backend-redis-cache check-backend-file-upload check-backend-sse check-backend-api-keys check-backend-integration check-backend-integration-configuration check-environment check-code-layout check-tooling check-frontend-code check-ast-rules check-omp-types check-omp-hooks check-omp-rules check-omp-skills check-makefiles check-decks-sync check-verify ## Run all OMP hooks + backend + frontend verify
+verify: check-backend-domain check-backend-migrations check-backend-table-design check-backend-auth check-backend-exceptions check-backend-api-http check-backend-router-params check-backend-naming check-backend-transaction check-backend-batch check-backend-tests check-backend-middleware check-backend-app-setup check-backend-core-config check-backend-rate-limit check-backend-background-tasks check-backend-ownership check-backend-audit-log check-backend-redis-cache check-backend-file-upload check-backend-sse check-backend-api-keys check-backend-integration check-backend-integration-configuration check-environment check-code-layout check-tooling check-frontend-code check-backend-model-files check-backend-repository-files check-backend-service-injection check-frontend-domain check-frontend-api-layer check-frontend-screens check-frontend-design check-frontend-components check-frontend-routing check-frontend-contract check-frontend-types check-frontend-i18n check-ast-rules check-omp-types check-omp-hooks check-omp-rules check-omp-skills check-makefiles check-decks-sync check-verify ## Run all OMP hooks + backend + frontend verify

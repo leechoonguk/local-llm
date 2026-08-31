@@ -66,8 +66,7 @@ const REQUIRED_SCHEMA_CLASSES = [
   "IntegrationUpdateRequest",
   "IntegrationUpdateInternal",
   "IntegrationSecretCreateRequest",
-  // fast-api-standard 계약에는 IntegrationSecretUpdateRequest 가 더 있다 — 이 baseline 의
-  // 스키마 계층에는 그 흐름이 없어 트리별 유지(2026-08-31 머지 결정).
+  "IntegrationSecretUpdateRequest",
   "IntegrationSecretReadResponse",
   "IntegrationFieldCreateRequest",
   "IntegrationFieldReadResponse",
@@ -232,8 +231,7 @@ export function checkIntegrationConfiguration(): string[] {
     }
   }
   if (schemaClasses.indexOf("to_read") !== -1) {
-    // 이 baseline 은 평면 schemas/integration.py 를 유지한다 — 라벨만 트리별.
-    issues.push(`schemas/${DOMAIN}.py: to_read is a function, not a class`);
+    issues.push(`schemas/${DOMAIN}/provider.py: to_read is a function, not a class`);
   }
   // Every Read class exposes the optimistic-lock revision its caller holds.
   for (const readClass of [

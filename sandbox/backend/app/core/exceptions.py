@@ -5,6 +5,7 @@
 from uuid import UUID
 
 from fastapi import FastAPI, Request
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.exc import StaleDataError
 from starlette.responses import JSONResponse
 
@@ -14,6 +15,11 @@ from starlette.responses import JSONResponse
 # ============================================================
 
 REQUEST_ID_KEY = "request_id"
+
+# The code a configuration failure carries when no narrower one fits. A cause a
+# client must tell apart declares its own - `detail` is a log line, and the UI
+# reads a translation keyed by the code.
+CONFIGURATION_INVALID_CODE = "integration_configuration_invalid"
 
 
 # ============================================================
@@ -44,11 +50,17 @@ class ConflictError(Exception):
 
 
 class IntegrationConfigurationError(Exception):
-    """Raised when database-managed integration configuration is invalid."""
+    """Raised when database-managed integration configuration is invalid.
 
-    def __init__(self, detail: str) -> None:
+    `code` is the contract: a taken provider code and a non-HTTPS base URL are
+    different failures to a user filling a form, so they carry different codes
+    and the client translates each one. `detail` stays English for the log.
+    """
+
+    def __init__(self, detail: str, code: str = CONFIGURATION_INVALID_CODE) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.code = code
 
 
 class IntegrationInputError(Exception):
@@ -87,13 +99,29 @@ class IntegrationError(Exception):
     """Raised when an external API call fails (network error, non-2xx after retries).
 
     Handled by setup_exception_handler — no need for HTTPException in routers.
+
+    `status_code` and `body` carry the provider's own answer when there was one.
+    Without them the API could only say "the call failed", and the one fact an
+    operator needs to debug a provider — what the provider replied — was thrown
+    away by our own error handler. A timeout and an unreachable host leave both
+    None: there is no response to show.
     """
 
-    def __init__(self, provider: str, operation: str, detail: str) -> None:
+    def __init__(
+        self,
+        provider: str,
+        operation: str,
+        detail: str,
+        *,
+        status_code: int | None = None,
+        body: str | None = None,
+    ) -> None:
         super().__init__(detail)
         self.provider = provider
         self.operation = operation
         self.detail = detail
+        self.status_code = status_code
+        self.body = body
 
 
 class IntegrationTimeoutError(IntegrationError):
@@ -110,9 +138,16 @@ class IntegrationRateLimitError(IntegrationError):
     """
 
     def __init__(
-        self, provider: str, operation: str, detail: str, retry_after: float | None = None
+        self,
+        provider: str,
+        operation: str,
+        detail: str,
+        retry_after: float | None = None,
+        *,
+        status_code: int | None = None,
+        body: str | None = None,
     ) -> None:
-        super().__init__(provider, operation, detail)
+        super().__init__(provider, operation, detail, status_code=status_code, body=body)
         self.retry_after = retry_after
 
 
@@ -149,6 +184,24 @@ def setup_exception_handler(app: FastAPI) -> None:
             },
         )
 
+    @app.exception_handler(IntegrityError)
+    async def _integrity_handler(request: Request, exc: IntegrityError) -> JSONResponse:
+        """A constraint the request violated: a duplicate key, a missing parent.
+
+        Measured: re-sending an operation code answered 500 with a traceback, so
+        the client could not tell a conflict from a broken server. The detail
+        stays generic on purpose - a database message names columns and
+        constraints the caller has no business reading.
+        """
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": "Request conflicts with existing data",
+                "code": "conflict",
+                REQUEST_ID_KEY: _request_id(request),
+            },
+        )
+
     @app.exception_handler(StaleDataError)
     async def _stale_data_handler(request: Request, exc: StaleDataError) -> JSONResponse:
         """Optimistic lock miss: another transaction updated the row first."""
@@ -169,7 +222,7 @@ def setup_exception_handler(app: FastAPI) -> None:
             status_code=422,
             content={
                 "detail": exc.detail,
-                "code": "integration_configuration_invalid",
+                "code": exc.code,
                 REQUEST_ID_KEY: _request_id(request),
             },
         )
@@ -213,23 +266,45 @@ def setup_exception_handler(app: FastAPI) -> None:
             },
         )
 
+    def _upstream(exc: IntegrationError) -> dict[str, object] | None:
+        """The provider's own answer, when the provider gave one.
+
+        Omitted rather than sent as null: a timeout has no response, and a key
+        that is present but empty reads like a provider that answered nothing.
+        It carries no request URL, no headers and no rendered path - every seeded
+        provider carries its credential as a path segment, so echoing the request
+        would publish the key through our own error.
+
+        Only the shape is shared. Each handler keeps its own `detail`, `code` and
+        request id literals, because `check-backend-exceptions` reads the body of
+        the handler it governs and `check-frontend-i18n` discovers the server's
+        error codes from those literals - a shared builder made both blind.
+        """
+        if exc.status_code is None:
+            return None
+        return {"status_code": exc.status_code, "body": exc.body}
+
     @app.exception_handler(IntegrationError)
     async def _integration_handler(request: Request, exc: IntegrationError) -> JSONResponse:
-        return JSONResponse(
-            status_code=502,
-            content={
-                "detail": exc.detail,
-                "code": "integration_error",
-                "provider": exc.provider,
-                "operation": exc.operation,
-                REQUEST_ID_KEY: _request_id(request),
-            },
-        )
+        content: dict[str, object] = {
+            "detail": exc.detail,
+            "code": "integration_error",
+            "provider": exc.provider,
+            "operation": exc.operation,
+            REQUEST_ID_KEY: _request_id(request),
+        }
+        upstream = _upstream(exc)
+        if upstream is not None:
+            content["upstream"] = upstream
+        return JSONResponse(status_code=502, content=content)
 
     @app.exception_handler(IntegrationTimeoutError)
     async def _integration_timeout_handler(
         request: Request, exc: IntegrationTimeoutError
     ) -> JSONResponse:
+        # No `upstream` here, and not by omission: a timeout is the case where
+        # nothing answered. The client never sets one on this class, so a branch
+        # for it would be a line no request can reach.
         return JSONResponse(
             status_code=504,
             content={
@@ -248,14 +323,14 @@ def setup_exception_handler(app: FastAPI) -> None:
         headers = {}
         if exc.retry_after is not None:
             headers["Retry-After"] = str(exc.retry_after)
-        return JSONResponse(
-            status_code=429,
-            content={
-                "detail": exc.detail,
-                "code": "integration_rate_limited",
-                "provider": exc.provider,
-                "operation": exc.operation,
-                REQUEST_ID_KEY: _request_id(request),
-            },
-            headers=headers,
-        )
+        content: dict[str, object] = {
+            "detail": exc.detail,
+            "code": "integration_rate_limited",
+            "provider": exc.provider,
+            "operation": exc.operation,
+            REQUEST_ID_KEY: _request_id(request),
+        }
+        upstream = _upstream(exc)
+        if upstream is not None:
+            content["upstream"] = upstream
+        return JSONResponse(status_code=429, content=content, headers=headers)

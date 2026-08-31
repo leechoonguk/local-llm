@@ -16,13 +16,11 @@ from app.core.exceptions import (
     IntegrationRateLimitError,
     IntegrationTimeoutError,
 )
-from app.core.integration import IntegrationClient
-from app.models.integration import (
-    Integration,
-    IntegrationField,
-    IntegrationOperation,
-    IntegrationSecret,
-)
+from app.core.integration import UPSTREAM_BODY_LIMIT, IntegrationClient
+from app.models.integration.field import IntegrationField
+from app.models.integration.operation import IntegrationOperation
+from app.models.integration.provider import Integration
+from app.models.integration.secret import IntegrationSecret
 
 
 def request_field(**overrides) -> IntegrationField:
@@ -782,6 +780,226 @@ async def test_backoff_and_error_status() -> None:
         await failed.execute({})
     await failed._backoff(0, 0)
     await failed.aclose()
+
+
+@pytest.mark.asyncio
+async def test_failure_carries_the_provider_answer() -> None:
+    """A failed call hands back what the provider said, or says nothing at all.
+
+    Without this the API answered "External API error: HTTP 500" and dropped the
+    body — so the screen could only print one sentence, and the one fact that
+    identifies a provider-side refusal was gone. The envelope case is the reason
+    it cannot be read from the status: these providers answer HTTP 200 and put
+    the verdict in the wrapper (`ERROR-503` while the service is throttled).
+    """
+    refused = client(
+        lambda request: httpx2.Response(500, text="<error>quota exhausted</error>"),
+        max_retries=0,
+    )
+    with pytest.raises(IntegrationError) as failure:
+        await refused.execute({})
+    assert failure.value.status_code == 500
+    assert failure.value.body == "<error>quota exhausted</error>"
+    await refused.aclose()
+
+    envelope = client(
+        lambda request: httpx2.Response(200, json={"RESULT": {"CODE": "ERROR-503"}}),
+        fields=[
+            response_field(
+                key="verdict",
+                wire_path="/RESULT/CODE",
+                location="ENVELOPE",
+                match_mode="EXACT",
+                expected_values=["INFO-000"],
+            )
+        ],
+    )
+    with pytest.raises(IntegrationError) as verdict:
+        await envelope.execute({})
+    assert verdict.value.status_code == 200
+    assert verdict.value.body is not None
+    assert "ERROR-503" in verdict.value.body
+    await envelope.aclose()
+
+    def timeout_handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ReadTimeout("timeout", request=request)
+
+    timed_out = client(timeout_handler, max_retries=0)
+    with pytest.raises(IntegrationTimeoutError) as timeout:
+        await timed_out.execute({})
+    # Nothing answered, so there is nothing to show: the field is absent rather
+    # than an empty body, which would read as a provider that replied with nothing.
+    assert timeout.value.status_code is None
+    assert timeout.value.body is None
+    await timed_out.aclose()
+
+
+@pytest.mark.asyncio
+async def test_provider_answer_is_scrubbed_and_bounded() -> None:
+    """The credential never comes back, and one answer cannot fill the screen.
+
+    These providers carry the key as a path segment and echo the request they
+    received, so the body is the one place a key can leak back out through our
+    own error response. Scrubbing runs before truncation: cutting first can hand
+    back the front half of a key.
+    """
+    key = secret(value="7d59300f145b402a8b48")
+    echoing = client(
+        lambda request: httpx2.Response(500, text=f"called {request.url}"),
+        max_retries=0,
+        fields=[
+            request_field(
+                key="service_key",
+                wire_path="service_key",
+                location="PATH",
+                value_source="SECRET",
+                secret=key,
+            )
+        ],
+        path_template="/api/{service_key}/I2530/json/1/5",
+    )
+    with pytest.raises(IntegrationError) as leak:
+        await echoing.execute({})
+    assert leak.value.body is not None
+    assert key.value not in leak.value.body
+    assert "***" in leak.value.body
+    await echoing.aclose()
+
+    verbose = client(lambda request: httpx2.Response(500, text="x" * 5000), max_retries=0)
+    with pytest.raises(IntegrationError) as bounded:
+        await verbose.execute({})
+    assert bounded.value.body is not None
+    assert len(bounded.value.body) == UPSTREAM_BODY_LIMIT
+    await verbose.aclose()
+
+
+@pytest.mark.asyncio
+async def test_execute_records_the_exchange() -> None:
+    """Every ending leaves one record, and the credential is not in it.
+
+    The log screen reads these rows, so the record has to survive the failure it
+    describes: a provider that refuses with HTTP 200 in its wrapper is REFUSED
+    with a status code, and a timeout is TIMEOUT with none. Recording only on
+    success would have logged exactly the calls nobody needs to investigate.
+    """
+    key = secret(value="7d59300f145b402a8b48")
+    fields = [
+        request_field(
+            key="service_key",
+            wire_path="service_key",
+            location="PATH",
+            value_source="SECRET",
+            secret=key,
+        ),
+        response_field(key="value", wire_path="/value"),
+    ]
+    ok = client(
+        lambda request: httpx2.Response(200, json={"value": "x"}, headers={"X-Trace": "abc"}),
+        fields=fields,
+        path_template="/api/{service_key}/lookup",
+    )
+    result = await ok.execute({})
+    assert result.canonical_payload == {"value": "x"}
+    exchange = ok.last_exchange
+    assert exchange is not None
+    assert exchange.outcome == "SUCCESS"
+    assert exchange.status_code == 200
+    assert exchange.attempts == 1
+    assert exchange.duration_ms >= 0
+    assert exchange.response_headers is not None
+    assert exchange.response_headers["x-trace"] == "abc"
+    # The key travels as a path segment, so the URL is where it would leak.
+    assert key.value not in exchange.url
+    assert "***" in exchange.url
+    assert exchange.error_code is None
+    await ok.aclose()
+
+    refused = client(
+        lambda request: httpx2.Response(200, json={"RESULT": {"CODE": "ERROR-334"}}),
+        fields=[
+            response_field(
+                key="verdict",
+                wire_path="/RESULT/CODE",
+                location="ENVELOPE",
+                match_mode="EXACT",
+                expected_values=["INFO-000"],
+            )
+        ],
+    )
+    with pytest.raises(IntegrationError):
+        await refused.execute({})
+    assert refused.last_exchange is not None
+    assert refused.last_exchange.outcome == "REFUSED"
+    assert refused.last_exchange.status_code == 200
+    assert refused.last_exchange.error_code == "integration_error"
+    assert refused.last_exchange.response_body is not None
+    assert "ERROR-334" in refused.last_exchange.response_body
+    await refused.aclose()
+
+    def timeout_handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ReadTimeout("timeout", request=request)
+
+    timed_out = client(timeout_handler, max_retries=0)
+    with pytest.raises(IntegrationTimeoutError):
+        await timed_out.execute({})
+    assert timed_out.last_exchange is not None
+    assert timed_out.last_exchange.outcome == "TIMEOUT"
+    assert timed_out.last_exchange.status_code is None
+    assert timed_out.last_exchange.response_body is None
+    await timed_out.aclose()
+
+
+@pytest.mark.asyncio
+async def test_records_rate_limit_unreachable_and_body() -> None:
+    """The other three endings, and a body that carries a secret of its own.
+
+    A POST body may hold a SECRET field; the record scrubs it there too, because a
+    credential is a credential wherever the renderer put it.
+    """
+    limited = client(
+        lambda request: httpx2.Response(429, headers={"Retry-After": "0"}, json={}),
+        max_retries=0,
+    )
+    with pytest.raises(IntegrationRateLimitError):
+        await limited.execute({})
+    assert limited.last_exchange is not None
+    assert limited.last_exchange.outcome == "RATE_LIMITED"
+    assert limited.last_exchange.error_code == "integration_rate_limited"
+    await limited.aclose()
+
+    def unreachable(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("down", request=request)
+
+    down = client(unreachable, max_retries=0)
+    with pytest.raises(IntegrationError):
+        await down.execute({})
+    assert down.last_exchange is not None
+    assert down.last_exchange.outcome == "UNREACHABLE"
+    assert down.last_exchange.status_code is None
+    await down.aclose()
+
+    key = secret(value="body-secret-value")
+    posting = client(
+        lambda request: httpx2.Response(200, json={"value": "ok"}),
+        method="POST",
+        request_schema={"type": "object"},
+        fields=[
+            request_field(
+                key="token",
+                wire_path="/token",
+                location="BODY",
+                value_source="SECRET",
+                secret=key,
+            ),
+            response_field(key="value", wire_path="/value"),
+        ],
+    )
+    await posting.execute({})
+    assert posting.last_exchange is not None
+    body = posting.last_exchange.request_body
+    assert isinstance(body, dict)
+    assert key.value not in str(body)
+    await posting.aclose()
 
 
 def test_remaining_runtime_helpers() -> None:

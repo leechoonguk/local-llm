@@ -1,125 +1,92 @@
 ---
-description: Frontend code conventions — React, TypeScript, Vite, ESLint, file structure
+description: Frontend code conventions — React, TypeScript, Vite, MUI, ESLint, file structure
 globs:
       - frontend/package.json
       - frontend/vite.config.ts
       - frontend/tsconfig.json
       - frontend/src/**/*.tsx
+      - frontend/src/**/*.ts
       - frontend/src/**/*.css
 alwaysApply: false
 ---
 
 # Frontend Code Conventions
 
-## React
+Machine-checked by `check-frontend-code.ts` (`make check-frontend-code`) for the
+structural half; the toolchain (`make verify` → lint, typecheck, build) owns the
+rest.
 
-- **React 19**, functional components only (no class components)
-- `createRoot` from `react-dom/client` (React 18 `render` deprecated)
-- `StrictMode` wrapper in entry point (`main.tsx`)
+## Stack
 
-## TypeScript
+| Concern | Choice |
+|---|---|
+| Framework | React 19, functional components only |
+| Language | TypeScript 5.9, `strict`, `verbatimModuleSyntax`, `noUnusedLocals` |
+| Build | Vite (dev server 25173, `/api` proxied to `localhost:28000`) |
+| UI | MUI 7 + Emotion, `@mui/x-data-grid` 8 |
+| Server state | TanStack Query 5 |
+| Forms | react-hook-form 7 + yup via `@hookform/resolvers` |
+| HTTP | axios (one instance, `lib/api/client.ts`) |
+| Routing | react-router 7 (`BrowserRouter`) |
+| i18n | i18next + react-i18next (ko default, en) |
+| Notifications | notistack, through `useToast` |
+| Icons | `@iconify/react`, through `components/iconify` |
 
-- **TypeScript 5.9**, `strict: true`, `verbatimModuleSyntax: true`
-- Target: **ES2022**
-- Module: **ESNext**
-- Resolution: **bundler**
-- `noUnusedLocals: true`, `noUnusedParameters: true`
-- `noFallthroughCasesInSwitch: true`
-- `noUncheckedSideEffectImports: true`
-
-## Vite
-
-- **Vite 8**, `@vitejs/plugin-react`
-- Port: **15173** (dev server)
-- `@/*` alias resolves to `./src/`
-- Dev proxy: `/api/*` → `http://localhost:18000/*` (strips `/api` prefix)
-
-## ESLint
-
-- **ESLint 10**, `typescript-eslint`
-- `eslint-plugin-react-hooks` — `rules-of-hooks` enforced
-- `@eslint/js` — basic JS rules
+A package used in `src/` must be declared in `package.json`: the check cannot see
+`node_modules`, only what the manifest claims.
 
 ## File Structure
 
 ```
-frontend/
-  src/
-    main.tsx          # Entry point — createRoot, StrictMode
-    App.tsx           # Root component
-    styles.css        # Global styles
-    vite-env.d.ts     # Vite type declarations
-  vite.config.ts      # Vite config
-  tsconfig.json       # TypeScript config
-  package.json        # npm package
+frontend/src/
+  main.tsx                  entry — createRoot, StrictMode, Router, Providers
+  App.tsx                   route table
+  config.ts                 API base, timeouts, page sizes
+  styles.css                the only stylesheet
+  types/                    wire types (one file per domain + api.ts)
+  lib/api/                  client, endpoints, queryKeys, queryDefaults,
+                            services/, hooks/
+  auth/                     AuthContext, guards
+  hooks/                    useDataGridState, usePagedRows, useCrudDialog, useToast
+  components/               presentational building blocks, one directory each
+  layouts/                  dashboard shell + auth shell
+  sections/<domain>/        screens
+  pages/                    route components
+  routes/paths.ts           path registry
+  locales/                  ko.ts, en.ts, i18n.ts
+  theme/                    the single MUI theme
+  utils/                    pure helpers
 ```
 
-## Component Pattern
+## Components
 
-```tsx
-export default function App() {
-    const [state, setState] = useState<Type | null>(null)
-    const [error, setError] = useState<string | null>(null)
-
-    useEffect(() => {
-      fetch('/api/endpoint')
-           .then(res => {
-               if (!res.ok) throw new Error(`HTTP ${res.status}`)
-               return res.json() as Promise<Type>
-           })
-           .then(setState)
-           .catch(setError)
-     }, [])
-
-    return (
-       <main>
-           {/* content */}
-       </main>
-     )
-}
-```
-
-Rules:
-- Functional components, default export
-- `useState` for local state, `useEffect` for side effects
-- `fetch` for API calls — no external HTTP libraries
-- Type safety: explicit types on state, props, API responses
-- Semantic HTML: `<main>`, `<dl>`, `<dt>`, `<dd>`, `<p>`, `<h1>`
-
-## File Naming
-
-| Type | Convention | Example |
-|---|---|---|
-| Component | PascalCase | `App.tsx`, `Feature.tsx` |
-| Styles | lowercase | `styles.css` |
-| Entry | lowercase | `main.tsx` |
-| Types | PascalCase | `types.ts` |
+- One component per file, `export default function <Name>`, file named `<Name>.tsx`
+- Props as a named `interface <Name>Props` (inline for one or two props)
+- No `React.FC`, no class components
+- Imports through the `@/` alias — a relative import breaks when the file moves
+- `sx` for layout, the theme for appearance: a repeated `sx` is a theme default
+  that has not been written yet
+- Constants (widths, page sizes, cycles) after the imports, `UPPER_SNAKE_CASE`,
+  never inline magic numbers in JSX
 
 ## Styling
 
-- **CSS only** (no CSS-in-JS, no Tailwind)
-- `system-ui` font family, `light-dark` color scheme
-- Semantic HTML with `<dl>` / `<dt>` / `<dd>` for data grids
-- `max-width: 40rem`, `margin: 2rem auto` for content container
-- `padding: 0 1rem` for mobile responsiveness
-
-## API Interaction
-
-- Frontend proxies `/api/*` to backend `http://localhost:18000`
-- Example: `GET /api/items` → backend `GET /items` (on port 18000)
-- Response: `res.json() as Promise<Type>` for typed responses
-- Error: catch branch sets error state
+- `styles.css` carries only the document reset; everything else is MUI
+- No CSS modules, no Tailwind, no styled-components: two styling systems means
+  two answers to "where does this colour come from"
+- Colours and radii come from the theme, never a literal in a component
 
 ## Review Judgement (not machine-checked)
 
-- A package installed without being added to `package.json` - the check cannot
-  see `node_modules` state, only what the manifest declares.
+- Whether a `sx` block should have become a theme default
+- Whether a component with six props should have been two components
+- Whether a copied screen should have diverged as much as it did
 
 ## Never Do These
 
-- Use class components — functional only
-- Import files without `@/` alias when in `src/`
-- Hardcode port numbers in components — use Vite config
-- Add npm packages without updating `package.json`
-- Forget `make verify` before commit (lint + typecheck + build)
-- Use `fetch` without checking `res.ok`
+- Use a class component
+- Import with a relative path inside `src/`
+- Hardcode a port or a host in a component — the proxy owns that
+- Add an npm package without adding it to `package.json`
+- Introduce a second styling system
+- Name a file differently from the component it default-exports

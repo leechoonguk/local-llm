@@ -1,13 +1,18 @@
 """User domain tests — signup (public), CRUD, auth flow, conflict cases."""
 
+from datetime import UTC, datetime
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
+
+from app.schemas.user import UserReadResponse
 
 
 def test_create_user_public(client: TestClient) -> None:
     """POST /user/ is public (no auth) — the signup endpoint."""
     response = client.post(
         "/api/v1/user/",
-        json={"username": "alice", "email": "alice@example.com", "password": "secret"},
+        json={"username": "alice", "email": "alice@example.com", "password": "secret-pass"},
     )
     assert response.status_code == 201
     body = response.json()
@@ -23,10 +28,12 @@ def test_create_user_duplicate_username(client: TestClient) -> None:
     caller sees an opaque error instead of a conflict.
     """
     client.post(
-        "/api/v1/user/", json={"username": "dup", "email": "a@example.com", "password": "secret"}
+        "/api/v1/user/",
+        json={"username": "dup", "email": "a@example.com", "password": "secret-pass"},
     )
     response = client.post(
-        "/api/v1/user/", json={"username": "dup", "email": "b@example.com", "password": "secret"}
+        "/api/v1/user/",
+        json={"username": "dup", "email": "b@example.com", "password": "secret-pass"},
     )
     assert response.status_code == 409
 
@@ -34,10 +41,12 @@ def test_create_user_duplicate_username(client: TestClient) -> None:
 def test_create_user_duplicate_email(client: TestClient) -> None:
     """Email is unique independently of username — both indexes must be honoured."""
     client.post(
-        "/api/v1/user/", json={"username": "one", "email": "same@example.com", "password": "secret"}
+        "/api/v1/user/",
+        json={"username": "one", "email": "same@example.com", "password": "secret-pass"},
     )
     response = client.post(
-        "/api/v1/user/", json={"username": "two", "email": "same@example.com", "password": "secret"}
+        "/api/v1/user/",
+        json={"username": "two", "email": "same@example.com", "password": "secret-pass"},
     )
     assert response.status_code == 409
 
@@ -57,7 +66,8 @@ def test_get_user(client: TestClient, auth_headers: dict[str, str]) -> None:
     well-shaped.
     """
     created = client.post(
-        "/api/v1/user/", json={"username": "bob", "email": "bob@example.com", "password": "secret"}
+        "/api/v1/user/",
+        json={"username": "bob", "email": "bob@example.com", "password": "secret-pass"},
     ).json()
     user_id = created["id"]
 
@@ -80,7 +90,7 @@ def test_update_user(client: TestClient, auth_headers: dict[str, str]) -> None:
     """
     created = client.post(
         "/api/v1/user/",
-        json={"username": "carol", "email": "carol@example.com", "password": "secret"},
+        json={"username": "carol", "email": "carol@example.com", "password": "secret-pass"},
     ).json()
     user_id = created["id"]
 
@@ -108,7 +118,7 @@ def test_delete_user(client: TestClient, auth_headers: dict[str, str]) -> None:
     """
     created = client.post(
         "/api/v1/user/",
-        json={"username": "dave", "email": "dave@example.com", "password": "secret"},
+        json={"username": "dave", "email": "dave@example.com", "password": "secret-pass"},
     ).json()
     user_id = created["id"]
 
@@ -133,6 +143,63 @@ def test_create_user_missing_field_422(client: TestClient, auth_headers: dict[st
     response = client.post("/api/v1/user/", json={}, headers=auth_headers)
     assert response.status_code == 422
 
+
+def test_create_user_rejects_values_only_the_form_used_to_refuse(client: TestClient) -> None:
+    """The API refuses what the browser form refuses.
+
+    Measured before this was enforced: `curl` created a user with the email
+    `not-an-email` and a one-character password, and the API answered 201. A
+    rule that lives only in the dialog is a rule any other client ignores.
+    """
+    weak = client.post(
+        "/api/v1/user/",
+        json={"username": "weak", "email": "weak@example.com", "password": "x"},
+    )
+    assert weak.status_code == 422
+
+    malformed = client.post(
+        "/api/v1/user/",
+        json={"username": "bad-email", "email": "not-an-email", "password": "secret-pass"},
+    )
+    assert malformed.status_code == 422
+
+    too_long = client.post(
+        "/api/v1/user/",
+        json={"username": "a" * 51, "email": "long@example.com", "password": "secret-pass"},
+    )
+    assert too_long.status_code == 422
+
+    accepted = client.post(
+        "/api/v1/user/",
+        json={"username": "fine", "email": "fine@example.com", "password": "secret-pass"},
+    )
+    assert accepted.status_code == 201
+
+
+def test_list_users_reads_a_row_the_write_rules_would_now_reject(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """A stored value the request rules forbid is still readable.
+
+    Measured: when the email pattern lived on `UserBase`, `UserReadResponse`
+    inherited it and one row written before the rule existed made `GET /user/`
+    answer 500 for every caller - the whole list, not that row. Input rules
+    belong on input models, and this test is what says so.
+    """
+    stored = UserReadResponse(
+        id=uuid4(),
+        username="legacy",
+        email="not-an-email",
+        created_by="system",
+        updated_by=None,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        version=1,
+    )
+    assert stored.email == "not-an-email"
+
+    response = client.get("/api/v1/user/", headers=auth_headers)
+    assert response.status_code == 200
 
 def test_user_unauthorized_401(client: TestClient) -> None:
     """No token → 401 (all endpoints require auth)."""

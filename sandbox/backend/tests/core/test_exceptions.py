@@ -95,6 +95,11 @@ def test_setup_exception_handler_registers_integration_handlers() -> None:
 
     Collapsing them to 500 would erase the difference between "provider is
     down", "provider was slow" and "back off for a second".
+
+    The bodies carry the provider's own answer where there was one, because the
+    mapped sentence alone could not tell a refusal from a broken key. A timeout
+    carries none: nothing answered, and an empty body would read as a provider
+    that replied with nothing.
     """
     app = FastAPI()
 
@@ -104,24 +109,47 @@ def test_setup_exception_handler_registers_integration_handlers() -> None:
 
     @app.get("/integration")
     async def integration() -> None:
-        raise IntegrationError("provider", "operation", "failed")
+        raise IntegrationError(
+            "provider", "operation", "failed", status_code=200, body='{"CODE":"ERROR-334"}'
+        )
 
     @app.get("/timeout")
     async def timeout() -> None:
         raise IntegrationTimeoutError("provider", "operation", "timeout")
 
+    @app.get("/unreachable")
+    async def unreachable() -> None:
+        # A transport failure, the other case with nothing to show: the request
+        # never reached a server, so there is no status and no body.
+        raise IntegrationError("provider", "operation", "External API unreachable")
+
     @app.get("/limited")
     async def limited() -> None:
-        raise IntegrationRateLimitError("provider", "operation", "limited", retry_after=1.0)
+        raise IntegrationRateLimitError(
+            "provider",
+            "operation",
+            "limited",
+            retry_after=1.0,
+            status_code=429,
+            body="quota exceeded",
+        )
 
     setup_exception_handler(app)
     with TestClient(app) as client:
         assert client.get("/config").status_code == 422
-        assert client.get("/integration").status_code == 502
-        assert client.get("/timeout").status_code == 504
+        refused = client.get("/integration")
+        timed_out = client.get("/timeout")
+        unreachable_response = client.get("/unreachable")
         response = client.get("/limited")
+    assert refused.status_code == 502
+    assert refused.json()["upstream"] == {"status_code": 200, "body": '{"CODE":"ERROR-334"}'}
+    assert timed_out.status_code == 504
+    assert "upstream" not in timed_out.json()
+    assert unreachable_response.status_code == 502
+    assert "upstream" not in unreachable_response.json()
     assert response.status_code == 429
     assert response.headers["retry-after"] == "1.0"
+    assert response.json()["upstream"] == {"status_code": 429, "body": "quota exceeded"}
 
 
 def test_setup_exception_handler_maps_stale_version_to_409() -> None:

@@ -7,9 +7,12 @@ def test_login_success(client: TestClient) -> None:
     """Signup then login: the token carries `token_type`, which clients rely on."""
     client.post(
         "/api/v1/user/",
-        json={"username": "lisa", "email": "lisa@example.com", "password": "secret"},
+        json={"username": "lisa", "email": "lisa@example.com", "password": "secret-pass"},
     )
-    response = client.post("/api/v1/auth/login", data={"username": "lisa", "password": "secret"})
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"username": "lisa", "password": "secret-pass"},
+    )
     assert response.status_code == 200
     body = response.json()
     assert "access_token" in body
@@ -23,15 +26,21 @@ def test_login_wrong_password(client: TestClient) -> None:
     """
     client.post(
         "/api/v1/user/",
-        json={"username": "mike", "email": "mike@example.com", "password": "secret"},
+        json={"username": "mike", "email": "mike@example.com", "password": "secret-pass"},
     )
-    response = client.post("/api/v1/auth/login", data={"username": "mike", "password": "wrong"})
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"username": "mike", "password": "wrong-pass"},
+    )
     assert response.status_code == 401
 
 
 def test_login_unknown_user(client: TestClient) -> None:
     """An account that does not exist answers 401, never 404."""
-    response = client.post("/api/v1/auth/login", data={"username": "ghost", "password": "secret"})
+    response = client.post(
+        "/api/v1/auth/login",
+        data={"username": "ghost", "password": "secret-pass"},
+    )
     assert response.status_code == 401
 
 

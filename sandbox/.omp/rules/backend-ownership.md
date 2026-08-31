@@ -14,7 +14,10 @@ User-scoped resources must verify the caller owns the resource.
 ## Standard
 
 - Service methods take `current_user` and verify `created_by == current_user.username`
-- `403` (via `ForbiddenError` or `HTTPException`) when not the owner
+- `403` when the row exists but belongs to someone else — raised as a core exception
+  from `app/core/exceptions.py` and mapped by the one handler layer (`rule://backend-exceptions`).
+  No such exception exists yet, because no resource in this app is owner-scoped: the
+  first one that is adds it there, never an `HTTPException` in a service
 - Applies to get/update/delete of user-scoped resources
 
 ## Validation (Post-Hook)

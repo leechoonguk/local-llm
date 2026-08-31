@@ -27,6 +27,7 @@ export function ruleForHook(hookName: string): string | null {
 }
 
 const RULE_NAME_EXCEPTIONS: Record<string, string> = {
+  "frontend-types": "frontend-contract", // 계약 룰 하나가 두 검사를 가진다(이름·경로 = contract, 타입·널러빌리티 = types)
   "backend-tests": "backend-testing",
   "ast-rules": "omp-ast-rules",
   "omp-rules": "omp-conventions",

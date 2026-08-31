@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 SIGNUP_PAYLOAD = {
     "username": "csrf-user",
     "email": "csrf-user@example.com",
-    "password": "secret",
+    "password": "secret-pass",
 }
 
 
@@ -64,7 +64,7 @@ def test_csrf_allows_unsafe_request_from_trusted_origin(client: TestClient) -> N
         "/api/v1/user/",
         json=SIGNUP_PAYLOAD,
         headers={
-            "Origin": "http://localhost:15173",
+            "Origin": "http://localhost:25173",
             "Sec-Fetch-Site": "same-site",
         },
     )

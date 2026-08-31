@@ -1,5 +1,6 @@
 """Core security tests — password hashing + JWT encode/decode."""
 
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -53,9 +54,18 @@ def test_decode_tampered_token() -> None:
     """A flipped signature byte invalidates the whole token.
 
     This is the property that makes the signature worth computing.
+
+    The flip happens on the decoded bytes, not on the base64url text: the last
+    character of a 43-character signature carries only two significant bits, so
+    overwriting the final characters can decode to the *same* signature and leave
+    a perfectly valid token. Measured — the text version of this test failed once
+    in a `make verify` run and passed 20 times in isolation.
     """
     token = create_access_token(subject="u")
-    tampered = token[:-2] + ("ab" if token[-2:] != "ab" else "cd")
+    header, payload, signature = token.split(".")
+    raw = urlsafe_b64decode(signature + "=" * (-len(signature) % 4))
+    flipped = bytes([raw[0] ^ 0xFF]) + raw[1:]
+    tampered = f"{header}.{payload}.{urlsafe_b64encode(flipped).decode().rstrip('=')}"
     assert decode_access_token(tampered) is None
 
 

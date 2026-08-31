@@ -1,0 +1,128 @@
+/**
+ * The action column every list screen puts last.
+ *
+ * Actions are visible icon buttons, not a `⋮` menu: a menu costs one click and
+ * one guess before the row can be acted on, and it hides which actions a row even
+ * has. They are also the only clickable thing in a row — opening the record used
+ * to be the row click, which made one click mean "open this" in one mode and
+ * "type here" in the other.
+ *
+ * The column is MUI's own `type: 'actions'`, and that is not decoration. With a
+ * hand-rolled `renderCell`, the first real click on a fresh screen was swallowed:
+ * the first `mousedown` inside a cell moves the grid's cell focus, React flushes
+ * that discrete update synchronously, the cell's children are re-created, and the
+ * browser is left with no element to dispatch `click` to. Measured — `mousedown`
+ * and `mouseup` arrived, `click` never did, and pre-focusing the cell made the
+ * same click work. `GridActionsCell` owns focus and `tabIndex` for its buttons,
+ * so the buttons survive that flush.
+ *
+ * Width is computed, never hand-set: a fixed 96px column sized for two buttons is
+ * what put three buttons 1px outside the table. The gutter is counted to the ink,
+ * so the glyphs line up with the first column's text rather than with the invisible
+ * edge of a hit box.
+ */
+
+import { GridActionsCellItem } from '@mui/x-data-grid'
+import type { GridColDef, GridRowParams, GridValidRowModel } from '@mui/x-data-grid'
+import { IconButton, Stack, Tooltip } from '@mui/material'
+import Iconify from '@/components/iconify/Iconify'
+import type { ActionIcon } from '@/components/iconify/icons'
+import { CELL_GUTTER_PX } from '@/components/data-grid/ServerDataGrid'
+
+/** `IconButton size="small"`: a 20px glyph drawn inside a 30px hit box. */
+const BUTTON_BOX = 30
+
+const BUTTON_INK = 20
+
+/**
+ * How far the buttons are pulled out of the cell's gutter.
+ *
+ * What a reader lines up is ink, not hit boxes. Measured against the card: the
+ * first column's text starts 20px in, while the last glyph stopped 25px short,
+ * because the button's own padding sits between the glyph and the gutter.
+ */
+const EDGE_SLACK = (BUTTON_BOX - BUTTON_INK) / 2
+
+/**
+ * `.MuiDataGrid-actionsCell` sets `gap: 8px`. Measured, not assumed: carrying over
+ * the 4px of the hand-rolled `Stack` made the column 8px too narrow for three
+ * buttons, and the glyphs sat 16px from the card edge against the text's 20px.
+ */
+const BUTTON_GAP = 8
+
+const rowActionColumnWidth = (count: number) =>
+  count * BUTTON_BOX + (count - 1) * BUTTON_GAP + 2 * (CELL_GUTTER_PX - EDGE_SLACK)
+
+export interface RowAction {
+  label: string
+  icon: ActionIcon
+  /**
+   * A palette colour for the action, applied as `sx` rather than the button's
+   * `color` prop: `GridActionsCellItem` narrows that prop to three values and
+   * `error` is not among them, so the destructive action would lose its red.
+   */
+  tone?: 'primary' | 'error'
+  onClick: () => void
+}
+
+interface RowActionsColumnOptions<R extends GridValidRowModel> {
+  /**
+   * The largest number of buttons a row can show. An editing row shows its own
+   * pair, so the column is sized for the maximum, not for the current mode.
+   */
+  count: number
+  actions: (params: GridRowParams<R>) => RowAction[]
+}
+
+export function rowActionsColumn<R extends GridValidRowModel>({
+  count,
+  actions,
+}: RowActionsColumnOptions<R>): GridColDef<R> {
+  return {
+    field: 'actions',
+    type: 'actions',
+    headerName: '',
+    width: rowActionColumnWidth(count),
+    align: 'center',
+    getActions: (params) =>
+      actions(params).map((action) => (
+        <GridActionsCellItem
+          key={action.label}
+          icon={
+            <Iconify
+              name={action.icon}
+              sx={action.tone === undefined ? undefined : { color: `${action.tone}.main` }}
+            />
+          }
+          label={action.label}
+          onClick={action.onClick}
+        />
+      )),
+  }
+}
+
+/**
+ * The same actions on a row of a plain `<Table>` — a nested collection inside a
+ * detail dialog, where there is no grid to own the cell.
+ *
+ * `aria-label` carries the name and the glyph is decorative, so one row's actions
+ * read the same to a screen reader whether they came from the grid or from here.
+ */
+export function RowActionButtons({ actions }: { actions: RowAction[] }) {
+  return (
+    <Stack direction="row" spacing={`${BUTTON_GAP}px`} justifyContent="flex-end">
+      {actions.map((action) => (
+        <Tooltip key={action.label} title={action.label}>
+          <IconButton
+            size="small"
+            aria-label={action.label}
+            onClick={action.onClick}
+            sx={action.tone === undefined ? undefined : { color: `${action.tone}.main` }}
+          >
+            <Iconify name={action.icon} />
+          </IconButton>
+        </Tooltip>
+      ))}
+    </Stack>
+  )
+}

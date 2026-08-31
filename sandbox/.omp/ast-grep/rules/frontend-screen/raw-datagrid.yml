@@ -1,0 +1,13 @@
+id: frontend-screen-raw-datagrid
+language: tsx
+# `ServerDataGrid` is where "server pagination against this backend" is defined:
+# `paginationMode="server"`, the unknown-row-count sentinel, and `paginationMeta`
+# from the peeked row. A screen that renders `DataGrid` directly re-decides all
+# three, and the version that forgets `paginationMeta` silently pages to zero.
+rule:
+  any:
+    - pattern: <DataGrid $$$PROPS />
+    - pattern: <DataGrid $$$PROPS>$$$CHILDREN</DataGrid>
+owns:
+  - "DataGrid"
+message: "render ServerDataGrid, not DataGrid — server pagination is defined once"

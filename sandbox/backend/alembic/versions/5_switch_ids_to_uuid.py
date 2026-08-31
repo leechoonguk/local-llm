@@ -14,11 +14,11 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "5"
-down_revision: str | Sequence[str] | None = "2"
+down_revision: str | Sequence[str] | None = "4"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-TABLES = ["batch"]
+TABLES = ["item", "batch", "todo", "task"]
 
 
 def upgrade() -> None:

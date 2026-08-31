@@ -1,41 +1,52 @@
-import { useEffect, useState } from 'react'
-import { ApiError } from '@/errors.ts'
+/**
+ * The route table — the only place a URL is bound to a screen.
+ *
+ * Layouts carry the guards (`DashboardLayout` → `AuthGuard`, `AuthLayout` →
+ * `GuestGuard`), so a route's protection is decided by which layout it sits
+ * under and cannot be forgotten per page. Every `path` comes from the registry:
+ * `check-frontend-routing` compares the two tables in both directions.
+ *
+ * Pages are lazy: MUI and the grid are most of the bundle, and a user who only
+ * signs in should not download the provider-configuration screen to do it.
+ */
 
-interface Info {
-  app_name: string
-  admin_email: string
-  items_per_user: number
-}
+import { lazy, Suspense } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import AuthLayout from '@/layouts/auth/AuthLayout'
+import DashboardLayout from '@/layouts/dashboard/DashboardLayout'
+import LoadingScreen from '@/components/loading-screen/LoadingScreen'
+import { PATHS } from '@/routes/paths'
+
+const LoginPage = lazy(() => import('@/pages/LoginPage'))
+
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
+
+const UserPage = lazy(() => import('@/pages/UserPage'))
+
+const BatchPage = lazy(() => import('@/pages/BatchPage'))
+
+const IntegrationPage = lazy(() => import('@/pages/IntegrationPage'))
+
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'))
 
 export default function App() {
-  const [info, setInfo] = useState<Info | null>(null)
-  const [error, setError] = useState<ApiError | null>(null)
-
-  useEffect(() => {
-    fetch('/api/info')
-      .then((res) => {
-        if (!res.ok) throw ApiError.fromResponse(res)
-        return res.json() as Promise<Info>
-      })
-      .then(setInfo)
-      .catch((e: ApiError) => setError(e))
-  }, [])
-
   return (
-    <main>
-      <h1>Fast API Standard</h1>
-      {error && <p role="alert">Error: {error.message}</p>}
-      {info && (
-        <dl>
-          <dt>App name</dt>
-          <dd>{info.app_name}</dd>
-          <dt>Admin email</dt>
-          <dd>{info.admin_email}</dd>
-          <dt>Items per user</dt>
-          <dd>{info.items_per_user}</dd>
-        </dl>
-      )}
-      {!info && !error && <p>Loading…</p>}
-    </main>
+    <Suspense fallback={<LoadingScreen />}>
+      <Routes>
+        <Route path={PATHS.auth.login} element={<AuthLayout />}>
+          <Route index element={<LoginPage />} />
+        </Route>
+
+        <Route element={<DashboardLayout />}>
+          <Route path={PATHS.root} element={<Navigate to={PATHS.dashboard} replace />} />
+          <Route path={PATHS.dashboard} element={<DashboardPage />} />
+          <Route path={PATHS.user} element={<UserPage />} />
+          <Route path={PATHS.batch} element={<BatchPage />} />
+          <Route path={PATHS.integration} element={<IntegrationPage />} />
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </Suspense>
   )
 }

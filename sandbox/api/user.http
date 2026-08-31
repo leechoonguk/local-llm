@@ -24,7 +24,7 @@ Content-Type: application/json
 {
   "username": "user-{{$guid}}",
   "email": "user-{{$guid}}@example.com",
-  "password": "secret"
+  "password": "secret-pass"
 }
 
 
@@ -53,7 +53,7 @@ Content-Type: application/json
 {
   "username": "{{updateUser.response.body.username}}",
   "email": "duplicate-{{$guid}}@example.com",
-  "password": "secret"
+  "password": "secret-pass"
 }
 
 ### 7. User 삭제 — 200 ({"ok": true})

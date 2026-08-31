@@ -41,17 +41,24 @@ backend/app/
 |---|---|---|
 | `core/` | `settings.py`, `database.py`, `exceptions.py`, `security.py`, `logging.py`, `cache.py`, `integration.py` | Infrastructure only — no routers, no repositories. One module per concern. |
 | `dependencies/` | `core.py`, `auth.py`, `query.py`, `services.py`, `integrations.py` | DI wiring only — `Annotated[T, Depends(factory)]` aliases and their factories. No business logic. |
-| `models/` | `base.py` + one file per domain | `base.py` holds `Base` + `AuditMixin`; every other file is one domain model. |
-| `schemas/` | one file per domain | Pydantic classes only — `Request`/`Response`/`Internal` suffixes, `to_read()`/`to_read_list()` helpers. |
-| `repositories/` | one file per domain | Async CRUD — `get`/`list`/`find_stale`/`create`/`update`/`delete` + `__init__`. |
-| `services/` | one file per domain | Thin adapter — `session.begin()` transactions, `NotFoundError`, domain-prefixed collaborators. |
+| `models/` | `base.py` + one file per table | `base.py` holds `Base` + `AuditMixin`; a table per file, named after the table, in `models/<domain>/` once a domain owns several (`backend-model-files.md`). |
+| `schemas/` | one file per domain, or `schemas/<domain>/` | Pydantic classes only — `Request`/`Response`/`Internal` suffixes, `to_read()`/`to_read_list()` helpers. |
+| `repositories/` | one file per table | Async CRUD — `get`/`list`/`find_stale`/`create`/`update`/`delete` + `__init__`; `repositories/<domain>/` once a domain owns several (`backend-repository-files.md`). |
+| `services/` | one file per domain, or `services/<domain>/` | Thin adapter — `session.begin()` transactions, `NotFoundError`, domain-prefixed collaborators. |
 | `routers/` | one file per domain | REST endpoints only — no business logic, no inline `Depends()`. |
 | `batch/` | one file per job | Scheduled jobs — engine/session via services, never raw session usage. |
 
 **Composition rules:**
-- One file per domain across `models/` → `schemas/` → `repositories/` →
-  `services/` → `routers/` — the model filename is the single source of truth
-  for the domain name (all five layers use the same `<name>.py`).
+- **One file per domain per layer while the domain is one file; a folder named
+  after the domain once it is several.** `models/` → `schemas/` →
+  `repositories/` → `services/` → `routers/` all use `<name>.py`, and any of
+  them may become `<name>/` — the domain name is the same either way, so a
+  reader follows one name down the stack. Inside a folder the file drops the
+  domain prefix (`models/integration/provider.py` maps `integration_provider`).
+  The layer that decides a domain exists is `services/`.
+- **Tests mirror the source path.** `services/integration/secret.py` is tested
+  by `tests/services/integration/test_secret.py`, so a module's test lives at
+  the module's own path (machine-checked by `check-backend-tests.ts`).
 - `core/` and `dependencies/` are fixed sets — a new module there needs a
   matching `tests/core/test_<name>.py` (or `tests/` coverage) and a rule
   update; they are not per-domain.
@@ -97,72 +104,42 @@ Every domain follows this exact chain. Never skip a layer.
   exists, its content (5 endpoints, UUID params, prefix) is validated.
 - Schema-only modules (e.g. `schemas/auth.py` Token) are allowed — no model
   required for non-CRUD schemas.
-
-**Specialized aggregate exception:** `models/integration.py` represents five
-configuration tables, not a one-table CRUD resource. It follows the same
-Model → Schema → Repository → Service → Router chain but is validated by
-`backend-integration-configuration.md` and
-`check-backend-integration-configuration.ts`, not the simple-domain checks.
 - Router ↔ `api/*.http` sync and the .http content standard are documented in
   `backend-api-http.md`.
 
+**A domain may own one table or many.** One table per model file is the table
+rule (`backend-model-files.md`), and a domain owns the model files named after
+it or prefixed `<domain>_`. Owning several is not an exception to the 5-layer
+chain — the chain is identical either way; it only changes *which* checker
+reads the domain's shape:
+
+| Model files owned | Validated by |
+|---|---|
+| one | the simple-domain checks in `check-backend-domain.ts` |
+| several | the per-file shape hooks (`check-backend-model-files.ts`, `check-backend-repository-files.ts`) plus the domain's own contract rule, when it has one |
+
+`integration` is the current multi-file domain: five tables — the four
+configuration tables governed by `backend-integration-configuration.md`, plus
+the `integration_call` log. The split is discovered structurally
+(`aggregateDomains()` in `lib/backend-domain-structure.ts`), so the next domain
+to grow a second table needs no edit here and no name in a hook.
+
 ## Domain Creation
 
-Each domain creates 5 layer files, wires 2 files, and lands 4 more artifacts.
-The gate (`make verify`) checks every item below — missing any one fails:
+Each domain creates 5 files (one per layer) and wires 1 dependency file + main.py:
 
-**Creates (5 layers):**
+**Creates:**
 
 - `models/<name>.py` — SQLAlchemy model with `AuditMixin` (`Base, AuditMixin`)
 - `schemas/<name>.py` — 6 Pydantic classes: `XBase`, `XCreateRequest`, `XCreateInternal`, `XReadResponse`, `XUpdateRequest`, `XUpdateInternal`
 - `repositories/<name>.py` — async CRUD repository with 7 methods: `get`, `list`, `find_stale`, `create`, `update`, `delete`, `__init__`
-- `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError` (and `ConflictError` when the model declares uniqueness — see `services/user.py`)
-- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PATCH `/{id}` (update — the verb follows the schema: all-optional `*UpdateRequest` = PATCH; a full-resource schema would be PUT, see rule://backend-api-http), DELETE `/{id}` (list pagination uses the shared `OffsetQuery`/`LimitQuery` defaults — see rule://backend-router-params)
+- `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError`
+- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
 
-**Wires (2):**
+**Wires:**
 
 - `dependencies/services.py` — `Annotated[T, Depends(factory)]` for all domain services (receive `SessionDep` directly)
 - `main.py` — `app.include_router(name.router)` call
-
-**Also lands (4) — checked by the gate, easy to forget:**
-
-- `backend/alembic/versions/` — one revision via `make migrate-gen m="add <name> table"` (never hand-write the file), and `alembic/env.py` imports the new model
-- `backend/tests/conftest.py` — imports the new model (`from app.models.<name> import <Name>`) so `Base.metadata.create_all()` builds its table
-- `api/<name>.http` — request file per rule://backend-api-http (unique-constraint domains follow `api/user.http`: `{{$guid}}` + a `409` section)
-- `backend/tests/{api,repositories,services}/test_<name>.py` — per rule://backend-testing
-
-### Exemplar Map (single read — copy the `batch` domain)
-
-Every deliverable has a working exemplar in the `batch` domain. Read this table
-instead of rediscovering the layout file by file; open an exemplar only when
-its section below leaves a question.
-
-| Deliverable | Exemplar | Contract (one line) |
-|---|---|---|
-| `app/models/<name>.py` | `app/models/batch.py` | Explicit `String(<len>)` on every string column; see Model section |
-| `app/schemas/<name>.py` | `app/schemas/batch.py` | `<Name>CreateRequest` / `<Name>ReadResponse` naming; see Schema section |
-| `app/repositories/<name>.py` | `app/repositories/batch.py` | Session-injected class, no commits; see Repository section |
-| `app/services/<name>.py` | `app/services/batch.py` | Owns `session.begin()` transactions; see Service section |
-| `app/routers/<name>.py` | `app/routers/batch.py` | Existing auth dependency + pagination convention; see Router section |
-| migration | `make migrate-gen m="add <name> table"` | Generated, never hand-written; non-empty message |
-| `api/<name>.http` | `api/user.http` (unique fields) or `api/batch.http` | `{{$guid}}` + a `409` section for unique-constraint domains |
-| tests ×3 | `tests/{api,repositories,services}/test_batch.py` | Same file trio, same fixture style |
-
-Wiring lines (verbatim from the exemplar — add yours alongside, never replace):
-
-```python
-# alembic/env.py
-from app.models.batch import Batch  # noqa: F401 — register model on metadata
-# tests/conftest.py
-from app.models.batch import Batch  # noqa: F401 — register model on metadata
-# app/dependencies/services.py
-from app.services.batch import BatchService
-def get_batch_service(session: SessionDep) -> BatchService:
-BatchServiceDep = Annotated[BatchService, Depends(get_batch_service)]
-# app/main.py
-from app.routers import auth, batch, health, integration, user
-api_router.include_router(batch.router)
-```
 
 ## Domain Naming
 
@@ -175,7 +152,7 @@ api_router.include_router(batch.router)
   no hyphens/underscores/capitals. The model filename is the single source of
   truth: schemas/repositories/services/routers must use the same `<name>.py`
   (machine-checked by `check-backend-domain.ts`)
-- Class names capitalized: `Item`, `Batch`, `Todo`, `BatchService`
+- Class names capitalized: `Batch`, `User`, `Todo`, `BatchService`
 
 ## Model (`app/models/<name>.py`)
 
@@ -198,10 +175,6 @@ class Batch(Base, AuditMixin):
     name: Mapped[str] = mapped_column(String(120), index=True)
     description: Mapped[str | None] = mapped_column(String(512), default=None)
 ```
-
-(The real file additionally carries the 62-char `# ==== … ====` section banners
-required by rule://code-layout — copy the actual `models/batch.py`, not just
-this excerpt.)
 
 Rules (all machine-checked by `check-backend-domain.ts`):
 
@@ -240,7 +213,7 @@ Helper functions: `to_read()` and `to_read_list()` using `model_validate`.
 - **Every HTTP-facing schema class carries exactly one of the `Request`/`Response`
   suffixes** — a class without either suffix is a naming violation. This applies
   to nested aggregate schemas too: `IntegrationOperationCreateRequest`,
-  `IntegrationRequestFieldReadResponse`, `IntegrationExecuteRequest`,
+  `IntegrationFieldReadResponse`, `IntegrationExecuteRequest`,
   `IntegrationExecuteResponse`. `Base`/`Internal` classes are the only
   suffix-free exceptions (they are never HTTP bodies).
 - **Class ordering** — schemas are declared in the order they are consumed:
@@ -281,7 +254,7 @@ class NameService:
         self.name_repository = NameRepository(session)
         # Multiple repositories/services use domain prefixes:
         #   self.user_repository = UserRepository(session)
-        #   self.user_service = UserService(session)
+        #   self.batch_service = BatchService(session)
 
     async def get_name(self, name_id: UUID) -> Name:
         o = await self.name_repository.get(name_id)
@@ -324,7 +297,7 @@ Rules:
 | `POST /` | create | 201 | `NameReadResponse` |
 | `GET /` | list | 200 | `list[NameReadResponse]` |
 | `GET /{<name>_id}` | get | 200/404 | `NameReadResponse` |
-| `PATCH /{<name>_id}` | update (partial — schema is all-optional) | 200/404 | `NameReadResponse` |
+| `PUT /{<name>_id}` | update | 200/404 | `NameReadResponse` |
 | `DELETE /{<name>_id}` | delete | 200/404 | `{"ok": True}` |
 
 Rules:
@@ -358,10 +331,7 @@ BatchServiceDep = Annotated[BatchService, Depends(get_batch_service)]
   so the real `get_session()` runs — no dependency override
 - `settings.env = "test"` to disable scheduler
 - One test file per domain: `tests/api/test_<name>.py`
-- Coverage standard lives in rule://backend-testing: 10 named API cases
-  (+422/+401) plus separate `tests/repositories/` and `tests/services/` files.
-  The gate matches **test function names** (e.g. a 404 case must contain
-  `not_found` in its name)
+- Tests cover: create, list, get, update, delete + not-found cases
 
 ## Validation (Post-Hook)
 
@@ -387,10 +357,13 @@ cross-cutting concerns are owned by their own hooks (see `omp-hooks.md`):
 - The service **never** assigns `updated_at`. The repository sets it immediately
   before its `flush()`; a service assignment lands after the flush, costing a
   second `UPDATE` and a second `version` bump per request.
-- Every model except `base` (declarative base + mixins) and `integration` (a
-  configuration aggregate with its own four-table contract) is validated. Never
-  add a domain to that skip list to silence a failure: with the sample domains
-  pruned, one skipped name can empty this hook.
+- Every model except `base` (declarative base + mixins) is validated. A domain
+  that owns more than one model file (`integration`'s five-table configuration
+  aggregate) is discovered structurally — by file ownership, not by a
+  hardcoded name — so the next aggregate split needs no update to this hook.
+  Never hardcode a domain name to skip it: that is the exact defect
+  `aggregateDomains()`/`belongsToAggregateDomain()` in
+  `lib/backend-domain-structure.ts` exist to remove.
 
 **AST rules** (`.omp/ast-grep/rules/`, run by various post hooks per `omp-hooks.md` AST Rule Contract) add structural checks
 string matching cannot express:
@@ -457,14 +430,3 @@ Reads therefore eager-load what they return: `select(...).options(selectinload(.
 - Missing `from_attributes=True` on Read schemas
 - Missing `extra="forbid"` on any schema
 - `int` primary keys — ids are `UUID` (`Mapped[uuid.UUID]`, `default=uuid4`)
-
-## 완성도 요구는 의존 방향으로만 (2026-08-29)
-
-검사는 **존재하는 가장 하류 계층이 그 상류를 요구**한다. 라우터가 있으면 서비스·리포지토리·스키마를,
-서비스가 있으면 리포지토리·스키마를, 리포지토리가 있으면 스키마를 요구한다. 모델만 있는 상태는
-작업 중이지 위반이 아니다 — 예전에는 모델 파일 하나에 누락 5건을 지적했고, 그 목록이 모델에게
-작업 큐로 읽혀("첫 실패 수정 완료. 다음: missing service file") 한 계층만 요청한 프롬프트를 기능
-전체로 부풀렸다. 배선 요구도 같은 규칙이다: 라우터 등록은 `routers/<name>.py` 가, 서비스 DI 별칭은
-`services/<name>.py` 가 있을 때만 요구한다. **완성 시점의 계약은 그대로다** — 라우터가 서면 5계층이
-전부 강제된다. 예외는 `alembic/env.py` 등록이다: autogenerate 가 import 없는 모델을 보지 못하므로
-모델 자체의 속성으로 남긴다.

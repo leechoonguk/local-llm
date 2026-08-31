@@ -1167,6 +1167,7 @@ function checkActorLifecycle(
   if (login === undefined) return issues; // the structure check already reports this
   const loginBody = blockBody(http, login, requests);
 
+  // domain-literal: auth 는 도메인이 아니라 액터 수명주기 파일 자체다 — 계정 생성·삭제는 이 한 파일만 담당한다(backend-api-http.md)
   if (name === "auth") return checkAuthActorLifecycle(http, loginBody, requests, sections);
 
   // Domain files: log in as the seeded actor, with the credentials written out.

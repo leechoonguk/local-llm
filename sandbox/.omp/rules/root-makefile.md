@@ -19,7 +19,7 @@ enforces it on the root, backend, frontend and decks Makefiles.
 
 ## Verify Membership
 
-`make verify` is the gate: run it before declaring work done
+`make verify` is the gate: `strict-verified-git` runs it before every commit
 and the `commit` skill treats its exit status as authoritative. A `check-*`
 target that exists but is not a prerequisite of `verify` passes when run by
 hand and is never run by the gate — three such targets
@@ -61,14 +61,17 @@ Run from the project root.
 | `make db-query` | `make -C backend migrate` + `docker compose exec -T postgres psql -c` | Run SQL at head — `make db-query q="SELECT …"` |
 | `make logs` | `docker compose logs -f` | Tail logs from all services |
 | `make ps` | `docker compose ps` | List running services |
-| `make verify-fast` | `make -C backend verify-fast` | Fast iteration gate — backend only, no coverage; finish requires `make verify` |
 | `make clean` | `make -C backend clean` + `make -C frontend clean` | Remove backend and frontend caches |
 | `make docker-clean` | `docker compose down -v` | Stop services and remove volumes (data loss!) |
-| `make verify` | `check-backend-domain + check-backend-migrations + check-backend-table-design + check-backend-auth + check-backend-exceptions + check-backend-api-http + check-backend-router-params + check-backend-naming + check-backend-transaction + check-backend-batch + check-backend-tests + check-backend-middleware + check-backend-app-setup + check-backend-core-config + check-backend-rate-limit + check-backend-background-tasks + check-backend-ownership + check-backend-audit-log + check-backend-redis-cache + check-backend-file-upload + check-backend-sse + check-backend-api-keys + check-backend-integration + check-backend-integration-configuration + check-environment + check-code-layout + check-tooling + check-frontend-code + check-ast-rules + check-omp-types + check-omp-hooks + check-omp-rules + check-omp-skills + check-makefiles + check-decks-sync + check-verify` | Run all OMP hooks + backend + frontend verify (hermetic — no running stack needed) |
+| `make verify` | `check-backend-domain + check-backend-migrations + check-backend-table-design + check-backend-model-files + check-backend-repository-files + check-backend-service-injection + check-backend-auth + check-backend-exceptions + check-backend-api-http + check-backend-router-params + check-backend-naming + check-backend-transaction + check-backend-batch + check-backend-tests + check-backend-middleware + check-backend-app-setup + check-backend-core-config + check-backend-rate-limit + check-backend-background-tasks + check-backend-ownership + check-backend-audit-log + check-backend-redis-cache + check-backend-file-upload + check-backend-sse + check-backend-api-keys + check-backend-integration + check-backend-integration-configuration + check-environment + check-code-layout + check-tooling + check-frontend-code + check-frontend-domain + check-frontend-api-layer + check-frontend-screens + check-frontend-design + check-frontend-components + check-frontend-routing + check-frontend-contract + check-frontend-types + check-frontend-i18n + check-ast-rules + check-omp-types + check-omp-hooks + check-omp-rules + check-omp-skills + check-makefiles + check-decks-sync + check-verify` | Run all OMP hooks + backend + frontend verify (hermetic — no running stack needed) |
+| `make verify-fast` | `make -C backend verify-fast` | Fast iteration gate — backend only, no coverage; finish requires `make verify` |
 | `make check-verify` | `node .omp/hooks/post/check-verify.ts` | Run backend + frontend verify (lint, typecheck, test/build) |
 | `make check-backend-domain` | `node .omp/hooks/post/check-backend-domain.ts` | Check backend CRUD domain structure |
 | `make check-backend-migrations` | `node .omp/hooks/post/check-backend-migrations.ts` | Check ORM ↔ DB sync (alembic check) |
 | `make check-backend-table-design` | `node .omp/hooks/post/check-backend-table-design.ts` | Check backend table design invariants (1NF, keys, constraints) |
+| `make check-backend-model-files` | `node .omp/hooks/post/check-backend-model-files.ts` | Check model files — one table, one class, one file (`rule://backend-model-files`) |
+| `make check-backend-repository-files` | `node .omp/hooks/post/check-backend-repository-files.ts` | Check repository files — one repository, one table, named after it (`rule://backend-repository-files`) |
+| `make check-backend-service-injection` | `node .omp/hooks/post/check-backend-service-injection.ts` | Check no service imports another service (`rule://backend-service-injection`) |
 | `make check-backend-auth` | `node .omp/hooks/post/check-backend-auth.ts` | Check backend auth conventions |
 | `make check-backend-exceptions` | `node .omp/hooks/post/check-backend-exceptions.ts` | Check core exception policy (raise only core exceptions) |
 | `make check-backend-api-http` | `node .omp/hooks/post/check-backend-api-http.ts` | Check router ↔ .http sync |
@@ -94,6 +97,15 @@ Run from the project root.
 | `make check-code-layout` | `node .omp/hooks/post/check-code-layout.ts` | Check code layout (comments, banners, constants, member order) |
 | `make check-tooling` | `node .omp/hooks/post/check-tooling.ts` | Check tooling language policy (TypeScript hooks, no Python scripts) |
 | `make check-frontend-code` | `node .omp/hooks/post/check-frontend-code.ts` | Check frontend code conventions |
+| `make check-frontend-domain` | `node .omp/hooks/post/check-frontend-domain.ts` | Check the frontend 6-layer domain pattern |
+| `make check-frontend-api-layer` | `node .omp/hooks/post/check-frontend-api-layer.ts` | Check the frontend API layer (one client, keys, invalidation) |
+| `make check-frontend-screens` | `node .omp/hooks/post/check-frontend-screens.ts` | Check the per-screen-type templates |
+| `make check-frontend-routing` | `node .omp/hooks/post/check-frontend-routing.ts` | Check paths ↔ routes ↔ navigation and the layout guards |
+| `make check-frontend-contract` | `node .omp/hooks/post/check-frontend-contract.ts` | Check frontend types/endpoints against the backend schemas/routers |
+| `make check-frontend-types` | `node .omp/hooks/post/check-frontend-types.ts` | Check request/response types, nullability, optionality, verbs and query params |
+| `make check-frontend-i18n` | `node .omp/hooks/post/check-frontend-i18n.ts` | Check locale parity, referenced keys and hardcoded text |
+| `make check-frontend-design` | `node .omp/hooks/post/check-frontend-design.ts` | Check the design system (theme tokens, metrics, component vocabulary) |
+| `make check-frontend-components` | `node .omp/hooks/post/check-frontend-components.ts` | Check component boundaries — no shape written twice (`rule://frontend-components`) |
 | `make check-ast-rules` | `node .omp/hooks/post/check-ast-rules.ts` | Prove every ast-grep rule fires (valid/invalid cases) |
 | `make check-omp-types` | `node .omp/hooks/post/check-omp-types.ts` | Type-check the harness TypeScript (`.omp/**/*.ts`) |
 | `make check-omp-hooks` | `node .omp/hooks/post/check-omp-hooks.ts` | Check OMP hooks directory sync |
@@ -108,15 +120,30 @@ Run from the project root.
 
 ## Service Stack
 
-From `docker-compose.yml`:
+From `docker-compose.yml`. The host port is the default of an env variable
+(`${BACKEND_PORT:-28000}`), so a machine that already runs one of these can move
+it in the root `.env`; the container port never moves, because every in-network
+URL names it.
 
-| Service | Purpose | Port |
+**The project name is declared, not derived.** `docker-compose.yml` opens with
+`name: fast-api-standard`, and that string prefixes every container, volume and
+network (`fast-api-standard_pgdata`). Without it compose falls back to the
+directory name, so renaming the checkout — or cloning it under another path —
+creates a second, empty set of volumes and the database reads as wiped while
+the old data sits in an orphaned volume. Measured: `make ps` from a directory
+named `renamed-checkout` still reports the `fast-api-standard` containers.
+
+This is also what keeps sibling stacks on one machine apart: another checkout
+here declares `local-llm-sandbox`, so both run `postgres`/`redis`/`phoenix`
+services and both declare `pgdata`/`redisdata` volumes without colliding.
+
+| Service | Purpose | Host port (variable) |
 |---|---|---|
-| `backend` | FastAPI app (uvicorn) | :18000 |
-| `postgres` | PostgreSQL 17 | :15432 |
-| `redis` | Redis 7 | :16379 |
-| `frontend` | Nginx reverse proxy | :15173 |
-| `phoenix` | Phoenix APM | :16006 |
+| `backend` | FastAPI app (uvicorn) | :28000 (`BACKEND_PORT`) |
+| `postgres` | PostgreSQL 17 | :25432 (`POSTGRES_PORT`) |
+| `redis` | Redis 7 | :26379 (`REDIS_PORT`) |
+| `frontend` | Nginx reverse proxy | :25173 (`FRONTEND_PORT`) |
+| `phoenix` | Phoenix APM | :26006 (`PHOENIX_UI_PORT`), :24317 (`PHOENIX_GRPC_PORT`) |
 
 ## Workflow
 
@@ -137,8 +164,8 @@ serialises — fine for behaviour, wrong for "does this row exist".
 
 ## Development Workflow
 
-1. **Local development**: `cd backend && make dev` (uvicorn :18000)
-2. **Docker development**: `make up` (full stack on :15173)
+1. **Local development**: `cd backend && make dev` (uvicorn :28000)
+2. **Docker development**: `make up` (full stack on :25173)
 3. **Switch**: `make down` → `make up`
 
 ## Verification Status
@@ -159,7 +186,7 @@ serialises — fine for behaviour, wrong for "does this row exist".
 
 Two env files, two purposes:
 
-- **Root `.env`** (or `.env.example`) — docker-compose only: `POSTGRES_*`, `PHOENIX_SQL_DATABASE_SCHEMA`, plus `APP_NAME`/`ADMIN_EMAIL`/`ITEMS_PER_USER` passed to the backend container via `docker-compose.yml`. Service ports are fixed in `docker-compose.yml` (15432/16379/16006/14317/18000/15173) — no port variables.
+- **Root `.env`** (or `.env.example`) — docker-compose only: `POSTGRES_*`, `PHOENIX_SQL_DATABASE_SCHEMA`, plus `APP_NAME`/`ADMIN_EMAIL`/`ITEMS_PER_USER` passed to the backend container via `docker-compose.yml`. It also owns the **host** ports (`POSTGRES_PORT`, `REDIS_PORT`, `PHOENIX_UI_PORT`, `PHOENIX_GRPC_PORT`, `BACKEND_PORT`, `FRONTEND_PORT`), each a `${VAR:-default}` in `docker-compose.yml`; the container side never moves, because every in-network URL names it.
 - **`backend/.env`** — the backend app's own settings (`ENV`, `DATABASE_URL`, `APP_NAME`, `ADMIN_EMAIL`, `ITEMS_PER_USER`), read by Pydantic settings. See `environment.md`.
 
 ## Delegation

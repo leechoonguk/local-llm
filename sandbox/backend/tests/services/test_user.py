@@ -21,7 +21,7 @@ async def test_user_service_crud(factory) -> None:
     """
     async with factory() as session:
         created = await UserService(session).create_user(
-            UserCreateRequest(username="alice", email="alice@example.com", password="secret"),
+            UserCreateRequest(username="alice", email="alice@example.com", password="secret-pass"),
             "system",
         )
         user_id = created.id
@@ -58,11 +58,11 @@ async def test_user_service_authenticate(factory) -> None:
     """
     async with factory() as session:
         await UserService(session).create_user(
-            UserCreateRequest(username="bob", email="bob@example.com", password="secret"),
+            UserCreateRequest(username="bob", email="bob@example.com", password="secret-pass"),
             "system",
         )
     async with factory() as session:
-        user = await UserService(session).authenticate("bob", "secret")
+        user = await UserService(session).authenticate("bob", "secret-pass")
         assert user.username == "bob"
     async with factory() as session:
         with pytest.raises(AuthenticationError):
@@ -80,19 +80,19 @@ async def test_user_service_conflicts(factory) -> None:
     """
     async with factory() as session:
         await UserService(session).create_user(
-            UserCreateRequest(username="dup", email="a@example.com", password="secret"),
+            UserCreateRequest(username="dup", email="a@example.com", password="secret-pass"),
             "system",
         )
     async with factory() as session:
         with pytest.raises(ConflictError):
             await UserService(session).create_user(
-                UserCreateRequest(username="dup", email="b@example.com", password="secret"),
+                UserCreateRequest(username="dup", email="b@example.com", password="secret-pass"),
                 "system",
             )
     async with factory() as session:
         with pytest.raises(ConflictError):
             await UserService(session).create_user(
-                UserCreateRequest(username="other", email="a@example.com", password="secret"),
+                UserCreateRequest(username="other", email="a@example.com", password="secret-pass"),
                 "system",
             )
 

@@ -35,7 +35,7 @@ def test_settings_defaults() -> None:
     s = _settings()
     assert s.access_token_expire_minutes == 30
     assert s.algorithm == "HS256"
-    assert s.cors_origins == ["http://localhost:15173"]
+    assert s.cors_origins == ["http://localhost:25173"]
     assert s.redis_url is None
     assert s.integration_timeout_seconds == 30.0
     assert s.integration_connect_timeout_seconds == 5.0
@@ -49,13 +49,13 @@ def test_settings_overrides() -> None:
     s = _settings(
         access_token_expire_minutes=60,
         algorithm="HS512",
-        redis_url="redis://localhost:16379/0",
+        redis_url="redis://localhost:26379/0",
         integration_timeout_seconds=60.0,
         integration_max_retries=5,
     )
     assert s.access_token_expire_minutes == 60
     assert s.algorithm == "HS512"
-    assert s.redis_url == "redis://localhost:16379/0"
+    assert s.redis_url == "redis://localhost:26379/0"
     assert s.integration_timeout_seconds == 60.0
     assert s.integration_max_retries == 5
 
@@ -114,7 +114,7 @@ def test_dotenv_outranks_an_exported_variable(monkeypatch: pytest.MonkeyPatch, t
         "ADMIN_EMAIL = file@example.com\n"
         "ITEMS_PER_USER = 1\n"
         "ENV = local\n"
-        "DATABASE_URL = postgresql+asyncpg://app:app@localhost:15432/file\n"
+        "DATABASE_URL = postgresql+asyncpg://app:app@localhost:25432/file\n"
         "SECRET_KEY = file-secret\n"
         'ALLOWED_HOSTS = ["localhost"]\n'
         "INTEGRATION_TIMEOUT_SECONDS = 1.0\n"

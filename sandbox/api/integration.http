@@ -193,27 +193,55 @@ Content-Type: application/json
   "description": "리포팅 전용 키"
 }
 
-### 7. 시크릿 목록 — 200 (name/description/enabled만 — value 없음, 페이지네이션 적용)
+### 7. 시크릿 수정 — 200 (value 교체 — 응답에는 그대로 value가 없다)
+PUT {{base}}/integration/{{integrationId}}/secrets/reporting-key
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "value": "rotated-key",
+  "description": "리포팅 전용 키 (교체)"
+}
+
+### 8. 시크릿 수정 — 200 (value 생략 — 저장된 키는 그대로, description만 바뀐다)
+PUT {{base}}/integration/{{integrationId}}/secrets/reporting-key
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "description": "리포팅 전용 키 (설명만 수정)"
+}
+
+### 9. 시크릿 목록 — 200 (name/description/enabled만 — value 없음, 페이지네이션 적용)
 GET {{base}}/integration/{{integrationId}}/secrets?offset=0&limit=100
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 8. 시크릿 삭제 — 200 (6번이 만든 미참조 시크릿)
+### 10. 시크릿 삭제 — 200 (6번이 만든 미참조 시크릿)
 DELETE {{base}}/integration/{{integrationId}}/secrets/reporting-key
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 9. 시크릿 삭제 — 409 (2번 REQUEST 필드가 참조 중 — FK ON DELETE RESTRICT)
+### 11. 시크릿 삭제 — 409 (2번 REQUEST 필드가 참조 중 — FK ON DELETE RESTRICT)
 DELETE {{base}}/integration/{{integrationId}}/secrets/partner-api-key
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 10. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
+### 12. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
 DELETE {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 11. provider 단건 조회 — 404 (10번 삭제가 실제로 반영됐음을 증명한다)
+### 13. provider 단건 조회 — 404 (12번 삭제가 실제로 반영됐음을 증명한다)
 GET {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 12. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
+### 14. 시크릿 수정 — 404 (provider가 사라졌으므로 하위 컬렉션도 주소가 없다)
+PUT {{base}}/integration/{{integrationId}}/secrets/partner-api-key
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "value": "no-such-provider"
+}
+
+### 15. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
 POST {{base}}/integration/
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -225,10 +253,10 @@ Content-Type: application/json
   "operations": []
 }
 
-### 13. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+### 16. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
 GET {{base}}/integration/?offset=0&limit=100
 
-### 14. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
+### 17. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
 POST {{base}}/integration/{{seededProviderId}}/operations/missing-operation/execute
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json

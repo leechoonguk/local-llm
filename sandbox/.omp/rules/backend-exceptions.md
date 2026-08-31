@@ -36,6 +36,32 @@ owns what needs two files at once (definition, handler, response body).
 | 6 | Every handler maps a class that exists here, or a declared third-party one | a handler for a deleted class is dead code | `lib/backend-exceptions.ts` |
 | 7 | Every handler returns `detail`, `code`, `request_id` and an explicit `status_code` | clients branch on `code`; support needs `request_id` | `lib/backend-exceptions.ts` |
 | 8 | Class names end in `Error` | the suffix is what marks a class raisable | `lib/backend-exceptions.ts` |
+| 9 | The `code` is the contract; `detail` is diagnostic. A failure a client must tell apart carries its **own** `code`, never a different `detail` under a shared one | the UI shows a translated sentence keyed by `code` — it never renders `detail` | `lib/backend-exceptions.ts` + `check-frontend-i18n.ts` |
+
+## Codes Are the Contract
+
+`detail` is English written for a log line and a support ticket. It is not the
+string a user reads, because the app is bilingual and the server does not know
+which language the caller wants. So the client maps `code` to a translated
+message, and the code set is the published vocabulary of failures.
+
+That has one consequence worth stating: **two causes a user must distinguish
+need two codes.** `IntegrationConfigurationError` used to answer every
+configuration mistake with `integration_configuration_invalid`, so a taken
+provider code, a non-HTTPS base URL, and a malformed operation path were one
+code with three English sentences. A client could not tell them apart without
+parsing prose, and the form could not point at the field that was wrong.
+
+```python
+raise IntegrationConfigurationError(
+    "Provider code must use lowercase letters, digits, and hyphens",
+    code="provider_code_invalid",
+)
+```
+
+The handler emits `exc.code`, and `check-frontend-i18n` fails when a code has no
+`errors.<code>` entry in every locale — so publishing a new failure mode without
+a translation is a gate failure, not a screen that shows `unknown_error`.
 
 ## The Two Documented Exemptions
 

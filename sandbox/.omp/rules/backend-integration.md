@@ -44,8 +44,17 @@ Service layer → IntegrationClient.from_database() → IntegrationClient.execut
 | Retry triggers | network errors, timeouts, 429, 500/502/503/504 |
 | 429 handling | honor standard `Retry-After`, capped by retry maximum |
 | Error mapping | `IntegrationError` 502, `IntegrationTimeoutError` 504, `IntegrationRateLimitError` 429 |
+| Failure detail | the error carries `status_code` + scrubbed `body` when the provider answered: the non-2xx raise, the 429 raise, and every mapping/parse/envelope refusal through one `try/except` around the response normalisation call. A timeout and an unreachable host carry neither |
 | Result | `IntegrationExecutionResult(canonical_payload, metadata, status_code)` |
 | Logging | provider, operation, attempt, status, duration only — never body, header values, or secrets |
+
+The body travels to the caller and nowhere else: `UPSTREAM_BODY_LIMIT` caps it,
+every secret the call resolved is replaced by `***` **before** truncation (cutting
+first hands back the front half of a key), and the logs still carry none of it.
+One choke point rather than six signatures: the envelope refusal, the unparseable
+body, the root that is not a page and the missing required column each raise from a
+helper that was handed the payload, not the response — and each is a verdict about
+that one answer.
 
 ## Testing
 

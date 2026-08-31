@@ -25,19 +25,15 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.exceptions import IntegrationError
 from app.core.integration import IntegrationClient
 from app.models.base import Base
-from app.models.integration import (
-    Integration,
-    IntegrationField,
-    IntegrationOperation,
-    IntegrationSecret,
-)
-from app.schemas.integration import (
-    IntegrationCreateRequest,
-    IntegrationFieldCreateRequest,
-    IntegrationOperationCreateRequest,
-    IntegrationSecretCreateRequest,
-)
-from app.services.integration import IntegrationService
+from app.models.integration.field import IntegrationField
+from app.models.integration.operation import IntegrationOperation
+from app.models.integration.provider import Integration
+from app.models.integration.secret import IntegrationSecret
+from app.schemas.integration.field import IntegrationFieldCreateRequest
+from app.schemas.integration.operation import IntegrationOperationCreateRequest
+from app.schemas.integration.provider import IntegrationCreateRequest
+from app.schemas.integration.secret import IntegrationSecretCreateRequest
+from app.services.integration.provider import IntegrationProviderService
 
 
 def operation(**overrides) -> IntegrationOperation:
@@ -446,14 +442,15 @@ def test_mfds_seed_migration_persists_executable_configuration() -> None:
                     "WHERE operation_id = o.id AND direction = 'RESPONSE') AS response_field_count "
                     "FROM integration_provider AS p "
                     "JOIN integration_operation AS o ON o.provider_id = p.id "
-                    "WHERE p.code = 'mfds-food-nutrition' AND o.code = 'search-food-nutrition'"
+                    "WHERE p.code = 'data-go-kr' "
+                    "AND o.code = 'search-food-nutrition'"
                 )
             ).mappings().one()
             secret = connection.execute(
                 sa.text(
                     "SELECT s.name, s.value, s.enabled FROM integration_secret AS s "
                     "JOIN integration_provider AS p ON p.id = s.provider_id "
-                    "WHERE p.code = 'mfds-food-nutrition' AND s.name = 'service-key'"
+                    "WHERE p.code = 'data-go-kr' AND s.name = 'service-key'"
                 )
             ).mappings().one()
             request_fields = connection.execute(
@@ -477,7 +474,9 @@ def test_mfds_seed_migration_persists_executable_configuration() -> None:
             ).mappings().all()
 
         assert dict(seeded) == {
-            "provider_code": "mfds-food-nutrition",
+            # Revision 74: one identity across all three columns - the portal
+            # `apis.data.go.kr` is, and the dataset it serves.
+            "provider_code": "data-go-kr",
             "operation_code": "search-food-nutrition",
             # The page, not its first record: /body/items/0 truncated every answer
             # to one row and made num_of_rows unobservable (58_replace_…_operation).
@@ -618,6 +617,8 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
         "search-food-item-report",
         "search-product-classification",
         "search-food-raw-material",
+        "search-barcode-item-info",
+        "search-test-item",
     }
     for code, seed in seed_of.items():
         request_file = api_dir / f"integration.{code}.http"
@@ -757,7 +758,7 @@ def _client_from_seeds(code: str, fixture: dict[str, object]) -> IntegrationClie
 
 
 def _replay_newest_integration_seeds(connection: sa.Connection) -> None:
-    """Apply the newest live seed per (owner, table) to a fresh schema.
+    """Apply the newest live seed per (owner, table), then every correction, to a schema.
 
     A seed belongs to the operation it names, or to its provider when it names no
     operation. Only owners the migrations leave alive are replayed, and per owner only
@@ -769,6 +770,17 @@ def _replay_newest_integration_seeds(connection: sa.Connection) -> None:
     newest per filename family resurrected `search-domestic-food-products` (revision
     16), an operation the provider replace at revision 20 had already cascaded away —
     and its row still writes a column revision 50 dropped.
+
+    A `_correct_` revision is the third kind and is **cumulative**, not superseding: it
+    UPDATEs columns of a row a seed already wrote, because a provider `_replace_`
+    would cascade the operations away. Taking only the newest file per (owner, table)
+    would therefore replay the correction *instead of* the seed and leave the row
+    absent, so corrections are merged into the same revision-ordered run: newest seed
+    first, then the corrections that landed after it. Revision 74 renamed this
+    provider's `code` and `display_name`; without this the replayed database still
+    answered `mfds-food-nutrition` while every real database answered
+    `data-go-kr`, and the assertion below would have been green about a
+    configuration that no longer exists.
     """
     migrations_dir = Path(__file__).parents[2] / "alembic" / "versions"
     live = _live_seed_owners(migrations_dir)
@@ -785,8 +797,14 @@ def _replay_newest_integration_seeds(connection: sa.Connection) -> None:
             current = newest.get(key)
             if current is None or _revision(path) > _revision(current):
                 newest[key] = path
+    corrections = [
+        path
+        for path in migrations_dir.glob("*_correct_*_integration_*.py")
+        if _seeded_table(path) in Base.metadata.tables
+        and _seed_owner(path.read_text(encoding="utf-8")) in live
+    ]
     migration_op = Operations(MigrationContext.configure(connection))
-    for migration_path in sorted(newest.values(), key=_revision):
+    for migration_path in sorted([*newest.values(), *corrections], key=_revision):
         spec = importlib.util.spec_from_file_location(migration_path.stem, migration_path)
         assert spec is not None
         assert spec.loader is not None
@@ -884,8 +902,8 @@ def test_seeded_configuration_is_creatable_through_the_api() -> None:
     """Every seeded row must be a row the write path accepts.
 
     The four configuration tables have two writers: alembic seeds, and
-    `POST/PATCH /integration/`. A migration reaches the tables through the DB `CHECK`
-    alone — it never meets the Pydantic literals or `IntegrationService`'s validation.
+    `POST/PUT /integration/`. A migration reaches the tables through the DB `CHECK`
+    alone — it never meets the Pydantic literals or `IntegrationProviderService`'s validation.
     So a seeded shape the API refuses is a configuration **nobody can author or edit**:
     an operator reading it back and submitting one changed timeout is refused over a
     row they never touched, and the service's own rule becomes prose that guards
@@ -916,7 +934,7 @@ def test_seeded_configuration_is_creatable_through_the_api() -> None:
         engine.dispose()
 
     assert payloads, "no provider survived the replay — this test would assert nothing"
-    service = IntegrationService(cast(AsyncSession, None))
+    service = IntegrationProviderService(cast(AsyncSession, None))
     for payload in payloads:
         service._validate_create(payload)
 

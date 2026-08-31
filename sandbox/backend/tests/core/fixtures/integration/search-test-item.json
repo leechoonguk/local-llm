@@ -1,0 +1,71 @@
+{
+  "why": "One measured page of the 시험항목 정보 service (I2530): the date filter travels as a path segment, and the query string stays empty because the provider ignores it (measured: path 116 rows, query 3393 = unfiltered).",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2,
+    "last_updated_from": "20200318"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I2530": {
+        "total_count": "116",
+        "row": [
+          {
+            "TESTITM_CD": "A10001",
+            "KOR_NM": "가용성염류",
+            "ENG_NM": "Soluble salts",
+            "ABRV": "",
+            "NCKNM": "",
+            "TESTITM_NM": "가용성염류",
+            "TESTITM_LCLAS_CD": "2014001001",
+            "L_ATTRB_CD": "A",
+            "L_KOR_NM": "일반성분 및 기능성분",
+            "TESTITM_MLSFC_CD": "2014001011",
+            "M_ATTRB_CD": "A1",
+            "M_KOR_NM": "일반성분",
+            "REMN_MTTR_DFN": "",
+            "USE_YN": "Y",
+            "LAST_UPDT_DTM": "2020-03-18 08:53:50.199009"
+          }
+        ],
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I2530/json/1/2/LAST_UPDT_DTM=20200318",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "test_item_code": "A10001",
+        "korean_name": "가용성염류",
+        "english_name": "Soluble salts",
+        "abbreviation": "",
+        "alias": "",
+        "test_item_name": "가용성염류",
+        "major_class_sequence": "2014001001",
+        "major_class_code": "A",
+        "major_class_korean_name": "일반성분 및 기능성분",
+        "middle_class_sequence": "2014001011",
+        "middle_class_code": "A1",
+        "middle_class_korean_name": "일반성분",
+        "residue_definition": "",
+        "in_use": "Y",
+        "last_updated_at": "2020-03-18 08:53:50.199009"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "116"
+    }
+  }
+}

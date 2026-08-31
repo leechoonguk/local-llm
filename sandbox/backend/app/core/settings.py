@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     secret_key: str
     access_token_expire_minutes: int = 30
     algorithm: str = "HS256"
-    cors_origins: list[str] = ["http://localhost:15173"]
+    cors_origins: list[str] = ["http://localhost:25173"]
     # Required, not defaulted: a Host allowlist that falls back to "accept
     # anything" is the vulnerability it exists to close, and a missing value
     # must stop startup instead of opening the app.

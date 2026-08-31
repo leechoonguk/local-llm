@@ -15,6 +15,6 @@ COPY scripts ./scripts
 RUN chmod +x scripts/start.sh
 
 ENV PATH="/app/.venv/bin:$PATH"
-EXPOSE 18000
+EXPOSE 8000
 
 CMD ["./scripts/start.sh"]

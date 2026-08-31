@@ -21,7 +21,7 @@ a Pydantic setting — REST Client reads `$dotenv` from the `.env` beside the
 request file, which is why the pair lives in `api/` and not at the root.
 `check-environment` does not look at it; `check-backend-api-http` owns it: the
 key is present in the committed example, its value is an origin
-(`scheme://host:18000`, no path), every `{{$dotenv …}}` a request file uses is
+(`scheme://host:28000`, no path), every `{{$dotenv …}}` a request file uses is
 declared there, and every declared key is used. Values in **this** pair may
 differ — the example points at localhost while a developer's `api/.env` points
 at whatever serves them — because per-target is the whole purpose of the file.
@@ -52,27 +52,55 @@ behaviour of the code, so a test is the honest place for it.
 wins over `backend/.env` for a key the file declares. Change the file, or remove
 the key from it.
 
-### docker-compose Env Indirection
+### docker-compose: the Backend Maps the File
 
-Every backend-service environment value in `docker-compose.yml` must be a
-**`${VAR}` reference** resolved from the root `.env` — literal values in the
-compose file are hardcoded configuration. The root `.env` (or `.env.example`)
-must define every referenced variable. Machine-checked by `check-environment.ts`
-(check 5).
+The backend service is configured by **mapping the root `.env` as a file**, not
+by listing one key per line:
 
 ```yaml
-# docker-compose.yml (correct — all values are ${VAR} references)
-environment:
-  DATABASE_URL: ${DATABASE_URL}
-  REDIS_URL: ${REDIS_URL}
-  ENV: ${ENV}
+# docker-compose.yml (correct — one mapping, no per-key list)
+backend:
+  env_file:
+    - .env
 ```
 
+A per-key `environment:` block is a second declaration of the settings schema,
+and the copy is what goes stale. Measured on this repository: `SECRET_KEY` was
+never added to that list, `settings.py` declares it with no default, and the
+backend container therefore failed Pydantic validation on boot and restarted
+forever — while `make verify` stayed green and every env-file check passed. The
+image copies no `.env` (`backend/Dockerfile`), so compose is the container's only
+input; a forgotten line is a setting that silently does not exist.
+
+`settings.py` sets `extra="ignore"`, so root-only infra keys (`POSTGRES_*`,
+`PHOENIX_*`, the host ports) are handed over harmlessly.
+
+**Every other service keeps explicit values**, because a database must not
+receive the app's signing key. Their entries must still be `${VAR}` references
+resolved from the root `.env` — a literal in the compose file is configuration
+in the wrong place. A container-local binding (`PHOENIX_HOST: "0.0.0.0"`) is the
+documented exception: no deployment changes it.
+
+Machine-checked by `check-environment.ts` (check 5): the backend declares
+`env_file: [.env]` and **no** `environment:` block; every other service's values
+are `${VAR}` references that root `.env` defines.
+
+### Host Ports Are Configurable, Container Ports Are Not
+
+Host-side ports come from the root `.env` with a default
+(`"${POSTGRES_PORT:-25432}:25432"`), because a developer who already runs
+PostgreSQL locally cannot start the stack when 25432 is taken. The container side
+never moves: `DATABASE_URL`, `REDIS_URL` and the Phoenix SQL URL all name the
+in-network port, so changing it would break every one of them.
+
 ```bash
-# root .env / .env.example (host = docker service name inside compose network)
-DATABASE_URL = postgresql+asyncpg://app:app@postgres:5432/app
-REDIS_URL = redis://redis:6379/0
-ENV = production
+# root .env / .env.example — host ports
+POSTGRES_PORT = 25432
+REDIS_PORT = 26379
+PHOENIX_UI_PORT = 26006
+PHOENIX_GRPC_PORT = 24317
+BACKEND_PORT = 28000
+FRONTEND_PORT = 25173
 ```
 
 ### ENV: container vs local (intentional mismatch)
@@ -109,7 +137,7 @@ Every env file (root and backend) uses the root `.env` style:
 
 # --- Database ---
 # Async PostgreSQL connection string (local dev: localhost)
-DATABASE_URL = postgresql+asyncpg://app:app@localhost:15432/app
+DATABASE_URL = postgresql+asyncpg://app:app@localhost:25432/app
 
 # --- App ---
 APP_NAME = "Awesome API"
@@ -154,10 +182,11 @@ Every key in `backend/.env` must also exist in `root/.env`. docker-compose
 passes root values into the backend container; a backend-only key means the
 container silently falls back to a `settings.py` default instead of the
 configured value, so Docker and local runs diverge. Root-only keys are expected
-(infra vars like `POSTGRES_*`, `PHOENIX_SQL_DATABASE_SCHEMA`, and backend
-settings that keep a `settings.py` default such as `CORS_ORIGINS`,
-`ACCESS_TOKEN_EXPIRE_MINUTES`, `ALGORITHM`). New backend settings must be added
-to `root .env`/`.env.example` **and** wired through `docker-compose.yml`.
+(infra vars like `POSTGRES_*`, `PHOENIX_SQL_DATABASE_SCHEMA`, the host ports,
+and backend settings that keep a `settings.py` default such as `CORS_ORIGINS`,
+`ACCESS_TOKEN_EXPIRE_MINUTES`, `ALGORITHM`). A new backend setting only has to
+be added to `root .env`/`.env.example` — `env_file` carries it into the
+container with no compose edit at all.
 Machine-checked by `check-environment.ts` (root ⊇ backend key invariant).
 
 ### Shared Variable Order + Comments
@@ -235,8 +264,9 @@ tool execution:
 7. `.env` ↔ `.env.example` expose the same keys, the same
    `# --- <Section> ---` markers, and the same per-variable preceding
    comment for every pair (root and backend), checked bidirectionally
-8. `docker-compose.yml` backend environment values are `${VAR}` references
-   (not hardcoded) and the referenced variables exist in root `.env`
+8. `docker-compose.yml` wires the backend through `env_file: [.env]` and carries
+   no `environment:` block for it; every other service's values are `${VAR}`
+   references that root `.env` defines
 9. Shared variables appear in the same order and with the same comments in
    root `.env` and `backend/.env`
 
@@ -274,25 +304,29 @@ locally because that is the Host Starlette's `TestClient` sends.
   (machine-checked by `check-environment.ts` AST rules:
   `os.environ`/`os.getenv` direct use, literal `postgresql+asyncpg://`
   strings, and literal service ports are all flagged)
-- Hardcode any backend environment value in `docker-compose.yml` — use
-  `${VAR}` references resolved from root `.env`
-  (machine-checked by `check-environment.ts` check 8)
+- List backend environment keys one by one in `docker-compose.yml` — map the
+  root `.env` with `env_file` instead, or the next setting nobody remembers is
+  a setting the container silently does not have
+  (machine-checked by `check-environment.ts`, "docker-compose.yml env wiring")
+- Hardcode a non-backend service's environment value in `docker-compose.yml` —
+  use `${VAR}` references resolved from root `.env`
+  (machine-checked by `check-environment.ts`, "docker-compose.yml env wiring")
 - Drop the section comments (`# ===` banner / `# --- <Section> ---`) from an
   env file — bare variable dumps are hard to maintain
-  (machine-checked by `check-environment.ts` check 2)
+  (machine-checked by `check-environment.ts`, "Section comments + alignment")
 - Use unaligned assignments (`KEY=value`, `KEY =value`, `KEY= value`) — the
   `KEY = value` form is required
-  (machine-checked by `check-environment.ts` check 2)
+  (machine-checked by `check-environment.ts`, "Section comments + alignment")
 - Add a key to `backend/.env` that is absent from `root/.env` — docker-compose
   cannot pass it to the container, so Docker runs on a `settings.py` default
   instead of the configured value
-  (machine-checked by `check-environment.ts` check 6)
+  (machine-checked by `check-environment.ts`, "Root ↔ backend shared variable sync")
 - Let `.env` and `.env.example` drift (keys, `# --- <Section> ---` markers, or
   per-variable comments) for either pair — the runtime file and the
   committed reference must stay in sync bidirectionally
-  (machine-checked by `check-environment.ts` check 7)
+  (machine-checked by `check-environment.ts`, ".env ↔ .env.example pair sync")
 - Reorder shared variables or rewrite their comments in one env file only —
   root `.env` and `backend/.env` must keep the same order and comments
-  (machine-checked by `check-environment.ts` check 9)
+  (machine-checked by `check-environment.ts`, "Shared variable order + comments sync")
 - Forget `DATABASE_URL` when running migrations
 - Use `settings.env != "production"` for security decisions — validate at runtime

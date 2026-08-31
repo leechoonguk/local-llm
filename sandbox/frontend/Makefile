@@ -9,11 +9,15 @@ help: ## Show this help
 install: ## Install dependencies (npm install)
 	$(NPM) install
 
-dev: ## Run Vite dev server (:5173, background)
-	nohup npx vite > /tmp/vite.log 2>&1 & disown; echo "==> Frontend PID: $$!"
+# Vite owns its port (vite.config.ts); read it so `down` cannot target another.
+FRONTEND_PORT ?= $(shell sed -n 's/^[[:space:]]*port:[[:space:]]*\([0-9]*\).*/\1/p' vite.config.ts 2>/dev/null || true)
+FRONTEND_PORT := $(if $(FRONTEND_PORT),$(FRONTEND_PORT),5173)
 
-down: ## Stop frontend (kill Vite on :15173)
-	lsof -ti:15173 | xargs kill -9 2>/dev/null; echo "==> stopped"
+dev: ## Run Vite dev server (port from vite.config.ts, background)
+	nohup npx vite > /tmp/vite.log 2>&1 & disown; echo "==> Frontend PID: $$! (:$(FRONTEND_PORT))"
+
+down: ## Stop frontend (kill Vite on its configured port)
+	lsof -ti:$(FRONTEND_PORT) | xargs kill -9 2>/dev/null; echo "==> stopped :$(FRONTEND_PORT)"
 
 verify: lint typecheck build ## Run lint, typecheck, and build (fail-fast)
 

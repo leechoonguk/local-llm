@@ -1,4 +1,4 @@
-.PHONY: help install dev down migrate migrate-gen migrate-down verify test test-fast lint typecheck clean
+.PHONY: help install dev down migrate migrate-gen migrate-down verify verify-fast test test-fast fix lint typecheck clean
 
 UV := uv
 
@@ -9,11 +9,15 @@ help: ## Show this help
 install: ## Install dependencies (uv sync)
 	$(UV) sync
 
-dev: ## Run backend (migrate + uvicorn :18000, reload)
-	./scripts/start.sh
+# The host port comes from the root .env (BACKEND_PORT); start.sh reads it.
+BACKEND_PORT ?= $(shell sed -n 's/^BACKEND_PORT[[:space:]]*=[[:space:]]*\([0-9]*\).*/\1/p' ../.env 2>/dev/null || true)
+BACKEND_PORT := $(if $(BACKEND_PORT),$(BACKEND_PORT),8000)
 
-down: ## Stop backend (kill uvicorn on :8000)
-	lsof -ti:18000 | xargs kill -9 2>/dev/null; echo "==> stopped"
+dev: ## Run backend locally (migrate + uvicorn on BACKEND_PORT, reload)
+	ENV=local BACKEND_PORT=$(BACKEND_PORT) ./scripts/start.sh
+
+down: ## Stop backend (kill uvicorn on BACKEND_PORT)
+	lsof -ti:$(BACKEND_PORT) | xargs kill -9 2>/dev/null; echo "==> stopped :$(BACKEND_PORT)"
 
 migrate: ## Apply alembic migrations to head
 	.venv/bin/alembic upgrade head
@@ -29,22 +33,21 @@ migrate-gen: ## Generate a new migration from model changes (usage: make migrate
 
 verify: lint typecheck test ## Run lint, typecheck, and test (fail-fast)
 
-
-test: ## Run tests (pytest, full coverage gate)
-	.venv/bin/pytest -q --cov=app --cov-report=term-missing --cov-fail-under=100
-
-verify-fast: lint typecheck test-fast ## Fast iteration gate — lint+typecheck+tests without the coverage gate
-	@true
+test: ## Run tests (pytest)
+	.venv/bin/pytest -q
 
 test-fast: ## Run tests without the coverage gate (usage: make test-fast t="tests/api/test_x.py")
 	.venv/bin/pytest -q --no-cov $(t)
 
-lint: ## Lint (ruff)
-	.venv/bin/ruff check app alembic tests
+verify-fast: lint typecheck test-fast ## Fast iteration gate — lint+typecheck+tests without the coverage gate
+	@true
 
 fix: ## Auto-fix lint and formatting (ruff --fix + format; alembic 제외 — 마이그레이션은 불변 산출물)
 	.venv/bin/ruff check --fix app tests
 	.venv/bin/ruff format app tests
+
+lint: ## Lint (ruff)
+	.venv/bin/ruff check app alembic tests
 
 typecheck: ## Type-check (pyright)
 	.venv/bin/pyright

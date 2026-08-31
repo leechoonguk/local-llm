@@ -959,8 +959,21 @@ export function checkMigrationPolicy(): string[] {
   // legal on its own.
   issues.push(...listProvidersSharingAHost());
 
-  // fast-api-standard 쪽에는 여기에 env.py transaction_per_migration 검사가 더 있다 — 이 baseline 의
-  // env.py 는 그 설정이 없고 피험자 소스는 불변이라 트리별 유지(2026-08-31 머지 결정).
+  // A run is atomic per migration, or a failure leaves the pointer and the rows
+  // disagreeing — and the next upgrade then fails on a constraint that describes
+  // nothing about the migrations. Measured: a partly-applied `downgrade base`
+  // produced exactly that, and the phantom defect it implied cost half an hour.
+  const envPath = join(projectRoot, "backend", "alembic", "env.py");
+  if (existsSync(envPath)) {
+    const env = readFileSync(envPath, "utf-8");
+    if (!/transaction_per_migration\s*=\s*True/.test(env)) {
+      issues.push(
+        "alembic/env.py: context.configure must set transaction_per_migration=True — " +
+          "without it a failed multi-step run commits part of the chain and leaves the " +
+          "version pointer describing a database that does not exist",
+      );
+    }
+  }
 
   return issues;
 }

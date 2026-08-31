@@ -7,14 +7,13 @@ from sqlalchemy.pool import NullPool
 from alembic import context
 from app.core.settings import settings
 from app.models.base import Base
-from app.models.batch import Batch  # noqa: F401 — register model on metadata
-from app.models.integration import (
-    Integration,  # noqa: F401 — register model on metadata
-    IntegrationField,  # noqa: F401 — register model on metadata
-    IntegrationOperation,  # noqa: F401 — register model on metadata
-    IntegrationSecret,  # noqa: F401 — register model on metadata
-)
-from app.models.user import User  # noqa: F401 — register model on metadata
+from app.models.batch import Batch  # noqa: F401 — on metadata
+from app.models.integration.call import IntegrationCall  # noqa: F401 — on metadata
+from app.models.integration.field import IntegrationField  # noqa: F401 — on metadata
+from app.models.integration.operation import IntegrationOperation  # noqa: F401 — on metadata
+from app.models.integration.provider import Integration  # noqa: F401 — on metadata
+from app.models.integration.secret import IntegrationSecret  # noqa: F401 — on metadata
+from app.models.user import User  # noqa: F401 — on metadata
 
 
 config = context.config
@@ -44,7 +43,21 @@ def run_migrations_online() -> None:
 
 
 def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
-    context.configure(connection=connection, target_metadata=target_metadata)
+    # One transaction per migration, not one for the whole run. A multi-step run
+    # that fails then stops at the last revision that fully applied, so the
+    # version pointer and the rows still agree.
+    #
+    # Measured the other way round: a `downgrade base` that failed part-way left a
+    # database whose pointer said 65 while an operation row from revision 66 was
+    # still there, and the next `upgrade head` died on
+    # `uq_integration_operation_provider_code`. Half an hour then went into
+    # diagnosing a migration ordering defect that does not exist - the chain
+    # downgrades cleanly from a consistent database.
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        transaction_per_migration=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
