@@ -42,7 +42,7 @@ Machine-checked by `router/auth-all.yml`.
 | `POST /user/` (signup) | public | `auth-all.yml` exception |
 | `GET /health` (readiness) | public | `auth-all.yml` exception |
 | all other endpoints | `current_user: CurrentUserDep` | `auth-all.yml` |
-| `PUT`/`DELETE` | `current_user: CurrentUserDep` | `write-auth.yml` |
+| `PUT`/`PATCH`/`DELETE` | `current_user: CurrentUserDep` | `write-auth.yml` |
 | `current_user` outside routers | forbidden | `conventions/current-user-router-only.yml`
 
 ## Exceptions

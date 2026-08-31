@@ -38,21 +38,21 @@ style: |
     font-size: 0.85em;
   }
 ---
-<!-- sync: backend-api-http.md=fe30cf59789caf73 -->
+<!-- sync: backend-api-http.md=1d4ca22c74870840 -->
 <!-- sync: backend-api-keys.md=240f10d0c15e7197 -->
 <!-- sync: backend-app-forbidden-tokens.md=377fbcb4af5aab0f -->
 <!-- sync: backend-app-setup.md=17d665e697444fd2 -->
 <!-- sync: backend-audit-log.md=8ff51ab42272c7b2 -->
-<!-- sync: backend-auth.md=02526a21c899cb02 -->
+<!-- sync: backend-auth.md=94bcf2878675992d -->
 <!-- sync: backend-background-tasks.md=f44f5777655cd583 -->
 <!-- sync: backend-batch.md=65c45b90acb2340f -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-core-config.md=dcd8e7bc6c1cbf9f -->
-<!-- sync: backend-domain.md=d368ab5b67238481 -->
+<!-- sync: backend-domain.md=6ba32e699fcc7876 -->
 <!-- sync: backend-exceptions.md=d36379949336814d -->
 <!-- sync: backend-file-upload.md=417dc0174bf98a36 -->
 <!-- sync: backend-identity-tokens.md=dc89bdba3680fdd8 -->
-<!-- sync: backend-integration-configuration.md=efaf472c56d5113e -->
+<!-- sync: backend-integration-configuration.md=b0ef98683632508c -->
 <!-- sync: backend-integration.md=3fd57fcc535b4e66 -->
 <!-- sync: backend-makefile.md=f25f9e888286eaa6 -->
 <!-- sync: backend-middleware.md=f54d26f09ba562a2 -->
@@ -66,7 +66,7 @@ style: |
 <!-- sync: backend-service-boundary-tokens.md=4f04ef441d9c50a7 -->
 <!-- sync: backend-sse.md=69de863a0eaf5e50 -->
 <!-- sync: backend-table-design.md=4f4c1299879a5403 -->
-<!-- sync: backend-testing.md=15f36f2ab96f65df -->
+<!-- sync: backend-testing.md=1b13201da3bbfe13 -->
 <!-- sync: backend-transaction.md=4a614d04f599617d -->
 <!-- sync: code-layout.md=8c1eaf01a499e622 -->
 <!-- sync: decks-sync.md=e003ffe7cce93087 -->
@@ -127,10 +127,10 @@ style: |
 <!-- sync: check-verify.ts=5a28d5df52b21485 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
 <!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
-<!-- sync: lib/backend-api-http.ts=bb2f0ef1271159f0 -->
+<!-- sync: lib/backend-api-http.ts=83b53dad31a07bc6 -->
 <!-- sync: lib/backend-auth.ts=a5bca744745861b0 -->
 <!-- sync: lib/backend-domain-layers.ts=2ff2f5555721a967 -->
-<!-- sync: lib/backend-domain-structure.ts=9b2bfb5717d2a8b6 -->
+<!-- sync: lib/backend-domain-structure.ts=c7d46f9f802db4c5 -->
 <!-- sync: lib/backend-exceptions.ts=ac2cfd4db338bc23 -->
 <!-- sync: lib/backend-external-api-probe.ts=725e9b18ba527e80 -->
 <!-- sync: lib/backend-integration-configuration.ts=4aec5cc8f8f692db -->
@@ -164,7 +164,7 @@ style: |
 <!-- sync: ast-grep/rules/offload/=4bb3cc65a9370b86 -->
 <!-- sync: ast-grep/rules/ownership/=9723397c4a35ebf5 -->
 <!-- sync: ast-grep/rules/ownership-router/=cf764d3af48ee904 -->
-<!-- sync: ast-grep/rules/router/=fef3c4a846cbeb23 -->
+<!-- sync: ast-grep/rules/router/=945a6f4bd5297fe5 -->
 <!-- sync: ast-grep/rules/service/=45cc71c05ceb3001 -->
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->

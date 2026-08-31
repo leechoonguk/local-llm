@@ -173,7 +173,7 @@ GET {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
 ### 5. provider 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
-PUT {{base}}/integration/{{integrationId}}
+PATCH {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 

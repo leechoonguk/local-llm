@@ -5,5 +5,5 @@ language: python
 # The annotation alone drives FastAPI (SonarQube S8409).
 rule:
   kind: decorated_definition
-  regex: "@router\\.(get|post|put|delete)\\([^)]*response_model"
+  regex: "@router\\.(get|post|put|patch|delete)\\([^)]*response_model"
 message: "response_model is redundant — the return type annotation drives FastAPI's response model (SonarQube S8409); remove response_model"

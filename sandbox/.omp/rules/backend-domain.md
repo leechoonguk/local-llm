@@ -117,7 +117,7 @@ The gate (`make verify`) checks every item below — missing any one fails:
 - `schemas/<name>.py` — 6 Pydantic classes: `XBase`, `XCreateRequest`, `XCreateInternal`, `XReadResponse`, `XUpdateRequest`, `XUpdateInternal`
 - `repositories/<name>.py` — async CRUD repository with 7 methods: `get`, `list`, `find_stale`, `create`, `update`, `delete`, `__init__`
 - `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError` (and `ConflictError` when the model declares uniqueness — see `services/user.py`)
-- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}` (list pagination uses the shared `OffsetQuery`/`LimitQuery` defaults — see rule://backend-router-params)
+- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PATCH `/{id}` (update — the verb follows the schema: all-optional `*UpdateRequest` = PATCH; a full-resource schema would be PUT, see rule://backend-api-http), DELETE `/{id}` (list pagination uses the shared `OffsetQuery`/`LimitQuery` defaults — see rule://backend-router-params)
 
 **Wires (2):**
 
@@ -324,7 +324,7 @@ Rules:
 | `POST /` | create | 201 | `NameReadResponse` |
 | `GET /` | list | 200 | `list[NameReadResponse]` |
 | `GET /{<name>_id}` | get | 200/404 | `NameReadResponse` |
-| `PUT /{<name>_id}` | update | 200/404 | `NameReadResponse` |
+| `PATCH /{<name>_id}` | update (partial — schema is all-optional) | 200/404 | `NameReadResponse` |
 | `DELETE /{<name>_id}` | delete | 200/404 | `{"ok": True}` |
 
 Rules:

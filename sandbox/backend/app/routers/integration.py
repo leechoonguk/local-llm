@@ -65,7 +65,7 @@ async def get_integration(
     return to_read(await integration_service.get_integration(integration_id))
 
 
-@router.put("/{integration_id}")
+@router.patch("/{integration_id}")
 async def update_integration(
     integration_id: UUID,
     data: IntegrationUpdateRequest,

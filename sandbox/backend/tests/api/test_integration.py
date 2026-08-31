@@ -158,7 +158,7 @@ def test_integration_configuration_crud(client: TestClient, auth_headers: dict[s
     assert fetched.status_code == 200
     assert fetched.json()["id"] == integration_id
 
-    updated = client.put(
+    updated = client.patch(
         f"/api/v1/integration/{integration_id}",
         json={"display_name": "FreshPlate Partner API v2", "operations": []},
         headers=auth_headers,

@@ -71,14 +71,40 @@ const BASE_DECLARATION = `@base = {{$dotenv ${BASE_VARIABLE}}}/api/v1`;
 /** An origin — scheme, host, the fixed API port. No path: `/health` sits above `/api/v1`. */
 const BASE_VALUE = /^https?:\/\/[^\s/:]+:18000$/;
 
-/** The five endpoints that make a router a CRUD router. */
+/**
+ * The five endpoints that make a router a CRUD router. The update slot is not a
+ * fixed verb: the method is DERIVED from the `*UpdateRequest` schema — every
+ * field optional (partial update) demands PATCH, a full-resource body demands
+ * PUT. "PUT 또는 PATCH 아무거나" 로 완화하는 것이 아니라 요청 의미가 메서드를
+ * 결정한다(2026-08-31 표준 개정). `expectedUpdateMethod()` 가 판정한다.
+ */
+const UPDATE_METHODS = ["PUT", "PATCH"];
 const CRUD_ENDPOINTS = [
   { method: "POST", path: "/" },
   { method: "GET", path: "/" },
   { method: "GET", path: "/{id}" },
-  { method: "PUT", path: "/{id}" },
+  { method: "UPDATE", path: "/{id}" }, // PUT|PATCH — semantics checked separately
   { method: "DELETE", path: "/{id}" },
 ];
+
+/**
+ * update 메서드의 기대값을 스키마에서 읽는다. `class <X>UpdateRequest` 본문의
+ * 필드가 전부 optional(`= None` 기본값)이면 부분 갱신 = PATCH, 하나라도 필수면
+ * 전체 교체 = PUT. 스키마를 못 찾으면 null — 그 파일은 메서드 판정을 보류한다.
+ */
+export function expectedUpdateMethod(schemaPath: string): "PUT" | "PATCH" | null {
+  let text: string;
+  try { text = readFileSync(schemaPath, "utf-8"); } catch { return null; }
+  const start = text.search(/class \w+UpdateRequest\(/);
+  if (start < 0) return null;
+  const rest = text.slice(text.indexOf("\n", start) + 1);
+  const end = rest.search(/^\S/m); // 다음 톱레벨 선언에서 클래스 본문이 끝난다
+  const body = end < 0 ? rest : rest.slice(0, end);
+  const fields = body.split("\n").map((l) => l.trim()).filter((l) =>
+    /^[a-z_]\w*\s*:/.test(l) && !l.startsWith("model_config"));
+  if (fields.length === 0) return null;
+  return fields.every((f) => /=\s*None\b/.test(f) || /=\s*Field\([^)]*default/.test(f)) ? "PATCH" : "PUT";
+}
 
 interface HttpRequest {
   method: string;
@@ -135,6 +161,23 @@ export function checkDomainApiHttp(): string[] {
     const router = readFileSync(join(routerDir, file), "utf-8");
     const endpoints = parseEndpoints(router);
     const covering: HttpRequest[] = [];
+
+    // update 메서드는 요청 의미에서 파생된다: `*UpdateRequest` 가 전 필드 optional 이면
+    // 부분 갱신 = PATCH, 하나라도 필수면 전체 교체 = PUT. 라우터의 실제 메서드가 스키마와
+    // 어긋나면 여기서 잡는다 — "둘 다 허용" 이 아니다(2026-08-31 표준 개정).
+    const expected = expectedUpdateMethod(join(base, "schemas", `${name}.py`));
+    if (expected !== null) {
+      for (const e of endpoints.filter((e) => UPDATE_METHODS.includes(e.method) && /\{[^}]+\}\/?$/.test(e.path))) {
+        if (e.method !== expected) {
+          issues.push(
+            `routers/${file}: ${e.method} ${e.path} — schemas/${name}.py 의 UpdateRequest 는 ` +
+              (expected === "PATCH"
+                ? "전 필드 optional(부분 갱신)이므로 PATCH 여야 한다. PUT 은 전체 리소스 교체를 뜻한다"
+                : "필수 필드를 요구(전체 교체)하므로 PUT 이어야 한다. PATCH 는 부분 갱신을 뜻한다") + ".",
+          );
+        }
+      }
+    }
 
     for (const httpFile of [group.primary, ...group.companions]) {
       const label = httpFile.replace(/\.http$/, "");
@@ -333,7 +376,7 @@ function isCrudRouter(endpoints: Array<{ method: string; path: string }>): boole
   return CRUD_ENDPOINTS.every((crud) =>
     endpoints.some(
       (endpoint) =>
-        endpoint.method === crud.method &&
+        (crud.method === "UPDATE" ? UPDATE_METHODS.includes(endpoint.method) : endpoint.method === crud.method) &&
         (crud.path === "/"
           ? /^\/[^/{]*\/?$/.test(endpoint.path)
           : /\{[^}]+\}\/?$/.test(endpoint.path)),
@@ -635,7 +678,7 @@ function checkCrudSequence(
   );
   const list = requests.find((r) => r.method === "GET" && collection.test(r.path));
   const get = requests.find((r) => r.method === "GET" && item.test(r.path));
-  const update = requests.find((r) => r.method === "PUT" && item.test(r.path));
+  const update = requests.find((r) => UPDATE_METHODS.includes(r.method) && item.test(r.path));
   const remove = requests.find((r) => r.method === "DELETE" && item.test(r.path));
   if (create === undefined || list === undefined || get === undefined || update === undefined || remove === undefined) {
     // Endpoint coverage already reports the missing block; ordering is moot.

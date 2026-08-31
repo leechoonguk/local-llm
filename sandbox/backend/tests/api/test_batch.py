@@ -80,14 +80,14 @@ def test_update_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     created = client.post("/api/v1/batch/", json={"name": "Old"}, headers=auth_headers).json()
     batch_id = created["id"]
 
-    response = client.put(f"/api/v1/batch/{batch_id}", json={"name": "New"}, headers=auth_headers)
+    response = client.patch(f"/api/v1/batch/{batch_id}", json={"name": "New"}, headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["name"] == "New"
 
 
 def test_update_batch_not_found(client: TestClient, auth_headers: dict[str, str]) -> None:
     """Writing to a missing row is 404 rather than an implicit create."""
-    response = client.put(
+    response = client.patch(
         "/api/v1/batch/00000000-0000-0000-0000-000000000000",
         json={"name": "New"},
         headers=auth_headers,
@@ -159,7 +159,7 @@ def test_batch_reads_use_cache_and_writes_invalidate(
     ]
 
     assert (
-        client.put(
+        client.patch(
             f"/api/v1/batch/{batch_id}", json={"name": "Updated"}, headers=auth_headers
         ).status_code
         == 200

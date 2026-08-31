@@ -38,7 +38,7 @@ Authorization: Bearer {{login.response.body.access_token}}
 
 ### 5. User 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
 # @name updateUser
-PUT {{base}}/user/{{userId}}
+PATCH {{base}}/user/{{userId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
@@ -65,7 +65,7 @@ GET {{base}}/user/{{userId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
 ### 9. User 수정 — 404 (없는 리소스 수정)
-PUT {{base}}/user/{{userId}}
+PATCH {{base}}/user/{{userId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 

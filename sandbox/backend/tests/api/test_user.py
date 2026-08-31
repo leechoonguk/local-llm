@@ -84,7 +84,7 @@ def test_update_user(client: TestClient, auth_headers: dict[str, str]) -> None:
     ).json()
     user_id = created["id"]
 
-    response = client.put(
+    response = client.patch(
         f"/api/v1/user/{user_id}", json={"email": "new@example.com"}, headers=auth_headers
     )
     assert response.status_code == 200
@@ -93,7 +93,7 @@ def test_update_user(client: TestClient, auth_headers: dict[str, str]) -> None:
 
 def test_update_user_not_found(client: TestClient, auth_headers: dict[str, str]) -> None:
     """Writing to a missing row answers 404 instead of creating it."""
-    response = client.put(
+    response = client.patch(
         "/api/v1/user/00000000-0000-0000-0000-000000000000",
         json={"email": "x@example.com"},
         headers=auth_headers,

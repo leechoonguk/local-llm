@@ -163,7 +163,7 @@ The previous five-table shape failed in four ways this design fixes:
 
 ### Two Writers, One Definition of Valid
 
-The four tables have two writers: alembic seeds, and `POST/PUT /integration/`. A
+The four tables have two writers: alembic seeds, and `POST/PATCH /integration/`. A
 migration reaches them through the DB `CHECK` alone — it never meets the Pydantic
 literals or `IntegrationService`'s validation. So the same invariant is written three
 times, and a capability added to two of them leaves the third refusing rows the

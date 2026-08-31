@@ -56,7 +56,7 @@ async def get_user(
     return to_read(user)
 
 
-@router.put("/{user_id}")
+@router.patch("/{user_id}")
 async def update_user(
     user_id: UUID,
     data: UserUpdateRequest,

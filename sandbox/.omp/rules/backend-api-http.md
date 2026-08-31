@@ -34,9 +34,38 @@ The category is derived from the router, never hardcoded:
 
 | Category | Detected by | Extra requirements |
 |---|---|---|
-| **CRUD** | router declares all five of `POST /`, `GET /`, `GET /{id}`, `PUT /{id}`, `DELETE /{id}` | the full sequence below |
+| **CRUD** | router declares all five of `POST /`, `GET /`, `GET /{id}`, the update endpoint on `/{id}`, `DELETE /{id}` | the full sequence below |
 | **Special** | any other router (`auth`, `health`) | structure + coverage only |
 | **Companion** | `<router>.<slug>.http` — one external operation per file | structure only; no CRUD sequence |
+
+### Update verb: derived from the request schema, never chosen freely
+
+The verb is the API's statement of what an **omitted field** means. That meaning
+lives in the `*UpdateRequest` schema, so the check reads the schema and flags
+the mismatched verb — "PUT or PATCH, either is fine" is not the rule.
+
+| The update schema… | Omitted field means | Verb | Handler contract |
+|---|---|---|---|
+| every field optional (`= None`) | keep the stored value | `PATCH /{id}` | apply only fields the client sent (`model_dump(exclude_unset=True)`) |
+| requires the full resource (any required field) | there is no omitted field — the body **is** the new state | `PUT /{id}` | replace every mutable field with the body's values |
+
+**When to design for PUT** — the resource is a document the client owns whole:
+the client always holds (or first GETs) the complete representation, writes back
+the full state, and a lost field is a bug you want loud (422), not a silent
+keep. Config blobs, published profiles, and idempotent "declare the desired
+state" APIs fit this. PUT must be idempotent: sending the same body twice leaves
+the same state.
+
+**When to design for PATCH** — the client edits one field without knowing the
+rest: forms that submit only what changed, concurrent editors touching disjoint
+fields, mobile clients on partial payloads. All-optional schema, and the handler
+must not interpret an omitted field as "clear it".
+
+The mistakes each direction prevents: a PATCH-shaped schema behind PUT lets a
+client that believes in PUT semantics omit a field expecting a reset and
+silently keep stale state; a PUT-shaped schema behind PATCH forces every caller
+to fetch-then-echo the whole resource just to change one field. This baseline's
+update schemas are all-optional, so every update endpoint here is PATCH.
 
 A CRUD router with extra endpoints (integration secrets, operation execute) is
 still a CRUD file: the sequence comes first, the special blocks follow.

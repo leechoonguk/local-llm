@@ -2,10 +2,11 @@ id: router-write-auth
 language: python
 # A write without identity cannot fill the audit columns or check ownership, so
 # it is anonymous by construction. This is the narrow, always-on half of the
-# auth rule: no PUT or DELETE without `CurrentUserDep`.
+# auth rule: no PUT, PATCH or DELETE without `CurrentUserDep`. patch 가 빠져 있던
+# 동안 PATCH 엔드포인트는 이 검사와 auth-all 을 통째로 우회했다(2026-08-31 전수 점검).
 rule:
   kind: decorated_definition
-  regex: "@router\\.(put|delete)\\("
+  regex: "@router\\.(put|patch|delete)\\("
   not:
     regex: "current_user: CurrentUserDep"
 message: "write endpoint must inject current_user: CurrentUserDep (JWT auth)"

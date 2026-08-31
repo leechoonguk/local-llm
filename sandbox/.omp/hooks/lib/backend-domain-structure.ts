@@ -262,8 +262,10 @@ export function checkDomainStructure(): string[] {
       if (!routerContent.includes("@router.get")) {
         issues.push(`${name}: router missing GET endpoint`);
       }
-      if (!routerContent.includes("@router.put")) {
-        issues.push(`${name}: router missing PUT endpoint`);
+      // update 메서드는 스키마 의미가 정한다(PATCH=부분 갱신 / PUT=전체 교체) — 어느 쪽인지의
+      // 판정은 check-backend-api-http 의 expectedUpdateMethod 소관이고, 여기서는 존재만 본다.
+      if (!routerContent.includes("@router.patch") && !routerContent.includes("@router.put")) {
+        issues.push(`${name}: router missing update endpoint (PATCH or PUT — the verb follows the update schema, rule://backend-api-http)`);
       }
       if (!routerContent.includes("@router.delete")) {
         issues.push(`${name}: router missing DELETE endpoint`);

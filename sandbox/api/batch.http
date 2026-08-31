@@ -37,7 +37,7 @@ GET {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
 ### 5. Batch 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
-PUT {{base}}/batch/{{batchId}}
+PATCH {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
@@ -55,7 +55,7 @@ GET {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
 ### 8. Batch 수정 — 404 (없는 리소스 수정)
-PUT {{base}}/batch/{{batchId}}
+PATCH {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 

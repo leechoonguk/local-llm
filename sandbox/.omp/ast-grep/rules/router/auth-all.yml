@@ -5,7 +5,7 @@ language: python
 # that was intended — so the three public paths are named here, and only those.
 rule:
   kind: decorated_definition
-  regex: "@router\\.(get|post|put|delete)\\("
+  regex: "@router\\.(get|post|put|patch|delete)\\("
   not:
     any:
       - regex: "current_user: CurrentUserDep"

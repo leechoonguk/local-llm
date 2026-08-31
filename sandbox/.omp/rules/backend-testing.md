@@ -67,8 +67,8 @@ Every CRUD domain test file follows the same pattern:
 2. **List** — `GET /<domain>/` → 200, contains created names
 3. **Get** — `GET /<domain>/{id}` → 200
 4. **Get 404** — `GET /<domain>/00000000-0000-0000-0000-000000000000` → 404
-5. **Update** — `PUT /<domain>/{id}` → 200, field changed
-6. **Update 404** — `PUT /<domain>/00000000-...` → 404
+5. **Update** — `PATCH /<domain>/{id}` → 200, field changed (verb follows the update schema — rule://backend-api-http)
+6. **Update 404** — `PATCH /<domain>/00000000-...` → 404
 7. **Delete** — `DELETE /<domain>/{id}` → 200 `{"ok": true}`, then GET → 404
 8. **Delete 404** — `DELETE /<domain>/00000000-...` → 404
 9. **Create 422** — `POST /<domain>/` with a missing required field → 422

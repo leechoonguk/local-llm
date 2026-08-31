@@ -884,7 +884,7 @@ def test_seeded_configuration_is_creatable_through_the_api() -> None:
     """Every seeded row must be a row the write path accepts.
 
     The four configuration tables have two writers: alembic seeds, and
-    `POST/PUT /integration/`. A migration reaches the tables through the DB `CHECK`
+    `POST/PATCH /integration/`. A migration reaches the tables through the DB `CHECK`
     alone — it never meets the Pydantic literals or `IntegrationService`'s validation.
     So a seeded shape the API refuses is a configuration **nobody can author or edit**:
     an operator reading it back and submitting one changed timeout is refused over a

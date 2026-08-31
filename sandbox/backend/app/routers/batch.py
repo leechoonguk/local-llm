@@ -98,7 +98,7 @@ async def get_batch(
     return response
 
 
-@router.put("/{batch_id}")
+@router.patch("/{batch_id}")
 async def update_batch(
     batch_id: UUID,
     data: BatchUpdateRequest,
