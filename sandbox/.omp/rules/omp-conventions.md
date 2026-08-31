@@ -40,6 +40,13 @@ that the condition can never fire there. Measured 2026-08-31: an edit narrowed
 content that the regex could not match. Every existing frontmatter check passed;
 the sample requirement is what would have stopped it.
 
+**Quoted conditions must tolerate JSON escaping.** Tool arguments may reach the
+stream serialized — measured 2026-08-31: `pi.on("tool_result"` fired the
+crash-guard while `pi.on(\"tool_result\"` did not, until the condition gained
+`\\?` before each quote. Any condition containing `"` or `'` needs the same.
+(omp's own TTSR authoring guide states this; `omp ttsr test` is the proof tool —
+run the sample in both raw and escaped form.)
+
 **A rulebook entry delivers nothing but its description line.** `globs` are not
 used to select rulebook content: editing a matching file injects no body, so a
 rulebook rule is the *documentation* of an invariant that a hook enforces

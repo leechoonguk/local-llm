@@ -311,7 +311,14 @@ function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown
     );
   }
   const scope = fm["scope"];
-  if (typeof scope !== "string" || scope.trim() === "") {
+  if (Array.isArray(scope)) {
+    // omp 는 YAML 리스트 scope 도 받는다(실측 2026-08-31, ttsr test 발화 확인) — 하지만 이
+    // 하네스는 문자열 한 줄로 표준화한다: liveness 파서와 사람이 한 형태만 읽으면 된다.
+    issues.push(
+      `${file}: 'scope' is a YAML list — omp accepts it, but this harness standardizes on the ` +
+        `single comma-separated string form: scope: "${(scope as unknown[]).join(", ")}"`,
+    );
+  } else if (typeof scope !== "string" || scope.trim() === "") {
     issues.push(
       `${file}: a TTSR rule must declare 'scope' — without it the trigger also watches ` +
         "assistant prose, so writing about the forbidden token interrupts the turn",
