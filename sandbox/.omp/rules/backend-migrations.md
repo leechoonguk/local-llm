@@ -6,6 +6,8 @@ interruptMode: always
 alwaysApply: false
 ---
 
+<!-- fires-on tool:bash: make migrate-gen m="add notice table" -->
+
 # Migration Rules
 
 ## TTSR Activation

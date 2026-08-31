@@ -326,6 +326,52 @@ function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown
     );
   }
   issues.push(...checkTriggerIsDocumented(file, body, String(condition)));
+  if (typeof scope === "string") issues.push(...checkTriggerLiveness(file, body, String(condition), scope));
+  return issues;
+}
+
+/**
+ * 각 스코프 스트림마다 condition 이 **실제로 매치되는 표본**을 본문에 요구한다:
+ *
+ *   <!-- fires-on tool:bash: make migrate-gen -->
+ *   <!-- fires-on tool:edit(backend/app/routers/*.py): x: str = Depends(get_x) -->
+ *
+ * 근거(2026-08-31 실측): condition 을 명령 모양(`alembic\s+revision`)으로 좁히면서
+ * scope 에 tool:write(backend/alembic/versions/*.py) 를 더한 편집이 있었다 — 그 스트림이
+ * 나르는 것(경로·파일 내용)에는 그 정규식이 매치될 수 없어 **죽은 스트림**이었고, 이
+ * 검사의 기존 항목은 전부 통과했다. 죽음의 완전 판정은 기계로 불가능하다(금지 토큰
+ * 규칙은 트리 매치 0 이 정상이다) — 그래서 가드를 프루프로 고정하듯, 스트림마다 저자가
+ * 매치 표본을 대게 하고 여기서 정규식을 실제로 대 본다. 표본을 만들 수 없는 스트림은
+ * 그 자리에서 죽은 것으로 드러난다.
+ */
+function checkTriggerLiveness(file: string, body: string, condition: string, scope: string): string[] {
+  const issues: string[] = [];
+  const pattern = safeRegExp(condition);
+  if (pattern === null) return issues;
+  // edit/write 쌍은 같은 내용을 나른다 — 표본 키는 glob(괄호 안), 경로 없는 스트림은 그대로.
+  const keyOf = (stream: string): string => /\(([^)]+)\)/.exec(stream)?.[1]?.trim() ?? stream;
+  const samples = new Map<string, string>();
+  for (const m of body.matchAll(/<!--\s*fires-on\s+([^:]+(?::bash|:eval)?):\s*(.+?)\s*-->/g)) {
+    samples.set(keyOf(m[1].trim()), m[2]);
+  }
+  for (const stream of scope.split(",").map((x) => x.trim()).filter(Boolean)) {
+    const sample = samples.get(keyOf(stream));
+    if (sample === undefined) {
+      issues.push(
+        `${file}: scope stream '${stream}' has no liveness sample — add ` +
+          `\`<!-- fires-on ${keyOf(stream)}: <text the condition matches on this stream> -->\` to the body ` +
+          "(one sample per glob covers its edit/write pair). " +
+          "A stream you cannot write a sample for is a stream the condition can never fire on.",
+      );
+      continue;
+    }
+    if (!new RegExp(pattern.source).test(sample)) {
+      issues.push(
+        `${file}: liveness sample for '${stream}' ("${sample.slice(0, 48)}") does not match the ` +
+          "condition — the sample or the regex is wrong, and until they agree the stream is unproven",
+      );
+    }
+  }
   return issues;
 }
 

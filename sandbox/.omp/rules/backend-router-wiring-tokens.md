@@ -6,6 +6,8 @@ interruptMode: always
 alwaysApply: false
 ---
 
+<!-- fires-on backend/app/routers/*.py: service: BatchService = Depends(get_batch_service) -->
+
 # Backend Router Wiring Tokens
 
 This text arrives because the router edit currently being written calls a FastAPI

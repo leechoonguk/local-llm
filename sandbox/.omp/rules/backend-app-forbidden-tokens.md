@@ -6,6 +6,8 @@ interruptMode: always
 alwaysApply: false
 ---
 
+<!-- fires-on backend/app/**/*.py: raise HTTPException(status_code=404) -->
+
 # Backend App Forbidden Tokens
 
 This text arrives because the edit currently being written contains a token that

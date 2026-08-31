@@ -6,6 +6,10 @@ interruptMode: always
 alwaysApply: false
 ---
 
+<!-- fires-on backend/app/routers/*.py: async with self.session.begin(): -->
+<!-- fires-on backend/app/repositories/*.py: return StreamingResponse(stream()) -->
+<!-- fires-on backend/app/batch/*.py: asyncio.create_task(run_job()) -->
+
 # Backend Service Boundary Tokens
 
 This text arrives because the edit currently being written puts a

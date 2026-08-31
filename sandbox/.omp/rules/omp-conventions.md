@@ -24,6 +24,22 @@ carry file paths, so a globbed TTSR rule **never triggers on shell commands**
 (`make migrate`, `alembic`, …). For workflow rules triggered by bash, omit
 `globs` entirely and rely on `condition` alone.
 
+**Every scope stream carries a liveness sample.** A TTSR rule's body declares,
+per glob (one sample covers its edit/write pair) and per bare stream:
+
+    <!-- fires-on tool:bash: make migrate-gen m="add notice table" -->
+    <!-- fires-on backend/app/routers/*.py: x: T = Depends(get_x) -->
+
+`check-omp-rules` tests the condition against each sample. This is the proof-pin
+pattern the guards use, applied to triggers: dead streams cannot be detected
+mechanically in general (a forbidden-token rule *should* match nothing in the
+tree), but an author who cannot write a sample for a stream has just discovered
+that the condition can never fire there. Measured 2026-08-31: an edit narrowed
+`condition` to command shapes (`alembic\s+revision`) while adding
+`tool:write(backend/alembic/versions/*.py)` — a stream carrying paths and file
+content that the regex could not match. Every existing frontmatter check passed;
+the sample requirement is what would have stopped it.
+
 **A rulebook entry delivers nothing but its description line.** `globs` are not
 used to select rulebook content: editing a matching file injects no body, so a
 rulebook rule is the *documentation* of an invariant that a hook enforces

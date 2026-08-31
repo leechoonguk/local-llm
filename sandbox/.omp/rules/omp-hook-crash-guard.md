@@ -6,6 +6,8 @@ interruptMode: always
 alwaysApply: false
 ---
 
+<!-- fires-on .omp/hooks/post/*.ts: pi.on("tool_result", (event) => { -->
+
 # OMP Hook Crash Guard
 
 This text arrives because the post hook currently being written registers a

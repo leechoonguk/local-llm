@@ -6,6 +6,10 @@ interruptMode: always
 alwaysApply: false
 ---
 
+<!-- fires-on backend/app/services/*.py: def get(self, current_user: CurrentUserDep): -->
+<!-- fires-on backend/app/repositories/*.py: def list(self, current_user: CurrentUserDep): -->
+<!-- fires-on backend/app/batch/*.py: def run(current_user: CurrentUserDep): -->
+
 # Backend Identity Tokens
 
 This text arrives because the edit currently being written injects
