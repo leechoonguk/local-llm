@@ -72,6 +72,30 @@
      "vlm_mtp_enabled": false
     }
    }
+  },
+  "gemma-4-26b-a4b-it-5bit": {
+   "coder": {
+    "name": "coder",
+    "display_name": "coder",
+    "api_name": "coder",
+    "description": "coder 레시피(131072/8192) + thinking budget 2048. 샘플링은 Gemma 카드값(temp 1.0/top_p 0.95/top_k 64). MTP 드래프터 없음. reasoning_parser 는 두지 않는다 — xgrammar 0.2.3 이 gemma_4 태그를 미등록으로 둔다.",
+    "created_at": "2026-08-30T22:41:38.708271+00:00",
+    "updated_at": "2026-08-30T22:41:38.708271+00:00",
+    "expose_as_model": true,
+    "settings": {
+     "max_context_window": 131072,
+     "max_tokens": 8192,
+     "temperature": 1.0,
+     "top_p": 0.95,
+     "top_k": 64,
+     "min_p": 0.0,
+     "enable_thinking": true,
+     "thinking_budget_enabled": true,
+     "thinking_budget_tokens": 2048,
+     "mtp_enabled": false,
+     "vlm_mtp_enabled": false
+    }
+   }
   }
  }
 }

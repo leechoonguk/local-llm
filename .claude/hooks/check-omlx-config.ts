@@ -3,7 +3,9 @@
  *
  * 규칙: .claude/rules/omlx-config.md
  *  - 두 JSON 모두 version 1. 설정마다 max_context_window > max_tokens(정수)
- *  - enable_thinking 이면 reasoning_parser: "qwen"(없으면 CoT 가 content 에 섞임)
+ *  - Qwen 계열은 enable_thinking 이면 reasoning_parser: "qwen"(없으면 CoT 가 content 에 섞임).
+ *    다른 계열은 서버가 계열별 출력 파서를 스스로 붙이므로(로그 `Output parser detected: <family>`)
+ *    파서 이름을 요구하지 않는다 — 값이 있다면 비어 있지 않은 문자열이어야 한다
  *  - MTP 를 죽이는 값 금지: repetition_penalty != 1, presence_penalty != 0, guided_grammar
  *  - vlm_mtp_enabled 면 vlm_mtp_draft_model 필수. is_default 는 정확히 1개. active_profile_name 은 실재
  *  - 프로파일: key == name == api_name. 같은 모델의 프로파일들은 창·MTP 설정이 같아야(엔진 시그니처 동일 → 같은 슬롯)
@@ -85,7 +87,12 @@ function checkSettings(tag: string, s: Rec): Issue[] {
   if (!Number.isInteger(ctx)) out.push(`${tag}: max_context_window 가 정수가 아니다`);
   if (!Number.isInteger(mt)) out.push(`${tag}: max_tokens 가 정수가 아니다`);
   if (Number.isInteger(ctx) && Number.isInteger(mt) && (mt as number) >= (ctx as number)) out.push(`${tag}: max_tokens >= max_context_window`);
-  if (s.enable_thinking === true && s.reasoning_parser !== "qwen") out.push(`${tag}: enable_thinking 인데 reasoning_parser: "qwen" 이 없다`);
+  // 파서 요구는 계열별이다. Qwen 은 xgrammar 의 `qwen` 구조 태그가 있어야 thinking 이 분리되지만,
+  // Gemma 4 는 서버가 gemma4 출력 파서를 자동 감지하고(로그로 확인) xgrammar 0.2.3 은 `gemma_4`
+  // 태그 등록을 주석 처리해 뒀다 — 이름을 넣을 곳이 없다. 실측으로 reasoning_content 는 분리된다.
+  const qwenFamily = /^Qwen/i.test(tag.split(/[ :]/)[1] ?? tag);
+  if (s.enable_thinking === true && qwenFamily && s.reasoning_parser !== "qwen") out.push(`${tag}: Qwen 계열이 enable_thinking 인데 reasoning_parser: "qwen" 이 없다`);
+  if ("reasoning_parser" in s && s.reasoning_parser !== null && typeof s.reasoning_parser !== "string") out.push(`${tag}: reasoning_parser 는 문자열이어야 한다`);
   for (const [k, v] of NEUTRAL) if (k in s && s[k] !== v) out.push(`${tag}: ${k}=${String(s[k])} — 비중립값은 MTP 를 끈다`);
   if ("guided_grammar" in s) out.push(`${tag}: guided_grammar 는 MTP 를 끈다`);
   if (s.vlm_mtp_enabled === true && typeof s.vlm_mtp_draft_model !== "string") out.push(`${tag}: vlm_mtp_enabled 인데 vlm_mtp_draft_model 이 없다`);

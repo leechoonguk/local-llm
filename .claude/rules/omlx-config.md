@@ -9,7 +9,8 @@ paths:
 
 ## 설정 값(모델·프로파일 공통)
 - `version: 1`. `max_context_window`, `max_tokens` 는 정수이고 `max_tokens < max_context_window`.
-- `enable_thinking: true` 면 `reasoning_parser: "qwen"` 필수 — 없으면 thinking 이 content 에 섞인다.
+- **Qwen 계열**은 `enable_thinking: true` 면 `reasoning_parser: "qwen"` 필수 — 없으면 thinking 이 content 에 섞인다.
+- 다른 계열은 파서 이름을 요구하지 않는다. 서버가 계열별 출력 파서를 스스로 붙이고(로그 `Output parser detected: <family>`), Gemma 4 는 xgrammar 0.2.3 이 `gemma_4` 구조 태그 등록을 주석 처리해 둬서(파라미터 문자열이 `"` 대신 `<|"|>`) 넣을 이름 자체가 없다 — 실측으로 `reasoning_content` 는 분리된다(2026-08-31).
 - **MTP 를 죽이는 값 금지**: `repetition_penalty` 는 1, `presence_penalty` 는 0 만, `guided_grammar` 금지(비중립이면 BatchGenerator 폴백).
 - `thinking_budget*` 도 MTP 를 끈다(레벨 무관, 2026-08-28 실측 75.8→63.7 tok/s) — 금지는 아니고 **의도된 트레이드오프**다(토큰 폭주 억제 우선). 켤 때는 `make smoke` 로 MTP 스킵을 확인하고 기록한다.
 - `vlm_mtp_enabled: true` 면 `vlm_mtp_draft_model` 필수.

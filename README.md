@@ -154,6 +154,18 @@ oMLX 로 옮긴 뒤의 등록 현황(2026-08-31):
 | `omlx/Qwen3.6-35B-A3B-5bit:coder` | `mlx-community/Qwen3.6-35B-A3B-5bit` | 23GB | **기본 코더**. 창 131072 / 출력 8192, thinking budget 2048 |
 | `omlx/Qwen3.8-27B-4bit:coding` | `mlx-community/Qwen3.8-27B-4bit` | 15GB | 선택지(사용자 요청, 2026-08-31 등록). 같은 레시피, temp 1.0, `reasoning_effort: medium`. **이 계열은 2026-08-25 에 writes 0 으로 배제된 적이 있다** — 다시 쓰려면 `/llm-bench` 로 재확인할 것 |
 | `omlx/Qwen3.5-4B-4bit` | `mlx-community/Qwen3.5-4B-4bit` | 4GB | 보조(tiny). thinking off, MTP 드래프터 페어링 |
+| `omlx/gemma-4-26b-a4b-it-5bit:coder` | `mlx-community/gemma-4-26b-a4b-it-5bit` | 18GB | 선택지(사용자 요청, 2026-08-31 등록). MoE 26B/활성 4B. 창 131072 / 출력 8192, temp 1.0·top_p 0.95·top_k 64(카드값), thinking budget 2048 |
+
+**Gemma 4 는 `-it` 판을 받아야 한다 (2026-08-31 실측).** 베이스 판(`mlx-community/gemma-4-26b-a4b-5bit`,
+`-4bit`)에는 대화 템플릿도 stop 토큰도 없다 — 서버 로그가 `stop_tokens=[]` 를 찍고, 5 토큰짜리 프롬프트
+("Reply with exactly: OK")가 그대로 5 토큰으로 들어가 모델이 프롬프트를 되풀이하는 출력만 냈다
+(4bit·5bit 동일, temp 0 에서도 동일). `-it-5bit` 로 바꾸니 같은 요청이 프롬프트 21 토큰으로 들어가고
+`content: "OK"` · `reasoning_content` 분리 · `finish_reason: stop` 으로 끝났다(34.8 tok/s, 로드 6.3s).
+툴 호출도 정상이다 — `read_file` 툴 하나를 주니 `finish_reason: tool_calls` 로 인자까지 채워 냈다.
+
+`reasoning_parser` 는 Gemma 에 넣지 않는다. xgrammar 0.2.3 이 `gemma_4` 구조 태그 등록을 주석 처리해
+뒀고(파라미터 문자열이 `"` 대신 `<|"|>` 라서 미지원), 서버는 로드 시 `Output parser detected: gemma4`
+로 자체 파서를 붙인다 — 이름을 줄 곳이 없고 줄 필요도 없다.
 
 ### 컨텍스트 레시피 (2026-08-23, fast-api-standard 장기 세션 실측)
 

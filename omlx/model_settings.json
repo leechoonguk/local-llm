@@ -43,6 +43,21 @@
    "chat_template_kwargs": {
     "reasoning_effort": "medium"
    }
+  },
+  "gemma-4-26b-a4b-it-5bit": {
+   "max_context_window": 131072,
+   "max_tokens": 8192,
+   "temperature": 1.0,
+   "top_p": 0.95,
+   "top_k": 64,
+   "min_p": 0.0,
+   "enable_thinking": true,
+   "thinking_budget_enabled": true,
+   "thinking_budget_tokens": 2048,
+   "mtp_enabled": false,
+   "vlm_mtp_enabled": false,
+   "is_default": false,
+   "active_profile_name": "coder"
   }
  }
 }
