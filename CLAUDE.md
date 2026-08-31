@@ -42,5 +42,5 @@ README.md 가 사람용 문서이자 실측 기록이다. 이 파일은 Claude�
 - `bench/` — **결과만**, 플랫. `<date>.<s1|s2>.<subject>.md(+.json)` 캠페인 단위, 표준은 `bench/README.md`. 수행 환경은 여기 두지 않는다
 - `sandbox/` — 2단계 벤치 피험자 트리(fast-api-standard 를 batch/user/integration 코어로 줄인 사본, 포트 18000/15173/15432/16379, compose 프로젝트 `local-llm-sandbox`). git 저장소 아님(local-llm 이 추적) — 마이그레이션은 git 없이 하네스를 통과하도록 정리했다. `sandbox/SANDBOX.md`
 - `.claude/skills/llm-bench/` — 2단계 러너(`runner.ts`)·브리핑(`tasks/`)·Mode A 레퍼런스(`reference/`). 2026-08-24 에 fast-api-standard 에서 옮겨 왔고 그쪽에는 더 이상 없다
-- `.claude/skills/` — bench-model(1단계), llm-bench(2단계), add-model(모델 추가·등록), bake-config(확정 구성 굽기·검증 — `make bake`/`make smoke`)
+- `.claude/skills/` — bench-model(1단계), llm-bench(2단계), add-model(모델 추가·등록), bake-config(확정 구성 굽기·검증 — `make bake`/`make smoke`), harness-sync(sandbox↔fas 양방향 싱크 — `make check-harness-sync` 가 의도 분기 원장 대조로 판정, 새 벤치 과제 후보는 사용자에게 제안)
 - `.claude/rules/` — 대상별 표준(paths 프런트매터). `.claude/hooks/` — 검사 `check-<name>.ts`·훅 진입점(`pre-bash`, `pre-write`, `post-edit`)·공용 `lib/`. `Makefile` — `verify`/`check-<name>` + 운영 타깃 `preflight`(셀 발진 전)·`smoke`/`bake`(구성 굽기·검증, `/bake-config`). 하네스 합성 프루프는 `.claude/skills/llm-bench/proofs/*.proof.mjs`(레포 자산, `check-harness-proofs` 가 verify 에서 실행). 세부는 README "검증"

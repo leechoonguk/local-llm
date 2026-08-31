@@ -46,5 +46,7 @@ make db-init && make verify       # git 없이 exit 0 이어야 벤치 baseline
 | 포트 대역 | 2xxxx (`.env`·`api/.env`·`launch.json`) | 1xxxx | 동시 기동 가능해야 한다 |
 | compose 프로젝트명 | `fast-api-standard` | `local-llm-sandbox` | 볼륨 분리 |
 | `SANDBOX.md` | 없음 | 이 파일 | 벤치 트리 설명 |
+| `hook-publish-consent.ts` | 있음(lib) | 없음 | fas 발행 동의 가드의 전용 lib |
+| `decks/package-lock.json` | 없음 | 있음 | 덱 빌드 로컬 산물 |
 | 벤치 과제 도려내기 | — | `search-barcode-linked-product` 산출물 부재(정답은 `.claude/skills/llm-bench/reference/answers/`) | 과제 성립 조건 — 현재 양쪽 다 부재라 코드 diff 는 없음 |
 | `decks/*/slides.md` | 각자 재생성 | 각자 재생성 | sync 해시·정책 가드 목록이 트리별 |
