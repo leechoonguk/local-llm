@@ -46,7 +46,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 실제 chat template(`chat_template.jinja`)을 그대로 태우는데, Qwen3.8 템플릿이 `reasoning_effort`
 를 네이티브로 해석한다: 유효값은 `xhigh`(기본) / `medium` / `low` 뿐이고(`high`/`none`이 아니다),
 `xhigh`/`low`는 지시문을 프롬프트에 주입하고 `medium`은 지시문 없이 모델 기본 판단에 맡긴다.
-`omlx/model_settings.json` + `model_profiles.json` 의 3.8 항목(2026-08-31 기준 `Qwen3.8-27B-4bit`·`:coding`)에
+`omlx/model_settings.json` + `model_profiles.json` 의 3.8 항목(2026-08-31 기준 `Qwen3.8-27B-4bit`, 프로파일 `coder` — 2026-09-01 통일)에
 `chat_template_kwargs: {"reasoning_effort": "medium"}` 으로 서버쪽 기본값을 박았다 —
 클라이언트가 값을 안 보내도 적용되고, 요청에서 명시하면 오버라이드 가능(강제 아님).
 
@@ -61,7 +61,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 메커니즘 자체는 동작한다 — 레벨별로 reasoning_content 문구가 실제로 달라진다(`xhigh`는 "inorder successor/predecessor" 구조를 명시적으로 더 설계하고 들어감, `low`/`medium`은 더 즉흥적). 다만 길이가 레벨과 단조 관계가 아니다(`xhigh`가 가장 짧음) — **n=1, temp 0.6 샘플링 노이즈일 가능성이 높다.** 레벨 간 실제 차이를 확정하려면 반복 실측(n≥3)이 필요하다. 27B dense라 요청당 114~165s로 느리다 — README "선정 근거" 표의 27B prefill 느림 특성과 일치.
 
 **3.6은 `reasoning_effort`가 통째로 no-op이다 (2026-08-24, 실측 정정).** 3.8과 같은 조작을
-3.6(`Qwen3.6-35B-A3B-5bit:coder`)에 해보면 아무 일도 없다 — seed 고정, 나머지 파라미터 동일,
+3.6(`Qwen3.6-35B-A3B-5bit`)에 해보면 아무 일도 없다 — seed 고정, 나머지 파라미터 동일,
 `/v1/chat/completions`의 `reasoning_effort`와 `/v1/responses`의 `reasoning.effort` 둘 다:
 
 | `reasoning_effort`/`reasoning.effort` | completion/output 토큰 | reasoning 토큰 |
@@ -191,7 +191,7 @@ suffix(`:coder`)를 붙이지 않는다 — oMLX 가 `active_profile_name` 을 b
 ### 모델·서빙 매트릭스 (2026-08-24, fast-api-standard 장기 세션 실측)
 
 M4 Pro 64GB, 단일 로드, 창 131072 / 출력 8192, temp 는 각 모델 카드 권장값. thinking은
-Ollama 세 모델은 `medium` 고정(Modelfile), oMLX `Qwen3.6-35B-A3B-5bit:coder`는 **`medium`이
+Ollama 세 모델은 `medium` 고정(Modelfile), oMLX `Qwen3.6-35B-A3B-5bit`(coder 프로파일)는 **`medium`이
 아니라 무제한** — 아래 "3.6은 `reasoning_effort`가 통째로 no-op이다" 절 참고, 이 표를
 처음 채울 때는 몰랐던 사실이라 여기 정정해 둔다. 셀당 45분 상한. `fast-api-standard` 의
 `make bench-llm`

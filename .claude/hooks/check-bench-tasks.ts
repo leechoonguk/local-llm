@@ -56,6 +56,19 @@ if (existsSync(REFERENCE)) {
         issues.push(`reference/${f} 의 기대 산출물이 피험자 트리에 있다: sandbox/${rel} — 정답은 reference/answers/ 에 두고 트리에서는 빼야 과제가 성립한다 (bench-tasks.md 2)`);
       }
     }
+    // 프롬프트↔매니페스트 사슬(2026-09-01): 러너 프롬프트는 매니페스트가 기대하는 오퍼레이션
+    // 코드를 실제로 말해야 한다. 실측 드리프트 1회 — 재도려내기 때 정답·브리핑은 C005 로 갔는데
+    // 프롬프트만 옛 정답(I2570)을 요구해, 그대로 돌렸으면 기준선에 있는 것을 다시 만들었을 것이다.
+    const codes = added.map((rel) => /api\/integration\.([\w-]+)\.http$/.exec(rel)?.[1]).filter((x): x is string => !!x);
+    const chainOwner = taskNames.find((n) => new RegExp(`^ {2}${n}:[\\s\\S]*?reference:\\s*"${ref}"`, "m").test(tasksBlock));
+    if (chainOwner !== undefined && codes.length > 0) {
+      const body2 = new RegExp(`^ {2}${chainOwner}:\\s*\\{([\\s\\S]*?)^ {2}\\},`, "m").exec(tasksBlock)?.[1] ?? "";
+      for (const code of codes) {
+        if (!body2.includes(code)) {
+          issues.push(`과제 '${chainOwner}' 의 프롬프트가 매니페스트의 오퍼레이션 코드 '${code}' 를 말하지 않는다 — 정답·브리핑·프롬프트는 한 사슬이어야 한다 (bench-tasks.md)`);
+        }
+      }
+    }
     // expect 는 이 ref 를 쓰는 과제에 선언돼 있다.
     const owner = taskNames.find((n) => new RegExp(`^ {2}${n}:[\\s\\S]*?reference:\\s*"${ref}"`, "m").test(tasksBlock));
     if (owner !== undefined) {

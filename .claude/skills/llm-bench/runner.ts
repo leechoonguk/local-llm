@@ -477,7 +477,9 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
     // 가 있어, 절단 발생은 세션에서 가드 지표로 같이 확인할 것.
     const mt = process.env.BENCH_MAX_TOKENS;
     const ov: string[] = [];
-    if (tb) ov.push(`        compat:\n          extraBody:\n            thinking_budget: ${tb}`);
+    // extraBody 는 openai-completions 경로에만 실린다(실측 2026-08-24). discovery 전환으로
+    // per-model api 오버라이드가 사라져 이 노브가 조용히 죽어 있었다(2026-09-01 발견) — 같이 싣는다.
+    if (tb) ov.push(`        api: openai-completions\n        compat:\n          extraBody:\n            thinking_budget: ${tb}`);
     if (mt) ov.push(`        maxTokens: ${mt}`);
     const budget = ov.length ? `providers:\n  omlx:\n    modelOverrides:\n      "${model.replace(/^omlx\//, "")}":\n${ov.join("\n")}\n` : "";
     writeFileSync(join(overlayDir, "overlay.yml"), `modelRoles:\n  tiny: ${AUX_MODEL}\n${advisorRole}${advisor}${budget}`);
@@ -530,7 +532,6 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
       cwd: SANDBOX, stdio: "ignore", detached: true,
       // STUCK_RESET_LOG: 셀에도 discipline 훅로그를 남긴다. 이게 없어서 지금까지 셀의 신호를
       // 사후에 볼 수 없었다(2026-08-29). 행과 같은 stem 의 .hooklog 로 남긴다.
-      // BENCH_HYGIENE_CEILING 은 셀 환경에서 그대로 전달된다(설정 시) — 상한 켜고 끄는 두 팔 비교용.
       env: { ...process.env, BENCH_CELL: "1", STUCK_RESET_LOG: hookLogPath },
     });
     const killGroup = (signal: string): void => { spawnSync("kill", [`-${signal}`, `-${child.pid}`], { encoding: "utf-8" }); };

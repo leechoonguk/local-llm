@@ -44,7 +44,7 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 - 부모 저장소 기준 `sandbox/` 에 미커밋 변경이 없어야 한다(러너가 거부). 원복이 `git checkout -- sandbox && git clean -fdq sandbox` 라 변경이 있으면 지워진다. sandbox 안에 `.git` 이 있으면(예전 실행 잔재) 러너가 거부한다 — `rm -rf sandbox/.git`.
 - **로컬 모델은 대상 모델만 상주해야 한다(러너가 보장·검증).** 세 겹이다:
   1. **시작 격리** — `omlx/` 셀은 `omlx restart` 로 서버를 비우고, `ollama/` 셀은 다른 모델을 `ollama stop`. 이전 셀 잔재 제거.
-  2. **aux 역할 고정** — omp 의 `modelRoles.tiny/smol` 을 셀 동안 **실제 4B aux(`omlx/mlx-community--Qwen3.5-4B-4bit`)로 고정**한다(`--config` 오버레이 + `--smol`). 코더가 아니라 실사용 aux 로 고정하는 것 — 코더에 제목·메모리를 시키는 비현실적 구성이 아니라 실제 환경 그대로 잰다. **코더 설정(thinking·샘플링)은 불변**이고 `--model` 외 튜닝이 아니다.
+  2. **aux 역할 고정** — omp 의 `modelRoles.tiny/smol` 을 셀 동안 **실제 4B aux(`omlx/Qwen3.5-4B-4bit`)로 고정**한다(`--config` 오버레이 + `--smol`). 코더가 아니라 실사용 aux 로 고정하는 것 — 코더에 제목·메모리를 시키는 비현실적 구성이 아니라 실제 환경 그대로 잰다. **코더 설정(thinking·샘플링)은 불변**이고 `--model` 외 튜닝이 아니다.
   3. **구성상 보장** — 위 두 겹으로, 셀 동안 로드될 수 있는 물리 모델은 {대상 코더, (MTP 모델이면) 드래프터, 4B aux} 셋으로 한정된다(compaction 은 별도 모델 없이 세션 모델 자신이 수행한다 — 2026-08-30 확인). 엉뚱한 코더가 상주할 수 없다. 검증이 아니라 **구성**이 보장한다 — 코더(23GB)+aux(4B)가 함께 들어가려면 `iogpu.wired_limit_mb`(RAM−8GB, `omlx/install.sh` 가 부팅 지속으로 설정)가 맞아야 한다.
   4. **기록** — 러너가 상주를 실측해 행 `residency` 에 남긴다: oMLX `/health` 의 `loaded_count`·`current_model_memory`, Ollama `ollama ps`. `loaded_count` 가 예상(코더+드래프터+aux=1~3)을 벗어나면 `ok:false` 로 경고(재시작 실패·설정 누락 신호) → 재실행. 클라우드 모델은 `residency:null`.
 - thinking 조건을 **명시**한다. 3.6 은 `reasoning_effort` no-op → 무제한/`thinking_budget` 중 무엇인지, 3.8 은 값이 무엇인지 `omp/models.yml` 에서 확인해 결과 `.md` 조건 절에 적는다. 러너는 `--model` 외 플래그를 omp 에 주지 않는다 — 측정 대상은 "실제로 쓰는 설정"이다.
@@ -143,3 +143,15 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 - 피험자의 "make verify 통과" 말 믿기 — 직접 돌린 게 채점
 - 최선 실행만 보고, n=1 로 "신뢰 가능" 단정 / 산출물 수를 완성도로 읽기
 - 실행 후 `sandbox/.git`·임시 DB 상태를 남기기(`--revert-only`)
+
+## 러너 환경 노브 (구현과 1:1 — 여기 없는 노브는 러너에 없다)
+
+| 노브 | 뜻 |
+|---|---|
+| `BENCH_BAKED=1` | 무주입 베이크 모드 — 오버레이·`--model`·`--smol` 없이 라이브 설정 그대로(맨몸 `omp -p`) |
+| `BENCH_THINKING_BUDGET=<n>` | 코더 `thinking_budget` 요청 오버레이(미설정 시 오버레이 없음 — 서버쪽 model_settings 의 2048 이 적용된다) |
+| `BENCH_MAX_TOKENS=<n>` | 출력 상한 축 — 배선돼 있으나 아직 한 번도 안 움직인 실험 변수 |
+| `BENCH_ADVISOR=<모델id>` | 어드바이저 암(WATCHDOG.yml 로스터 주입, 채점 전 제거) |
+| `BENCH_HOOK=<확장 .ts>` | 실험 훅 옵트인 로드 |
+| `BENCH_BUNDLE` / `BENCH_ATTEMPT` | 재시도 SLA 묶음 표기(행 메타) |
+| `BENCH_P1_TIMEOUT`/`P2`, `BENCH_PHASE2`, `BENCH_HYGIENE_CEILING` | **폐지** — 2단계 분해 기각(08-28)·하이진 컷 제거(08-30)와 함께 |

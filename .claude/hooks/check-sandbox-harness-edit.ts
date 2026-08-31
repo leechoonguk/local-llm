@@ -36,7 +36,17 @@ const issues: string[] = [];
 
 // 1·4. 셀 실행 중 + 하네스 미커밋
 const cellRunning = sh("pgrep", ["-f", "omp -p"]).trim() !== "";
-const harnessDirty = sh("git", ["status", "--porcelain", "--", "sandbox/.omp"]).trim();
+// 러너 자신이 셀 동안 주입하는 것은 편집이 아니다(채점 전 원복됨): config.yml 의
+// "# bench-advisor" 블록. 이것까지 잡으면 모든 정상 셀에서 오탐한다(2026-09-01 실측).
+const dirtyFiles = sh("git", ["status", "--porcelain", "--", "sandbox/.omp"]).trim()
+  .split("\n").filter(Boolean)
+  .filter((l) => {
+    if (!l.includes("sandbox/.omp/config.yml")) return true;
+    const d = sh("git", ["diff", "--", "sandbox/.omp/config.yml"]);
+    const added = d.split("\n").filter((x) => /^\+[^+]/.test(x)).map((x) => x.slice(1));
+    return !(added.length > 0 && added.every((x) => /bench-advisor|advisor:|enabled: false|modelRoles:|  advisor: |immuneTurns|syncBacklog|^\s*$/.test(x)));
+  });
+const harnessDirty = dirtyFiles.join("\n");
 if (cellRunning && harnessDirty !== "") {
   issues.push(
     "벤치 셀이 실행 중인데 sandbox/.omp 에 미커밋 변경이 있다 — 그 셀은 두 하네스의 혼합이라 무효다. " +
