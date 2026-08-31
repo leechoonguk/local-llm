@@ -1,4 +1,4 @@
-.PHONY: help install dev down migrate migrate-gen migrate-down verify verify-fast test test-fast fix lint typecheck clean
+.PHONY: help install dev down migrate migrate-gen migrate-down verify test test-fast fix lint typecheck clean
 
 UV := uv
 
@@ -38,9 +38,6 @@ test: ## Run tests (pytest)
 
 test-fast: ## Run tests without the coverage gate (usage: make test-fast t="tests/api/test_x.py")
 	.venv/bin/pytest -q --no-cov $(t)
-
-verify-fast: lint typecheck test-fast ## Fast iteration gate — lint+typecheck+tests without the coverage gate
-	@true
 
 fix: ## Auto-fix lint and formatting (ruff --fix + format; alembic 제외 — 마이그레이션은 불변 산출물)
 	.venv/bin/ruff check --fix app tests

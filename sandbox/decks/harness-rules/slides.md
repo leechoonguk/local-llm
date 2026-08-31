@@ -68,7 +68,7 @@ style: |
 <!-- sync: backend-identity-tokens.md=e3d64c5cb15a48f5 -->
 <!-- sync: backend-integration-configuration.md=e8f046146137257b -->
 <!-- sync: backend-integration.md=f9cd0a15ed9ea08c -->
-<!-- sync: backend-makefile.md=8660e10d5670f0da -->
+<!-- sync: backend-makefile.md=7f10901469427649 -->
 <!-- sync: backend-middleware.md=0b9ef780cf382b33 -->
 <!-- sync: backend-migrations.md=3b8dfbfbc558495b -->
 <!-- sync: backend-model-files.md=b2c5f76dc38e3ed2 -->
@@ -105,7 +105,7 @@ style: |
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=b7a6665acf3eb2c2 -->
 <!-- sync: root-git-workflow.md=d623ac8f064686ae -->
-<!-- sync: root-makefile.md=5bf6c79431df879c -->
+<!-- sync: root-makefile.md=14489c052a8ebc37 -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
 <!-- sync: strict-additive-writes.ts=b6b854ab47ba3576 -->
 <!-- sync: strict-backend-app-structure.ts=c77cfecdda8db921 -->
@@ -223,7 +223,7 @@ style: |
 <!-- sync: ast-grep/rules/sse/=22cb7d807c4ea3fb -->
 <!-- sync: ast-grep/rules/transaction/=c613686939e1ac96 -->
 <!-- sync: ast-grep/rules/upload/=db8cc2d3547eabc2 -->
-<!-- sync: extensions/continuity/=d9b42195ac7c4743 -->
+<!-- sync: extensions/continuity/=0857a3acfed18735 -->
 
 # 하네스 룰 & 훅 아키텍처
 

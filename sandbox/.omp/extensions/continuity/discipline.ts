@@ -35,7 +35,7 @@ const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b
 // 하위 디렉터리로 좁힌 게이트는 풀 게이트가 아니다. 실측 2026-08-29: 피험자가
 // `cd …/sandbox/backend && make verify` 를 11회 돌리고 루트 게이트는 0회였는데 하네스가 초록으로
 // 셌고, 최종 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
-const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (verify-fast 는 full 게이트가 아니다 — 타깃 자체도 제거됨, 2026-08-28)
+const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (하위 디렉터리 게이트는 full 게이트가 아니다, 2026-08-28)
 // 절대 상한(2026-08-30): 성장 기반 예산만으로는 **정체된 세션**을 못 잡는다 — 축소판 첫 셀에서
 // ctx 96,074·턴 183초까지 갔는데 컷이 한 번도 안 걸렸다(증가폭이 예산에 못 미쳐서다).
 // 질병 컷을 되살리지 않고 같은 구멍을 막는 최소 장치다. 창을 모르면(0) 적용하지 않는다.
@@ -43,7 +43,7 @@ const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\
 // 하네스를 고치지 않고 같은 조건에서 두 팔을 번갈아 돌리기 위해서다(2026-08-30 rest 분산 판정용).
 const END_GATE_MAX = 2;              // red-finish re-drives
 const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
-const FAST_GATE_RE = /\bmake\b[^|;&]*\bverify-fast\b|\bpytest\b/; // 타깃/빠른 검증 명령 모양
+const FAST_GATE_RE = /\bmake\b[^|;&]*(-C\s+backend\s+verify\b|\btest-fast\b)|\bcd\s+[^\s;&|]*backend\b[^|]*\bmake\s+verify\b|\bpytest\b/; // 타깃/백엔드 검증 명령 모양 — verify-fast 복합 타깃은 2026-09-01 제거(backend verify 가 0.5s 차이로 더 엄격), test-fast 만 남는다(전역 100% 커버리지 addopts 아래에서 타깃 실행을 성립시키는 유일한 경로)
 const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
   "backend/alembic/env.py",
   "backend/tests/conftest.py",
@@ -187,7 +187,7 @@ export function registerDiscipline(pi: any): void {
           } else {
             gateBlocks++;
             if (small) {
-              pi.sendUserMessage(`You are finishing after changing ${unverified.size} file(s) with nothing verified since. Run the check that covers what you touched — \`make verify-fast\`, or pytest on the touched test file — and fix what it reports before finishing.`);
+              pi.sendUserMessage(`You are finishing after changing ${unverified.size} file(s) with nothing verified since. Run the check that covers what you touched — \`make -C backend verify\`, or \`make -C backend test-fast t="tests/<touched>"\` — and fix what it reports before finishing.`);
               log(`FINISH-BLOCK #${gateBlocks} (targeted, ${unverified.size} file)`);
             } else {
               const why = noticeStanding

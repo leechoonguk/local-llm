@@ -30,7 +30,6 @@ enforces it on the root, backend, frontend and decks Makefiles.
 | `make down` | `lsof -ti:$(BACKEND_PORT)` + `xargs kill -9` | Stop backend (kill uvicorn on the same port `dev` used) |
 | `make test` | `pytest -q` | Run tests (100% coverage gate) |
 | `make test-fast` | `pytest -q --no-cov $(t)` | Tests without the coverage gate; `t="tests/..."` scopes to one file |
-| `make verify-fast` | `lint typecheck test-fast` | 반복 개발용 빠른 게이트 — 커버리지 게이트 없이 린트·타입·테스트만. 마감은 여전히 루트 `make verify` 가 판정한다 |
 | `make fix` | `ruff check --fix` + `ruff format` (app tests — alembic 제외) | Auto-fix lint findings and formatting; migrations are immutable artifacts |
 | `make lint` | `ruff check app alembic tests` | Lint Python code (incl. tests) |
 | `make typecheck` | `pyright` | Type-check Python code (incl. tests) |

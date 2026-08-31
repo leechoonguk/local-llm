@@ -68,7 +68,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx); // prose-only turn = finishing signal
-  check("H: 1 file + no gate ever + prose finish -> targeted FINISH-BLOCK", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
+  check("H: 1 file + no gate ever + prose finish -> targeted FINISH-BLOCK", sent.length === 1 && /test-fast/.test(sent[0] ?? ""));
 }
 
 { // H2: 규모가 커지면 예전 그대로 풀 게이트를 요구한다 (벤치 셀은 13~15 파일이라 항상 이 경로)
@@ -81,17 +81,17 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 { // H3: 작은 변경을 타깃 검증으로 덮었으면 마감은 조용하다
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
-  now += 5_000; bash(handlers, "make verify-fast", "3 passed");
+  now += 5_000; bash(handlers, "make -C backend verify", "3 passed");
   handlers.turn_end({}, ctx);
   check("H3: 1 file + fast gate after the edit -> finish is SILENT", sent.length === 0);
 }
 
 { // H4: 타깃 검증이 편집보다 먼저면 덮은 게 아니다 — 다시 막는다
   const { handlers, sent } = makePi();
-  bash(handlers, "make verify-fast", "3 passed");
+  bash(handlers, "make -C backend verify", "3 passed");
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx);
-  check("H4: fast gate BEFORE the edit -> still blocked", sent.length === 1 && /verify-fast/.test(sent[0] ?? ""));
+  check("H4: fast gate BEFORE the edit -> still blocked", sent.length === 1 && /test-fast/.test(sent[0] ?? ""));
 }
 
 { // H5: 서 있는 check-* 경고가 있으면 작은 변경이라도 풀 게이트다
@@ -263,10 +263,10 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
 { // R3: verify-fast green is NOT a full gate — the finish stays blocked
   // 규모 보정(2026-08-28): 작은 변경(<=SMALL_FOOTPRINT)은 타깃 검증으로 마감할 수 있다(H3).
-  // 이 케이스의 계약은 "규모가 큰 변경에서는 verify-fast 가 풀 게이트를 대신하지 못한다" 이다.
+  // 이 케이스의 계약은 "규모가 큰 변경에서는 백엔드 게이트가 풀 게이트를 대신하지 못한다" 이다.
   const { handlers, sent } = makePi();
   editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
-  now += 10_000; bash(handlers, "make verify-fast", "all green");
+  now += 10_000; bash(handlers, "make -C backend verify", "all green");
   handlers.turn_end({}, ctx);
   check("R3: verify-fast green + prose finish -> FINISH-BLOCK stands",
     sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
@@ -293,7 +293,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   now += 30_000; editOk(p2.handlers, "b.py");              // 새 변경
   p2.handlers.turn_end({}, ctx);
   check("X4: a change after the carried gate -> blocked again",
-    p2.sent.length === 1 && /verify-fast/.test(p2.sent[0] ?? ""));
+    p2.sent.length === 1 && /test-fast/.test(p2.sent[0] ?? ""));
 }
 
 
