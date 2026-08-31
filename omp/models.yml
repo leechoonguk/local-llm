@@ -38,64 +38,34 @@ providers:
         contextWindow: 131072
         maxTokens: 8192
 
-  # oMLX (MLX 네이티브 서버, 포트 8000, 2026-08-24 도입). Ollama 와 달리 thinking 이
-  # 서버쪽 per-model/프로파일 설정이라 provider 를 둘로 쪼갤 필요가 없다:
-  #  - :coder   = coder 레시피(131072/8192) + thinking budget 2048, MTP off (omlx/model_profiles.json)
-  #  - :coding  = 3.8-27B(dense)의 같은 레시피. 3.8 template 은 reasoning_effort 를 네이티브로
-  #               읽고 기본이 xhigh 라 서버쪽에서 medium 으로 고정했다(omlx/model_settings.json).
-  # :nothink 는 2026-08-31 제거했다 - 존재 이유가 "압축 요약용" 하나였는데 compactionModel 이
-  # 죽은 키로 판명나(아래 주석) 아무도 그 엔트리를 부르지 않았다. 프로파일 자체는 oMLX 에 남아 있다.
-  # 모델 id 는 oMLX 앱 스토어(~/.omlx/models) 의 짧은 서빙 id(2026-08-28 전면 포팅 — HF 캐시 제거).
+  # oMLX (MLX 네이티브 서버, 포트 9090, 2026-08-24 도입).
+  #
+  # **모델 목록을 손으로 적지 않는다**(2026-08-31). `openai-models-list` discovery 가 서버의
+  # `/v1/models` 를 그대로 읽는다 — oMLX 는 항목마다 `max_model_len` 을 실어 주므로 창 크기도
+  # 서버가 말하는 값이다. 앱에서 모델을 받거나 지우면 omp 목록이 따라온다.
+  #
+  # 프로파일 suffix(`:coder`) 도 쓰지 않는다. oMLX 는 model_settings 의 `active_profile_name`
+  # 을 bare id 에 그대로 적용한다(admin/api/models 로 확인: `Qwen3.6-35B-A3B-5bit` 가
+  # active_profile coder·ctx 131072·budget 2048). 그래서 서빙 id 는 모델당 하나면 되고,
+  # 레시피 변경은 omlx/model_settings.json·model_profiles.json 한 곳에서 끝난다.
+  # `:nothink` 는 2026-08-31 제거했다 — 압축 요약이 존재 이유였는데 `compactionModel` 이
+  # omp 에 없는 키로 판명나(아래 주석) 그 분기가 애초에 돌지 않았다.
   omlx:
     baseUrl: http://127.0.0.1:9090/v1
     api: openai-responses
     auth: none
-    models:
-      - id: "Qwen3.6-35B-A3B-5bit:coder"
-        api: openai-completions  # 실험: openai-responses 에선 compat.extraBody 가 안 실린다(실측, 2026-08-24)
-        contextWindow: 131072
-        maxTokens: 8192
-      # 3.8 dense 27B(4bit, 15GB). 2026-08-25 에 한 번 배제된 계열이지만(nvfp4·oQ6·표준4bit 전부
-      # writes 0) 사용자 요청으로 2026-08-31 재등록 - 기본 코더는 3.6 그대로이고 이건 선택지다.
-      # 샘플링은 모델 카드 generation_config.json(temperature 1.0 / top_p 0.95 / top_k 20) -
-      # 3.6(0.6)과 다르다. 창 용량은 262144 이지만 coder 레시피에 맞춰 131072 로 둔다.
-      - id: "Qwen3.8-27B-4bit:coding"
-        contextWindow: 131072
-        maxTokens: 8192
-      # Gemma 4 26B-A4B(MoE, 활성 4B, 5bit, 18GB) — 2026-08-31 사용자 요청으로 추가.
-      # **instruction-tuned(`-it`) 판이어야 한다.** 베이스 판(`gemma-4-26b-a4b-5bit`)은 대화 형식도
-      # stop 토큰도 없어서(서버 로그 `stop_tokens=[]`) 4bit·5bit 둘 다 프롬프트를 되풀이하는
-      # 출력만 냈다(실측 2026-08-31). 샘플링은 Gemma 카드값(temp 1.0/top_p 0.95/top_k 64).
-      # reasoning_parser 는 두지 않는다 — xgrammar 0.2.3 이 `gemma_4` 구조 태그 등록을 주석
-      # 처리해 뒀다(파라미터 문자열이 `"` 대신 `<|"|>`). 없어도 서버의 gemma4 출력 파서가
-      # reasoning_content 를 분리하고 tool_calls 를 만든다(실측).
-      - id: "gemma-4-26b-a4b-it-5bit:coder"
-        contextWindow: 131072
-        maxTokens: 8192
-      - id: "Qwen3.5-4B-4bit"  # aux(tiny). 4B+MTP 드래프터 페어링 유지(45.3 tok/s 실측) — 코더 실험은 2026-08-28 기각
-        contextWindow: 8192
-        maxTokens: 1024
-      # 2026-08-25 배제·캐시 삭제한 실험 모델들(bench/ 기록에 근거 유지):
-      #  - 로스터 비-Qwen 5모델(Gemma×3·Devstral·Qwen3-Coder-30B): 양쪽 게이트 초록 실패(roster.md)
-      #  - GLM-4.7-Flash-4bit: integration 45분 타임아웃 FAIL(writes 26), 3.6 대비 느리고 미완주
-      #  - Qwen3.6-35B-A3B-4bit(+MTP-4bit): 기각(2026-08-27) — 웜 70.2 tok/s 로 5bit 동급 이하, 45m TO+회귀 1(coder-4bit.md)
-      #  - Qwen3.8 dense 27B(nvfp4·oQ6·표준4bit): 전부 writes 0(에이전트 루프에서 파일 미생성, 양자화 무관)
-      # 코더는 3.6:mtp 유지. 실험 재개 시 install.sh 로 재다운로드.
+    discovery:
+      type: openai-models-list
+    # 목록은 서버가 준다. 여기 있는 것은 **모델 목록이 아니라 레시피 고정값**이다 —
+    # `/v1/models` 는 `max_model_len`(창)만 싣고 출력 상한은 안 싣는다. 그대로 두면 omp 가
+    # 창의 1/4(33K)을 출력으로 예약해 입력 상한이 123K→98K 로 줄고, 규칙 4(omp maxTokens =
+    # 서빙 max_tokens)도 깨진다. 여기 없는 모델은 자동으로 발견되고 기본값으로 돈다.
     modelOverrides:
-      "Qwen3.6-35B-A3B-5bit:coder":
-        # 실측(2026-08-24): reasoning_effort는 3.6 template에서 완전 no-op(seed 고정
-        # A/B로 확인, low/high 완전 동일). thinking_budget만 실제로 먹는다(64→3000에서
-        # 토큰·시간이 비례 반응). **2026-08-28 정정**: "프로파일 파일엔 안 먹힌다"던 옛
-        # 결론은 키 이름 오류였다 — 요청 레벨 필드는 `thinking_budget`(이 extraBody)지만
-        # 모델 설정/프로파일 레벨은 `thinking_budget_enabled`+`thinking_budget_tokens` 다
-        # (oMLX openapi ModelSettingsRequest). 서버 쪽도 2048 로 맞춰 뒀고(omlx/*.json),
-        # 이 extraBody 는 요청 단위 이중 보장으로 남긴다.
-        # 값 2048 은 2026-08-28 스윕 실측 승자(bench/2026-08-28.s2.thinkbudget.md):
-        # 5120 대비 2/2 초록·유일 scored green 38.6m, 1024 는 게이트 회피로 하한 초과.
-        # thinking 블록이 절반으로 얇아지고 턴 수로 보상되는 패턴 — 종반 품질 유지에 유리.
-        # nobudget A/B 결론(2026-08-28, bench/2026-08-28.s2.nobudget.md): budget 을 빼면
-        # MTP 가 살아나 토큰당 +15%(44.1 vs 38.3 tok/s) 지만 무제한 thinking 이 토큰을
-        # +38% 써서 벽시계는 손해였다(50분 캡 TO vs 41.6분 자체종료). budget 유지가 정답.
-        compat:
-          extraBody:
-            thinking_budget: 2048
+      Qwen3.6-35B-A3B-5bit:      # 기본 코더
+        maxTokens: 8192
+      Qwen3.8-27B-4bit:
+        maxTokens: 8192
+      gemma-4-26b-a4b-it-5bit:
+        maxTokens: 8192
+      Qwen3.5-4B-4bit:           # aux(tiny)
+        maxTokens: 1024

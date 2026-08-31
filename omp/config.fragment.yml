@@ -6,7 +6,7 @@
 modelRoles:
   # 코딩 본체. 같은 Qwen3.6-35B-A3B 를 oMLX(5bit MLX)로 서빙 - 2026-08-24 Ollama 서비스
   # 중단 후 전환. :mtp 프로파일 = 창 131072 / 출력 8192 + MTP speculative decoding.
-  default: omlx/Qwen3.6-35B-A3B-5bit:coder
+  default: omlx/Qwen3.6-35B-A3B-5bit
   # 제목·메모리·사고강도 분류·비정상 종료 감지. 4B, 창 8192, thinking off
   # (oMLX model_settings.json 에서 enable_thinking: false).
   # `smol`이 아니라 `tiny`여야 한다 - README 참고(prewalk 타깃).
@@ -25,7 +25,7 @@ defaultThinkingLevel: medium
 # (bench/2026-08-28.s2.advmatrix.md — MoE 속도 역전으로 소형 코더 전제 붕괴).
 # 인터랙티브에서 쓰려면 아래 두 줄이면 된다(WATCHDOG.yml 불필요):
 #   modelRoles.advisor: omlx/Qwen3.5-4B-4bit                 # tiny 로 이미 상주 = 추가 로드 0
-#   (깊은 감시를 원하면 omlx/Qwen3.8-27B-4bit:coding — 별도 15GB 를 더 물린다)
+#   (깊은 감시를 원하면 omlx/Qwen3.8-27B-4bit — 별도 15GB 를 더 물린다)
 #   advisor.enabled: true                                    # TUI 는 /advisor on|off|status
 # 조언 실물은 실전급이었다(재독 처닝 지적) — 켜고 끄기는 취향.
 advisor:

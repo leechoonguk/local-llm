@@ -83,6 +83,9 @@ export function run(root: string): Issue[] {
 
 function checkSettings(tag: string, s: Rec): Issue[] {
   const out: Issue[] = [];
+  // 숨김 항목은 서빙 대상이 아니다 — 드래프터·DFlash·대화 형식 없는 베이스 판을 `/v1/models`
+  // 에서 빼려고 두는 표시일 뿐이라 레시피(창·출력·샘플링)를 요구하지 않는다(2026-08-31).
+  if (s.is_hidden === true) return out;
   const ctx = s.max_context_window, mt = s.max_tokens;
   if (!Number.isInteger(ctx)) out.push(`${tag}: max_context_window 가 정수가 아니다`);
   if (!Number.isInteger(mt)) out.push(`${tag}: max_tokens 가 정수가 아니다`);

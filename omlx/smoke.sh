@@ -9,7 +9,9 @@
 set -uo pipefail
 
 URL=${OMLX_URL:-http://127.0.0.1:9090}
-MODEL=${1:-Qwen3.6-35B-A3B-5bit:coder}
+# 2026-08-31: 서빙 id 에 프로파일 suffix 를 붙이지 않는다 — oMLX 가 active_profile 을
+# bare id 에 적용하고, omp 는 그 목록을 discovery 로 그대로 읽는다.
+MODEL=${1:-Qwen3.6-35B-A3B-5bit}
 BASE=${MODEL%%:*}
 LOG="$HOME/.omlx/logs/server.log"
 

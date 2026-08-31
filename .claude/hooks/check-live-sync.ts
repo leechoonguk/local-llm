@@ -13,7 +13,7 @@
  * (48GB 맥, omp 미설치 호스트에서도 verify 가 깨지지 않도록). 네트워크는 루프백 한 곳뿐이다.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { type Check, type Issue, isInstalled, isMain, parseYaml, read, runCli } from "./lib/harness.ts";
@@ -100,7 +100,10 @@ function checkOmlx(root: string): Issue[] {
     for (const n of [name, (raw as Rec).vlm_mtp_draft_model].filter((x): x is string => typeof x === "string")) {
       // 2026-08-28 전면 포팅: 모델 저장소는 oMLX 앱 스토어(~/.omlx/models/<org>/<name>)다.
       // HF 캐시(models--org--name)는 폐지했지만, 옛 배치도 유효로 인정한다(이식성).
-      const inStore = existsSync(join(homedir(), ".omlx", "models", "mlx-community", n));
+      // 스토어는 org 디렉터리로 갈라진다(mlx-community, z-lab, …) — 전부 훑는다.
+      // 예전엔 mlx-community 만 봐서 z-lab 의 DFlash 사이드카를 "없다"고 했다(2026-08-31).
+      const storeRoot = join(homedir(), ".omlx", "models");
+      const inStore = existsSync(storeRoot) && readdirSync(storeRoot).some((org) => existsSync(join(storeRoot, org, n)));
       const inHub = existsSync(join(hub, `models--mlx-community--${n}`)) || existsSync(join(hub, `models--${n}`));
       if (!inStore && !inHub) issues.push(`oMLX: 앱 스토어(~/.omlx/models)에도 HF 캐시에도 ${n} 이 없다 — oMLX 앱 또는 POST /admin/api/hf/download 로 받는다`);
     }

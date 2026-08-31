@@ -30,6 +30,13 @@ HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 # gemma-4-26b-a4b-it-5bit(선택 코더, 2026-08-31 — MoE 26B/활성 4B, 18GB, 드래프터 없음).
 # **`-it` 판이어야 한다**: 베이스 `gemma-4-26b-a4b-5bit`(+4bit)는 대화 형식·stop 토큰이 없어
 # 프롬프트를 되풀이한다(실측 2026-08-31). 베이스 두 벌은 앱에서 지워도 된다(32GB).
+#
+# 서빙 목록에서 숨긴 것들(`is_hidden: true`, 2026-08-31) — omp 가 discovery 로 `/v1/models` 를
+# 그대로 읽으므로, 채팅으로 부를 수 없는 것은 서버가 아예 안 내보내게 한다:
+#   Qwen3.6-35B-A3B-MTP-5bit, Qwen3.5-4B-MTP-4bit  - MTP 드래프터(단독 호출 대상 아님)
+#   Qwen3.6-35B-A3B-DFlash, Qwen3.8-27B-DFlash2    - DFlash 사이드카
+#   gemma-4-26b-a4b-5bit, gemma-4-26b-a4b-4bit     - Gemma 베이스 판(대화 형식 없음)
+# 숨김은 파일에 직접 써 넣으면 앱이 무시한다 - `PUT /admin/api/models/<id>/settings` 로 적용한다.
 # 9B·3.8 실험 모델은 2026-08-28 어드바이저 매트릭스 기각과 함께 삭제(bench/2026-08-28.s2.advmatrix.md).
 # 9B 코더·3.8 어드바이저(+각 MTP 드래프터)는 oMLX 앱 다운로드로 관리한다(~/.omlx/models,
 # 서빙 id 는 짧은 형식 "Qwen3.5-9B-MLX-4bit"/"Qwen3.8-27B-nvfp4"). HF 캐시 중복은 2026-08-28

@@ -89,6 +89,7 @@ export function run(root: string): Issue[] {
 
   // --- omlx provider ↔ omlx/*.json ---
   const om = providers.omlx as Rec | undefined;
+  const hasDiscovery = !!(om && (om.discovery as Rec | undefined)?.type);
   if (om) {
     const settings = safeJson(read(root, "omlx/model_settings.json"));
     const profiles = safeJson(read(root, "omlx/model_profiles.json"));
@@ -107,8 +108,12 @@ export function run(root: string): Issue[] {
         target = sModels[model] as Rec | undefined;
         if (!target) { issues.push(`${F}: omlx/${id} — model_settings.json 에 ${model} 이 없다`); continue; }
       }
-      if (m.contextWindow !== target.max_context_window) issues.push(`${F}: omlx/${id}.contextWindow(${String(m.contextWindow)}) != oMLX max_context_window(${String(target.max_context_window)})`);
-      if (m.maxTokens !== target.max_tokens) issues.push(`${F}: omlx/${id}.maxTokens(${String(m.maxTokens)}) != oMLX max_tokens(${String(target.max_tokens)})`);
+      // discovery 를 쓰는 provider 에서는 값을 **생략할 수 있다** — 서버가 `/v1/models` 로 준다
+      // (oMLX 는 `max_model_len` 을 싣는다). 다만 출력 상한은 싣지 않으므로 그건 여기서 고정한다.
+      // 적은 값은 서빙 쪽과 같아야 한다(규칙 4). 생략은 허용, 불일치는 금지.
+      if (m.contextWindow !== undefined && m.contextWindow !== target.max_context_window) issues.push(`${F}: omlx/${id}.contextWindow(${String(m.contextWindow)}) != oMLX max_context_window(${String(target.max_context_window)})`);
+      if (m.maxTokens !== undefined && m.maxTokens !== target.max_tokens) issues.push(`${F}: omlx/${id}.maxTokens(${String(m.maxTokens)}) != oMLX max_tokens(${String(target.max_tokens)})`);
+      if (hasDiscovery && m.maxTokens === undefined) issues.push(`${F}: omlx/${id} 에 maxTokens 가 없다 — /v1/models 는 출력 상한을 싣지 않아 omp 가 창의 1/4 을 예약한다`);
       if (get(m, "compat.extraBody") && m.api !== "openai-completions") issues.push(`${F}: omlx/${id} 가 compat.extraBody 를 싣는데 api: openai-completions 가 아니다(openai-responses 는 extraBody 미병합)`);
     }
   }

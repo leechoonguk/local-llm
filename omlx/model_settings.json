@@ -36,7 +36,7 @@
    "min_p": 0.0,
    "enable_thinking": true,
    "is_default": false,
-   "active_profile_name": "coding",
+   "active_profile_name": "coder",
    "reasoning_parser": "qwen",
    "thinking_budget_enabled": true,
    "thinking_budget_tokens": 2048,
@@ -58,6 +58,24 @@
    "vlm_mtp_enabled": false,
    "is_default": false,
    "active_profile_name": "coder"
+  },
+  "Qwen3.5-4B-MTP-4bit": {
+   "is_hidden": true
+  },
+  "Qwen3.6-35B-A3B-MTP-5bit": {
+   "is_hidden": true
+  },
+  "Qwen3.6-35B-A3B-DFlash": {
+   "is_hidden": true
+  },
+  "Qwen3.8-27B-DFlash2": {
+   "is_hidden": true
+  },
+  "gemma-4-26b-a4b-4bit": {
+   "is_hidden": true
+  },
+  "gemma-4-26b-a4b-5bit": {
+   "is_hidden": true
   }
  }
 }

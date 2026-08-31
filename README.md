@@ -147,14 +147,18 @@ nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 �
 | `qwen3.8-coder` | `qwen3.8:27b-nvfp4` (dense 27B, 4bit) | 18GB | 무거운 추론. prefill 느림 |
 | `qwen3.5-aux` | `qwen3.5:4b-nvfp4` (dense 4B, 4bit) | 4GB | 보조 작업(제목/메모리/분류). 코더와 동시 상주 |
 
-oMLX 로 옮긴 뒤의 등록 현황(2026-08-31):
+oMLX 로 옮긴 뒤의 등록 현황(2026-08-31). **omp 는 이 목록을 파일에 적지 않는다** —
+`discovery: {type: openai-models-list}` 로 서버의 `/v1/models` 를 그대로 읽고(창은 서버가 싣는
+`max_model_len`), `modelOverrides` 에는 서버가 싣지 않는 출력 상한만 고정한다. id 에 프로파일
+suffix(`:coder`)를 붙이지 않는다 — oMLX 가 `active_profile_name` 을 bare id 에 적용하기 때문이다
+(`admin/api/models` 로 확인). 부를 수 없는 모델은 `is_hidden` 으로 서빙에서 빠진다:
 
 | omp id | 스토어 | 크기 | 용도 |
 |---|---|---|---|
-| `omlx/Qwen3.6-35B-A3B-5bit:coder` | `mlx-community/Qwen3.6-35B-A3B-5bit` | 23GB | **기본 코더**. 창 131072 / 출력 8192, thinking budget 2048 |
-| `omlx/Qwen3.8-27B-4bit:coding` | `mlx-community/Qwen3.8-27B-4bit` | 15GB | 선택지(사용자 요청, 2026-08-31 등록). 같은 레시피, temp 1.0, `reasoning_effort: medium`. **이 계열은 2026-08-25 에 writes 0 으로 배제된 적이 있다** — 다시 쓰려면 `/llm-bench` 로 재확인할 것 |
+| `omlx/Qwen3.6-35B-A3B-5bit` | `mlx-community/Qwen3.6-35B-A3B-5bit` | 23GB | **기본 코더**. 창 131072 / 출력 8192, thinking budget 2048 |
+| `omlx/Qwen3.8-27B-4bit` | `mlx-community/Qwen3.8-27B-4bit` | 15GB | 선택지(사용자 요청, 2026-08-31 등록). 같은 레시피, temp 1.0, `reasoning_effort: medium`. **이 계열은 2026-08-25 에 writes 0 으로 배제된 적이 있다** — 다시 쓰려면 `/llm-bench` 로 재확인할 것 |
 | `omlx/Qwen3.5-4B-4bit` | `mlx-community/Qwen3.5-4B-4bit` | 4GB | 보조(tiny). thinking off, MTP 드래프터 페어링 |
-| `omlx/gemma-4-26b-a4b-it-5bit:coder` | `mlx-community/gemma-4-26b-a4b-it-5bit` | 18GB | 선택지(사용자 요청, 2026-08-31 등록). MoE 26B/활성 4B. 창 131072 / 출력 8192, temp 1.0·top_p 0.95·top_k 64(카드값), thinking budget 2048 |
+| `omlx/gemma-4-26b-a4b-it-5bit` | `mlx-community/gemma-4-26b-a4b-it-5bit` | 18GB | 선택지(사용자 요청, 2026-08-31 등록). MoE 26B/활성 4B. 창 131072 / 출력 8192, temp 1.0·top_p 0.95·top_k 64(카드값), thinking budget 2048 |
 
 **Gemma 4 는 `-it` 판을 받아야 한다 (2026-08-31 실측).** 베이스 판(`mlx-community/gemma-4-26b-a4b-5bit`,
 `-4bit`)에는 대화 템플릿도 stop 토큰도 없다 — 서버 로그가 `stop_tokens=[]` 를 찍고, 5 토큰짜리 프롬프트

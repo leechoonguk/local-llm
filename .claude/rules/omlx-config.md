@@ -7,6 +7,9 @@ paths:
 
 `omlx/*.json` 은 `~/.omlx/` 로 복사되고 서버 재시작으로 반영된다. 값 하나가 MTP 를 조용히 끄거나 CoT 를 content 에 섞을 수 있어 기계 검사로 막는다 — `make check-omlx-config`.
 
+## 숨김 항목
+- `is_hidden: true` 만 담은 항목은 **서빙에서 빼기 위한 표시**다(드래프터·DFlash·대화 형식이 없는 베이스 판). 레시피를 요구하지 않는다. 앱이 `/v1/models` 에서 빼 주고, 그래야 omp discovery 목록이 실제로 쓸 수 있는 모델만 담는다. 파일에 직접 써 넣으면 앱이 무시하므로 `PUT /admin/api/models/<id>/settings` 로 적용한다(실측 2026-08-31).
+
 ## 설정 값(모델·프로파일 공통)
 - `version: 1`. `max_context_window`, `max_tokens` 는 정수이고 `max_tokens < max_context_window`.
 - **Qwen 계열**은 `enable_thinking: true` 면 `reasoning_parser: "qwen"` 필수 — 없으면 thinking 이 content 에 섞인다.
