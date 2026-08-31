@@ -53,7 +53,7 @@ const TASKS: Record<string, Task> = {
     spec: "integration_spec.md",
     reference: "a1aebf3",   // 기대 산출물 목록(정답 사본은 reference/answers/, 트리에는 없다)
     expect: 6,
-    prompt: (spec) => `Add the 바코드연계 품목정보 API (service I2570) to this repository — it is not there yet.
+    prompt: (spec) => `Add the 바코드연계제품정보 API (service C005, operation code `search-barcode-linked-product`) to this repository — it is not there yet.
 
 1. Read the skill first: .omp/skills/integration/SKILL.md. Follow it.
 2. Read ${spec} — the measurement is already done, do NOT call any live API.
