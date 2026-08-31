@@ -13,7 +13,7 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 |---|---|
 | `sandbox/` | 피험자 트리. fast-api-standard 를 **batch·user 도메인 + auth·health + core + 하네스**로 줄인 최소 baseline. 포트 분리(18000/15173/15432/16379). git 저장소 아님 — local-llm 이 추적. `sandbox/SANDBOX.md` |
 | `runner.ts` | 셀 하나 = 세팅 → `omp -p` 독립 프로세스 → 하드 타임아웃 → `make verify` 채점 → 무결성 → 원복 → JSON 1행 |
-| `tasks/rest_spec.md`, `tasks/integration_spec.md` | 피험자에게 넘기는 요구사항·계측 브리핑 |
+| `tasks/notice_spec.md`, `tasks/integration_spec.md` | 피험자에게 넘기는 요구사항·계측 브리핑 |
 | `reference/a1aebf3.{manifest.json,parent.patch}` | integration(외부 연동 추가) 레퍼런스 산출물 목록 + 부모 상태로 되돌리는 역패치 |
 | `bench/` | 결과. 표준은 `bench/README.md` — 러너가 `<date>.s2.<campaign>.json` 을 쓰고, `.md` 는 사람이 쓴다 |
 
@@ -24,7 +24,7 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 글자가 아니라 이름으로 부른다).
 
 
-| | integration(외부 연동 추가) 재현 (`integration`) | rest(도메인 추가) 적합성 (`rest`) |
+| | integration(외부 연동 추가) 재현 (`integration`) | notice(도메인+화면 풀스택) 적합성 (`notice`) |
 |---|---|---|
 | 과제 | 외부 API I2570 을 형제 `search-food-raw-material` 을 본떠 추가 | `notice` CRUD 를 형제 `batch` 를 본떠 신규 작성 |
 | 정답 | landed 산출물 6개(시드 마이그레이션 2 + `.http` + 픽스처 + 테스트 배선 2). 러너가 부모 상태 복원(레퍼런스 산출물 삭제 + 역패치)으로 숨긴다 | 없음 — 레포에 존재한 적 없어 누출 구조적 0, HEAD 에서 그대로 |
@@ -57,7 +57,7 @@ node .claude/skills/llm-bench/runner.ts --models a,b --campaign <name> --timeout
 node .claude/skills/llm-bench/runner.ts --matrix                              # DEFAULT_MODELS × 두 과제
 node .claude/skills/llm-bench/runner.ts --revert-only                         # 중단된 셀 뒤처리
 ```
-- **기본으로 두 과제(`integration` + `rest`)를 모두 돌린다** — `--task` 를 안 주면 둘 다. 한 과제만 재려면 `--task integration` 또는 `--task rest`. 모델당 두 셀이 같은 캠페인 `.json` 에 누적된다.
+- **기본으로 두 과제(`integration` + `notice`)를 모두 돌린다** — `--task` 를 안 주면 둘 다. 한 과제만 재려면 `--task integration` 또는 `--task notice`. 모델당 두 셀이 같은 캠페인 `.json` 에 누적된다.
 - 셀당 45분 상한(실측 10~52분+). 상한 없이 매트릭스는 끝나지 않는다.
 - 셀 하나에 30~45분이므로 **백그라운드로 띄우고** 세션은 다른 일을 한다. 진행 중 sandbox 의 빨간 게이트는 측정 대상이다 — **고치지 않는다**(피험자의 작업 공간).
 - 피험자는 별도 OS 프로세스다. 서브에이전트로 돌리면 이 세션의 컨텍스트를 물려받고 모델 해석도 채점자 것이 된다.

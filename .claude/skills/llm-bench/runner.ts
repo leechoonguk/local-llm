@@ -6,7 +6,7 @@
  * `git checkout -- sandbox && git clean -fdq sandbox` 다. 임시 git 은 만들지 않는다.
  *
  * 과제는 둘이고 **모양이 같다**: 둘 다 빈 곳에 새 기능을 더한다(`shape: "greenfield"`).
- *   - `rest`        — notice CRUD 도메인 추가(기대 15)
+ *   - `notice`      — notice CRUD 도메인 + 화면 풀스택 추가(기대 21)
  *   - `integration` — 바코드연계 품목정보 API(I2570) 외부 연동 추가(기대 6)
  * 예전 integration 은 트리에 있던 정답을 지우고 재현시키는 모양이었다. 정답이 트리에 있어야 성립하므로
  * 채점이 뒤집혔고(아무것도 안 하면 만점) VCS 로 되살리는 지름길이 생겼다. 정답은 이제
@@ -64,11 +64,11 @@ const TASKS: Record<string, Task> = {
    the recorded fixture, and the test wiring the sibling has.
 6. Finish by running \`make verify\` and make it pass.`,
   },
-  rest: {
+  notice: {
     shape: "greenfield",
-    spec: "rest_spec.md",
-    expect: 15, // 실측 재보정(2026-08-27 4자 토의): 초록 셀 산출물이 일관되게 15-16 — 13은 만성 과대달성으로 읽혀 미달 감지 불능
-    prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository.
+    spec: "notice_spec.md",
+    expect: 21, // 백엔드 15(2026-08-27 실측) + 프론트 신규 6(batch 도메인 실측: types/service/hooks/page/sections 2) — 첫 풀스택 셀에서 재보정
+    prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository — backend AND the screen for it.
 
 1. Read the domain rule first: .omp/rules/backend-domain.md. Follow it.
 2. Read ${spec} — that is the requirement.
@@ -77,11 +77,16 @@ const TASKS: Record<string, Task> = {
    backend/app/routers/batch.py, backend/tests/{api,repositories,services}/test_batch.py, api/batch.http.
 4. Reuse the existing authentication dependency and the existing pagination convention.
    Do not add a new auth mechanism and do not seed a new account.
-5. Deliverables: the five domain layers, the dependency wiring and router registration,
+5. Backend deliverables: the five domain layers, the dependency wiring and router registration,
    the Alembic migration for the table, the request file, and the tests the sibling has.
    The request file must also be listed in tests/core/test_seed_api_actor.py's expected
    http files — add it alongside the existing entries.
-6. Finish by running \`make verify\` and make it pass.`,
+6. Frontend deliverables — the spec's Screen section. Model every file on the batch domain:
+   frontend/src/types/, lib/api/services/, lib/api/hooks/, pages/, sections/notice/,
+   and wire it where batch is wired (App route, endpoints.ts, queryKeys.ts, routes/paths.ts,
+   dashboard navigation, BOTH locales). The published routes need a browser caller —
+   the frontend contract check fails otherwise.
+7. Finish by running \`make verify\` and make it pass.`,
     // 과제 텍스트 v1.1(2026-08-28 라운드 3): seed_api_actor 기대는 게이트 계약이라 스펙에
     // 명시(게이트 관점 "spec completeness" 판정, 실측 7.8m/2.5m 소모 — 숨은 게이트였다).
   },
@@ -90,7 +95,7 @@ const TASKS: Record<string, Task> = {
 /** --matrix 의 기본 후보. 현재 서빙(oMLX)에 등록된 코더 — omp/models.yml 참고. */
 const DEFAULT_MODELS = [
   "omlx/Qwen3.6-35B-A3B-5bit:coder",
-  "omlx/Qwen3.8-27B-nvfp4:mtp",
+  "omlx/Qwen3.8-27B-4bit",
 ];
 
 /** aux(tiny/smol) 역할 고정 대상. 실사용 구성의 4B — 벤치도 이걸로 검증한다(omp/config.fragment.yml). */
@@ -600,9 +605,9 @@ async function main(): Promise<void> {
   const timeoutS = Number.parseInt(arg("--timeout") ?? "2700", 10);
   const dryRun = has("--dry-run");
   const models = dryRun ? [""] : has("--matrix") ? DEFAULT_MODELS : (arg("--models") ?? arg("--model") ?? "").split(",").filter(Boolean);
-  const tasks = (arg("--tasks") ?? arg("--task") ?? "integration,rest").split(",").filter(Boolean);
+  const tasks = (arg("--tasks") ?? arg("--task") ?? "integration,notice").split(",").filter(Boolean);
   if (models.length === 0 || tasks.some((t) => !(t in TASKS))) {
-    console.error(`usage: --model <id> [--task integration|rest] | --models a,b | --matrix | --dry-run   (tasks: ${Object.keys(TASKS).join(", ")})`);
+    console.error(`usage: --model <id> [--task integration|notice] | --models a,b | --matrix | --dry-run   (tasks: ${Object.keys(TASKS).join(", ")})`);
     process.exit(2);
   }
 

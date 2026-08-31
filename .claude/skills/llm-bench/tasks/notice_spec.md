@@ -33,3 +33,19 @@ already use — do not invent a second convention for them.
 
 - No external HTTP calls, no cache, no background job, no file upload.
 - No frontend work.
+
+## Screen (frontend)
+
+The domain is complete only when an operator can use it from the browser — the
+frontend contract check demands a caller for every published route, and the
+exemption list is harness territory a subject cannot touch.
+
+- Follow the frontend domain pattern (`.omp/rules/frontend-domain.md`) and model
+  every file on the existing `batch` domain: `types/`, `lib/api/services/`,
+  `lib/api/hooks/`, `pages/`, `sections/notice/` (list + form dialog).
+- Wire it everywhere the batch domain is wired: the App route, `endpoints.ts`,
+  `queryKeys.ts`, `routes/paths.ts`, the dashboard navigation, and **both**
+  locales (`locales/en.ts`, `locales/ko.ts`) — the i18n check fails on a key
+  present in one language only.
+- The list shows pinned notices first, matching the backend ordering; the form
+  edits every field the schema exposes.
