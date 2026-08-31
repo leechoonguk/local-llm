@@ -8,12 +8,12 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { dormant, passLine } from "../lib/hook-dormancy.ts";
 import { runAstRules } from "../lib/ast-rules.ts";
+import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
@@ -64,7 +64,12 @@ function checkBackendSseSync(): string[] {
       /text\/event-stream|EventSourceResponse/.test(readFileSync(join(routersDir, file), "utf-8")),
     );
   if (sseFiles.length === 0) {
-    return dormant("check-backend-sse", "no SSE endpoint in app/routers");
+    // Dormancy is about the *convention* claims below, which need an SSE endpoint
+    // to exist. The ban on raw `StreamingResponse` is not dormant: measured — a
+    // planted `StreamingResponse(...)` was collected above and then thrown away
+    // by this early return, so the check could only fire once someone had
+    // already used `EventSourceResponse` correctly.
+    return issues.length > 0 ? issues : dormant("check-backend-sse", "no SSE endpoint in app/routers");
   }
 
   for (const f of readdirSync(routersDir)) {

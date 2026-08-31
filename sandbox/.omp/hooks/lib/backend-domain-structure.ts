@@ -1,5 +1,5 @@
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 
@@ -53,6 +53,196 @@ export function checkRelationshipLoading(base: string): string[] {
   return issues;
 }
 
+/**
+ * Domains that own more than one model file — a multi-table aggregate, checked
+ * by its own file-shape hooks (check-backend-model-files,
+ * check-backend-repository-files) and, when one exists, its dedicated
+ * configuration hook, never by the generic single-resource CRUD template every
+ * other hook in this file assumes.
+ *
+ * **Structural, not named.** Hardcoding a domain's name to skip it is what
+ * broke three times in one session when `integration.py` became five files:
+ * `check-backend-transaction`'s own `file !== "integration.py"` filter,
+ * `check-backend-tests`'s own `Set(["integration"])`, and this file's earlier
+ * `name === "integration"` skip all stopped matching anything the day the
+ * split landed, because none of them asked "does this domain own more than one
+ * file" — they asked "is this domain literally named integration". A domain
+ * discovered this way needs no update when the next aggregate is split; a
+ * hardcoded name needs one every time, silently, until someone happens to
+ * touch that exact domain again.
+ *
+ * Measured two ways, because the aggregate has two shapes: several model files
+ * (the folder), or one flat file declaring several tables — the shape a domain
+ * has before its folder move, and the shape the sandbox baseline keeps.
+ */
+export function aggregateDomains(): Set<string> {
+  const base = join(projectRoot, "backend", "app");
+  const serviceDir = join(base, "services");
+  if (!existsSync(join(base, "models")) || !existsSync(serviceDir)) return new Set();
+
+  const result = new Set<string>();
+  for (const name of listDomains(serviceDir)) {
+    if (ownedModelFiles(name).length > 1 || ownedTableCount(name) > 1) result.add(name);
+  }
+  return result;
+}
+
+/**
+ * The model files one domain owns, in either shape:
+ *
+ * - `models/<domain>/*.py` - a folder, required once a domain owns more than
+ *   one table (`backend-model-files.md`). The file inside is named after its
+ *   table with the domain prefix dropped, so `integration/provider.py` maps
+ *   `integration_provider`.
+ * - `models/<domain>.py`, or the flat `models/<domain>_*.py` a domain has
+ *   while it is being moved into a folder.
+ *
+ * Returned as paths relative to `models/`, because a caller that only ever saw
+ * bare filenames was the reason the folder move went unnoticed: five files
+ * moved one directory down, `readdirSync` stopped matching them, and every
+ * aggregate check silently reported success on nothing.
+ */
+export function ownedModelFiles(domain: string): string[] {
+  const modelDir = join(projectRoot, "backend", "app", "models");
+  if (!existsSync(modelDir)) return [];
+
+  const folder = join(modelDir, domain);
+  if (existsSync(folder) && statSync(folder).isDirectory()) {
+    return readdirSync(folder)
+      .filter((f: string) => f.endsWith(".py") && f !== "__init__.py")
+      .map((f: string) => `${domain}/${f}`);
+  }
+
+  return readdirSync(modelDir).filter(
+    (f: string) => f === `${domain}.py` || (f.startsWith(`${domain}_`) && f.endsWith(".py")),
+  );
+}
+
+/**
+ * `__tablename__` declarations across the model files one domain owns — the
+ * other half of the aggregate measure. A flat `models/<domain>.py` that maps
+ * four tables is exactly as much an aggregate as four files in a folder, and
+ * the singular one-table templates fit it exactly as badly.
+ */
+export function ownedTableCount(domain: string): number {
+  const modelDir = join(projectRoot, "backend", "app", "models");
+  let count = 0;
+  for (const file of ownedModelFiles(domain)) {
+    const source = readFileSync(join(modelDir, file), "utf-8");
+    count += (source.match(/^\s*__tablename__\s*=/gm) ?? []).length;
+  }
+  return count;
+}
+
+/** Domain names, from the layer that decides a domain exists: `services/`. */
+export function listDomains(serviceDir: string): string[] {
+  if (!existsSync(serviceDir)) return [];
+  const names: string[] = [];
+  for (const entry of readdirSync(serviceDir, { withFileTypes: true })) {
+    if (entry.name === "__init__.py" || entry.name === "__pycache__") continue;
+    if (entry.isDirectory()) names.push(entry.name);
+    else if (entry.name.endsWith(".py")) names.push(entry.name.replace(".py", ""));
+  }
+  return names;
+}
+
+/** True when `stem` (a filename minus `.py`) belongs to a multi-file domain. */
+export function belongsToAggregateDomain(stem: string, aggregates: Set<string>): boolean {
+  for (const domain of aggregates) {
+    if (stem === domain || stem.startsWith(`${domain}_`)) return true;
+  }
+  return false;
+}
+
+/**
+ * Every `.py` under a layer directory, one level deep, as paths relative to
+ * it: `user.py`, `integration/provider.py`. One level is the whole convention -
+ * a domain folder holds table files, never more folders.
+ */
+export function listModelFiles(layerDir: string): string[] {
+  if (!existsSync(layerDir)) return [];
+  const files: string[] = [];
+  for (const entry of readdirSync(layerDir, { withFileTypes: true })) {
+    if (entry.name === "__pycache__" || entry.name === "__init__.py") continue;
+    if (entry.isDirectory()) {
+      for (const inner of readdirSync(join(layerDir, entry.name))) {
+        if (inner.endsWith(".py") && inner !== "__init__.py") files.push(`${entry.name}/${inner}`);
+      }
+    } else if (entry.name.endsWith(".py")) {
+      files.push(entry.name);
+    }
+  }
+  return files;
+}
+
+/**
+ * One domain's source in a layer, as a single string: the file when the layer
+ * holds `<domain>.py`, the concatenation of `<domain>/*.py` when the domain has
+ * grown into a folder.
+ *
+ * Concatenating is what makes the split invisible to a content check. The
+ * alternative - picking one file - is how a check starts reading half a
+ * contract and passing: `schemas/integration/provider.py` alone has no
+ * `IntegrationSecretCreateRequest`, and the domain's schema contract is the
+ * whole folder.
+ */
+export function readLayerSource(layerDir: string, domain: string): string | null {
+  const file = join(layerDir, `${domain}.py`);
+  if (existsSync(file)) return readFileSync(file, "utf-8");
+
+  const folder = join(layerDir, domain);
+  if (!existsSync(folder) || !statSync(folder).isDirectory()) return null;
+  return readdirSync(folder)
+    .filter((f: string) => f.endsWith(".py") && f !== "__init__.py")
+    .sort()
+    .map((f: string) => readFileSync(join(folder, f), "utf-8"))
+    .join("\n");
+}
+
+/**
+ * Absolute paths of the files one domain owns in a layer - the folder's
+ * contents, or the flat `<domain>.py` / `<domain>_*.py` files.
+ */
+export function listDomainLayerFiles(layerDir: string, domain: string): string[] {
+  if (!existsSync(layerDir)) return [];
+
+  const folder = join(layerDir, domain);
+  if (existsSync(folder) && statSync(folder).isDirectory()) {
+    return readdirSync(folder)
+      .filter((f: string) => f.endsWith(".py") && f !== "__init__.py")
+      .sort()
+      .map((f: string) => join(folder, f));
+  }
+
+  return readdirSync(layerDir)
+    .filter((f: string) => f === `${domain}.py` || (f.startsWith(`${domain}_`) && f.endsWith(".py")))
+    .sort()
+    .map((f: string) => join(layerDir, f));
+}
+
+/**
+ * A layer must not hold both `<domain>.py` and `<domain>/` for the same domain.
+ *
+ * Measured: with `models/user.py` and `models/user/extra.py` both present,
+ * every check passed. `ownedModelFiles()` answers with the folder and stops
+ * looking, so the flat file's table was invisible - the exact shape a
+ * half-finished move leaves behind, and the one state where "which files does
+ * this domain own" has two answers.
+ */
+export function checkLayerOwnership(layerDir: string, layerLabel: string): string[] {
+  if (!existsSync(layerDir)) return [];
+  const issues: string[] = [];
+  for (const entry of readdirSync(layerDir, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.name === "__pycache__") continue;
+    if (!existsSync(join(layerDir, `${entry.name}.py`))) continue;
+    issues.push(
+      `${layerLabel}/: ${entry.name} owns both ${entry.name}.py and ${entry.name}/ - ` +
+        "a domain lives in one or the other; finish the move and delete the flat file",
+    );
+  }
+  return issues;
+}
+
 export function checkDomainStructure(): string[] {
   const issues: string[] = [];
   const base = join(projectRoot, "backend", "app");
@@ -69,68 +259,108 @@ export function checkDomainStructure(): string[] {
     return issues;
   }
 
-  const modelFiles: string[] = [];
-  for (const f of readdirSync(modelDir)) {
-    if (f.endsWith(".py") && f !== "__init__.py") {
-      modelFiles.push(f);
-    }
+  // No layer may answer "which files does this domain own" two ways at once.
+  for (const [dir, label] of [
+    [modelDir, "models"],
+    [schemaDir, "schemas"],
+    [repoDir, "repositories"],
+    [serviceDir, "services"],
+  ] as const) {
+    issues.push(...checkLayerOwnership(dir, label));
   }
 
-  // File naming: <name>.py must be lowercase alphanumeric — the model file
-  // name is the single source of truth for the domain name, and the other
-  // 4 layers must use the same <name>.py (checked below).
+  // A domain is a 5-layer stack, and the layer that decides one exists is the
+  // service. Discovery used to enumerate **model files**, which made a table
+  // and a domain the same thing - so `integration` had to be skipped by name,
+  // and the moment one table moved to its own file the checker demanded a
+  // router, a schema and a service for `integration_secret`.
+  //
+  // One table per model file is the table rule (`backend-model-files.md`), and
+  // a domain that owns several of them keeps them in `models/<domain>/`. Both
+  // shapes are read through `ownedModelFiles()` so this checker, the aggregate
+  // predicate, and the file-shape hooks cannot disagree about what a domain
+  // owns - they disagreed once already, and the answer was silence.
+  const modelFiles: string[] = listModelFiles(modelDir);
+
+  // File naming: lower snake case, because a model file is named after its
+  // table (minus the domain prefix when it sits in the domain's folder).
   for (const modelFile of modelFiles) {
-    const name = modelFile.replace(".py", "");
-    if (!/^[a-z][a-z0-9]*$/.test(name)) {
+    const name = modelFile.replace(/^.*\//, "").replace(".py", "");
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) {
       issues.push(
-        `${modelFile}: model filename must be <name>.py (lowercase alphanumeric) — ` +
-          "it defines the domain name used by schemas/repositories/services/routers",
+        `${modelFile}: model filename must be lower snake case - it is named after ` +
+          "the table it maps (backend-model-files.md)",
       );
     }
   }
 
-  for (const modelFile of modelFiles) {
-    const name = modelFile.replace(".py", "");
+  const domains: string[] = listDomains(serviceDir);
+
+  const repoFiles: string[] = existsSync(repoDir) ? listModelFiles(repoDir) : [];
+
+  for (const name of domains) {
     const cls = name.charAt(0).toUpperCase() + name.slice(1);
 
-    // Skip only models that are not CRUD domains. `base` holds the declarative
-    // base and mixins; `integration` is a configuration aggregate with its own
-    // four-table contract in check-backend-integration-configuration. Every
-    // other model — including `batch` — must satisfy the 5-layer contract, or
-    // deleting a sample domain silently empties this check.
-    if (name === "base" || name === "integration") continue;
+    const owned = ownedModelFiles(name);
+    if (owned.length === 0) {
+      issues.push(
+        `${name}: services layer exists but no model file ` +
+          `(models/${name}.py, models/${name}/*.py, or models/${name}_*.py)`,
+      );
+      continue;
+    }
+    const modelFile = owned.includes(`${name}.py`) ? `${name}.py` : owned.sort()[0];
+    // A model file per table (backend-model-files.md), so a domain's repository
+    // side is not required to be exactly `repositories/<name>.py` either - only
+    // that at least one file exists for it, in the folder when there are
+    // several (`backend-repository-files.md`).
+    const ownedRepos = repoFiles.filter(
+      (file: string) =>
+        file === `${name}.py` || file.startsWith(`${name}_`) || file.startsWith(`${name}/`),
+    );
+    // The singular templates below (model class == domain name, repository's
+    // 7-method shape) describe one table's worth of CRUD. A domain that owns
+    // several files — several tables, several repositories — is checked by its
+    // own file-shape hooks (check-backend-model-files,
+    // check-backend-repository-files) and its dedicated configuration hook when
+    // one exists; running the singular template against an arbitrarily chosen
+    // file here is what let `models/integration_call.py` satisfy `model class
+    // "Integration" not found` by prefix coincidence (`IntegrationCall` starts
+    // with `Integration`) before this gate existed.
+    // The aggregate is measured, never named (see aggregateDomains): several
+    // model files, or one flat file declaring several tables. Either shape puts
+    // the domain outside the one-table templates below.
+    const isAggregate = owned.length > 1 || ownedTableCount(name) > 1;
+    const isSingleFileDomain = !isAggregate && owned.length === 1 && owned[0] === `${name}.py`;
+    const isSingleRepoDomain = !isAggregate && ownedRepos.length === 1 && ownedRepos[0] === `${name}.py`;
 
-    // 완성도 요구는 **의존 방향으로만** 건다(2026-08-29 사용자 지적 + 실측).
-    // 예전에는 모델 파일 하나가 생기는 순간 schema/repository/service 누락 3건을 지적했다 —
-    // 즉 작업의 첫 걸음에서 마지막 걸음을 요구한 셈이다. 실측에서 이 목록이 모델에게 작업 큐로
-    // 읽혔고("첫 실패 수정 완료. 다음: missing service file"), 사용자가 한 계층만 요청한
-    // 프롬프트를 기능 전체로 부풀리는 주된 압력이었다.
+    // Data chain: model → schema → repository → service. Router is OPTIONAL —
+    // a domain may be internal-only (batch jobs) or exposed via a custom
+    // router (auth). When a router exists, its content is validated below.
     //
-    // 새 규칙: 존재하는 **가장 하류 계층**이 그 상류를 요구한다. 라우터가 있으면 서비스·리포지토리·
-    // 스키마가 있어야 하고, 서비스가 있으면 리포지토리·스키마가, 리포지토리가 있으면 스키마가
-    // 있어야 한다. 모델만(또는 모델+스키마만) 있는 상태는 완성 전 단계이지 위반이 아니다.
-    // 완성 시점의 계약은 그대로다 — 라우터가 서면 5계층이 전부 강제된다.
-    const hasSchema = existsSync(join(schemaDir, `${name}.py`));
-    const hasRepo = existsSync(join(repoDir, `${name}.py`));
-    const hasService = existsSync(join(serviceDir, `${name}.py`));
-    const hasRouter = existsSync(join(routerDir, `${name}.py`));
-    const required = hasRouter
-      ? ["schema", "repository", "service"]
-      : hasService
-        ? ["schema", "repository"]
-        : hasRepo
-          ? ["schema"]
-          : [];
-    const anchor = hasRouter ? "routers" : hasService ? "services" : "repositories";
-    for (const layer of required) {
-      const [dir, present] = layer === "schema"
-        ? [schemaDir, hasSchema]
-        : layer === "repository"
-          ? [repoDir, hasRepo]
-          : [serviceDir, hasService];
-      if (!present) {
-        issues.push(`${name}: ${anchor}/${name}.py exists but ${layer} file is missing (${(dir as string).split("/").pop()}/${name}.py)`);
-      }
+    // 완성도 요구는 **의존 방향으로만** 건다(2026-08-29 사용자 지적 + 실측). 도메인 발견 자체가
+    // services/ 앵커라서 모델만(또는 모델+스키마만) 있는 상태는 도메인으로 잡히지 않는다 — 작업의
+    // 첫 걸음에서 마지막 걸음을 요구하지 않는다. 여기 도달한 도메인은 서비스(또는 라우터)가 이미
+    // 섰으므로 그 하류가 상류(schema·repository)를 요구한다. 완성 시점의 계약은 그대로다.
+    const routerPath = join(routerDir, `${name}.py`);
+    const hasRouter = existsSync(routerPath);
+    const anchor = hasRouter ? "routers" : "services";
+    const schemaSource = readLayerSource(schemaDir, name);
+    if (schemaSource === null) {
+      issues.push(
+        `${name}: ${anchor} layer exists but schema layer is missing ` +
+          `(schemas/${name}.py or schemas/${name}/*.py)`,
+      );
+    }
+    if (ownedRepos.length === 0) {
+      issues.push(
+        `${name}: ${anchor} layer exists but repository layer is missing ` +
+          `(repositories/${name}.py, repositories/${name}/*.py, or repositories/${name}_*.py)`,
+      );
+    }
+    if (readLayerSource(serviceDir, name) === null) {
+      // premature-ok: services/ 가 이 도메인을 선언했는데 읽을 소스가 없다 — 어느 단계에서든 결함이다.
+      issues.push(`${name}: missing service file (services/${name}.py or services/${name}/*.py)`);
     }
 
     // --- Validate file contents ---
@@ -138,32 +368,33 @@ export function checkDomainStructure(): string[] {
     const modelPath = join(modelDir, modelFile);
     const modelContent = readFileSync(modelPath, "utf-8");
 
-    // Model: should have Base, AuditMixin, UUID id, name/description
-    if (!modelContent.includes("AuditMixin")) {
-      issues.push(`${name}: model missing AuditMixin`);
-    }
-    if (!modelContent.includes("class " + cls)) {
-      issues.push(`${name}: model class "${cls}" not found`);
-    }
-    if (!modelContent.includes("Mapped[uuid.UUID]")) {
-      issues.push(`${name}: model id must be Mapped[uuid.UUID] (UUID primary key)`);
-    }
-    if (!modelContent.includes("default=uuid4")) {
-      issues.push(`${name}: model id missing default=uuid4`);
-    }
-    if (!modelContent.includes("mapped_column")) {
-      issues.push(`${name}: model missing mapped_column`);
-    }
-    if (!modelContent.includes(`__tablename__ = "${name}"`)) {
-      issues.push(`${name}: model __tablename__ must be "${name}" (lowercase domain name)`);
+    if (isSingleFileDomain) {
+      // Model: should have Base, AuditMixin, UUID id, name/description
+      if (!modelContent.includes("AuditMixin")) {
+        issues.push(`${name}: model missing AuditMixin`);
+      }
+      if (!modelContent.includes("class " + cls)) {
+        issues.push(`${name}: model class "${cls}" not found`);
+      }
+      if (!modelContent.includes("Mapped[uuid.UUID]")) {
+        issues.push(`${name}: model id must be Mapped[uuid.UUID] (UUID primary key)`);
+      }
+      if (!modelContent.includes("default=uuid4")) {
+        issues.push(`${name}: model id missing default=uuid4`);
+      }
+      if (!modelContent.includes("mapped_column")) {
+        issues.push(`${name}: model missing mapped_column`);
+      }
+      if (!new RegExp(`__tablename__ = "${name}"`).test(modelContent)) {
+        issues.push(`${name}: ${modelFile} must declare __tablename__ "${name}"`);
+      }
     }
 
     // Schema: should have 6 classes, extra="forbid"
     // Naming convention: XBase, XCreateRequest, XCreateInternal, XReadResponse,
     // XUpdateRequest, XUpdateInternal (Request/Response suffixes).
-    const schemaPath = join(schemaDir, `${name}.py`);
-    if (existsSync(schemaPath)) {
-      const schemaContent = readFileSync(schemaPath, "utf-8");
+    if (schemaSource !== null) {
+      const schemaContent = schemaSource;
       const expected = [
         `${cls}Base`,
         `${cls}CreateRequest`,
@@ -207,9 +438,11 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Repository: should have 7 methods, UUID id params
+    // Repository: should have 7 methods, UUID id params — the single-table
+    // template. A domain with several repository files is checked structurally
+    // by check-backend-repository-files instead (backend-repository-files.md).
     const repoPath = join(repoDir, `${name}.py`);
-    if (existsSync(repoPath)) {
+    if (isSingleRepoDomain && existsSync(repoPath)) {
       const repoContent = readFileSync(repoPath, "utf-8");
       const methods = ["async def get", "async def list", "async def find_stale", "async def create", "async def update", "async def delete", "def __init__"];
       for (const method of methods) {
@@ -253,8 +486,7 @@ export function checkDomainStructure(): string[] {
     }
 
     // Router: should have 5 endpoints, UUID path params
-    const routerPath = join(routerDir, `${name}.py`);
-    if (existsSync(routerPath)) {
+    if (hasRouter) {
       const routerContent = readFileSync(routerPath, "utf-8");
       if (!routerContent.includes("@router.post")) {
         issues.push(`${name}: router missing POST endpoint`);
@@ -278,12 +510,21 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Env: model must be imported
+    // Env: every one of the domain's model files must be imported. Per file, not
+    // per domain: a table nobody imports is absent from the metadata, so
+    // autogenerate writes an empty migration and the table never exists.
     if (existsSync(envPy)) {
       const envContent = readFileSync(envPy, "utf-8");
-      if (!new RegExp(`from app\\.models\\.${name} import\\s+\\w+`).test(envContent)) {
-        // premature-ok: autogenerate 는 import 없는 모델을 보지 못한다 — 이 등록은 모델 자체의 속성이다.
-        issues.push(`${name}: not imported in alembic/env.py`);
+      for (const file of owned) {
+        // `integration/provider.py` is the module `integration.provider`: the
+        // folder is a package, so the import path carries a dot, not a slash.
+        // `[\w(]` accepts the parenthesized multi-line form a four-table flat
+        // module imports with — `import (` is as much a registration as `import X`.
+        const module = file.replace(/\.py$/, "").split("/").join(".");
+        if (!new RegExp(`from app\\.models\\.${module} import\\s*[\\w(]`).test(envContent)) {
+          // premature-ok: autogenerate 는 import 없는 모델을 보지 못한다 — 이 등록은 모델 자체의 속성이다.
+          issues.push(`${module}: not imported in alembic/env.py`);
+        }
       }
     }
 
@@ -297,19 +538,33 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Dependencies: 서비스 DI 는 **서비스 파일이 생긴 뒤**에만 요구한다(같은 이유).
+    // Dependencies: service DI must exist (SessionDep -> ServiceDep). A domain
+    // whose service layer is a folder has one service per file, so it needs one
+    // factory and one Annotated alias per file - not one named after the domain,
+    // which no longer exists as a class once the service is split.
     const depsServicesPath = join(base, "dependencies", "services.py");
-    if (!existsSync(depsServicesPath)) {
+    if (existsSync(depsServicesPath)) {
+      const depsContent = readFileSync(depsServicesPath, "utf-8");
+      const serviceFiles = listDomainLayerFiles(serviceDir, name);
+      const isFolder = serviceFiles.some((file) => file.includes(`${name}/`));
+      const parts = isFolder
+        ? serviceFiles.map((file) => {
+            const leaf = (file.split("/").pop() ?? "").replace(/\.py$/, "");
+            const leafCls = leaf.charAt(0).toUpperCase() + leaf.slice(1);
+            return { factory: `get_${name}_${leaf}_service`, cls: `${cls}${leafCls}Service` };
+          })
+        : [{ factory: `get_${name}_service`, cls: `${cls}Service` }];
+      for (const part of parts) {
+        if (!depsContent.includes(part.factory)) {
+          issues.push(`${name}: missing ${part.factory} in dependencies/services.py`);
+        }
+        if (!new RegExp(`${part.cls}Dep\\s*=\\s*Annotated\\[\\s*${part.cls}`).test(depsContent)) {
+          issues.push(`${name}: missing ${part.cls}Dep Annotated DI in dependencies/services.py`);
+        }
+      }
+    } else {
       // premature-ok: 프로젝트 기반 파일의 부재는 작업 순서가 아니라 설정 결함이다 — 어느 단계에서든 참이다.
       issues.push(`${name}: dependencies/services.py not found`);
-    } else if (hasService) {
-      const depsContent = readFileSync(depsServicesPath, "utf-8");
-      if (!depsContent.includes(`get_${name}_service`)) {
-        issues.push(`${name}: missing get_${name}_service in dependencies/services.py`);
-      }
-      if (!new RegExp(`${cls}ServiceDep\\s*=\\s*Annotated\\[${cls}Service`).test(depsContent)) {
-        issues.push(`${name}: missing ${cls}ServiceDep Annotated DI in dependencies/services.py`);
-      }
     }
   }
 

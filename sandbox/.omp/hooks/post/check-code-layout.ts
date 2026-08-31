@@ -93,16 +93,23 @@ const COMMENTED_CODE_PY =
 const COMMENTED_CODE_TS =
   /^\s*\/\/\s*(?:import\s+[\w{*][^;]*from\s|export\s+(?:default|function|const)\s|function\s+\w+\s*\(|const\s+\w+\s*=\s*[^=]|return\s+\S)/;
 
-/** Python class members, in the order code-layout.md requires them. */
+/**
+ * Python class members, in the order code-layout.md requires them.
+ *
+ * `__init__` has its own rank: the documented order is properties → `__init__` →
+ * methods, and ranking the constructor as a plain method left no legal position
+ * for a property in a class that has both (measured on `IntegrationClient`).
+ */
 const PY_MEMBER_RANK: Record<string, number> = {
   config: 0,
   field: 1,
   relationship: 2,
   property: 3,
-  method: 4,
+  init: 4,
+  method: 5,
 };
 const PY_MEMBER_ORDER_TEXT =
-  "declarative config → fields → relationships → properties → methods";
+  "declarative config → fields → relationships → properties → __init__ → methods";
 
 /** TypeScript class members, same principle: state before behaviour. */
 const TS_MEMBER_RANK: Record<string, number> = { field: 0, constructor: 1, method: 2 };
@@ -417,11 +424,8 @@ function checkClassMemberOrder(label: string, source: string): string[] {
     const methods = members.filter((member) => member.kind === "method").map((m) => m.name);
     if (methods.length === 0) continue;
 
-    if (methods.indexOf("__init__") > 0) {
-      issues.push(
-        `${label}:${block.name}: __init__ comes after ${methods[0]}() — state before behaviour`,
-      );
-    }
+    // `__init__` position is the rank rule's job now that it has its own kind:
+    // a method before it ranks 5 against its 4.
     const publicMethods = methods
       .map((name, index) => ({ name, index }))
       .filter((entry) => !entry.name.startsWith("_"));
@@ -570,19 +574,44 @@ function splitPythonClasses(source: string): ClassBlock[] {
   return classes;
 }
 
-/** Top-level members of a Python class body, ignoring anything inside brackets. */
+/**
+ * Top-level members of a Python class body, ignoring anything inside brackets.
+ *
+ * A decorated property is **one** member. Counting the `@property` line and its
+ * `def` separately made the two order rules mutually unsatisfiable for any class
+ * holding both a property and `__init__`: before `__init__` the property's `def`
+ * counted as a method, so "__init__ comes after last_exchange()" fired; after
+ * `__init__` the decorator ranked as a property behind a method, so "property
+ * declared after method" fired. Measured on `IntegrationClient`, the first class
+ * in this codebase to have both.
+ */
 function pythonMembers(body: string): ClassMember[] {
   const members: ClassMember[] = [];
   let depth = 0;
+  let pendingProperty = false;
   body.split("\n").forEach((line, index) => {
     if (depth === 0 && /^ {4}\S/.test(line)) {
       const config = PY_CONFIG.exec(line);
       const method = PY_METHOD.exec(line);
       const field = PY_FIELD.exec(line);
       if (config !== null) members.push({ kind: "config", name: config[1], line: index });
-      else if (PY_PROPERTY.test(line)) members.push({ kind: "property", name: "@property", line: index });
-      else if (method !== null) members.push({ kind: "method", name: method[1], line: index });
-      else if (field !== null) {
+      else if (PY_PROPERTY.test(line)) {
+        members.push({ kind: "property", name: "@property", line: index });
+        pendingProperty = true;
+      } else if (method !== null) {
+        if (pendingProperty) {
+          // The `def` the decorator applies to: name the property after it and
+          // count nothing extra.
+          members[members.length - 1].name = method[1];
+          pendingProperty = false;
+        } else {
+          members.push({
+            kind: method[1] === "__init__" ? "init" : "method",
+            name: method[1],
+            line: index,
+          });
+        }
+      } else if (field !== null) {
         members.push({
           kind: /\brelationship\(/.test(line) ? "relationship" : "field",
           name: field[1],
@@ -624,8 +653,14 @@ function splitScriptClasses(source: string): ClassBlock[] {
 function scriptMembers(body: string): ClassMember[] {
   const members: ClassMember[] = [];
   let depth = 0;
+  // Parentheses, not only braces. A signature that wraps keeps the brace depth
+  // at 1, so every parameter line (`status: number,`) matched the field pattern
+  // and was reported as "a field declared after the constructor". Measured the
+  // moment `ApiError`'s constructor took a fifth parameter and prettier wrapped
+  // it: five real fields, in the right order, five failures.
+  let paren = 0;
   body.split("\n").forEach((line, index) => {
-    if (depth === 1) {
+    if (depth === 1 && paren === 0) {
       const method = TS_METHOD.exec(line);
       const field = TS_FIELD.exec(line);
       if (TS_CONSTRUCTOR.test(line)) members.push({ kind: "constructor", name: "constructor", line: index });
@@ -635,6 +670,8 @@ function scriptMembers(body: string): ClassMember[] {
     for (const character of line) {
       if (character === "{") depth += 1;
       else if (character === "}") depth -= 1;
+      else if (character === "(") paren += 1;
+      else if (character === ")") paren -= 1;
     }
   });
   return members;

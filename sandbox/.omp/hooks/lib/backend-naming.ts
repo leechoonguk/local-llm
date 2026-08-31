@@ -54,14 +54,7 @@ function checkSectionDividers(base: string): string[] {
     "App Setup",
     "Router Registration",
   ];
-  const pyFiles: string[] = [];
-  for (const dir of ["core", "dependencies", "models", "schemas", "repositories", "services", "routers", "batch"]) {
-    const dirPath = join(base, dir);
-    if (!existsSync(dirPath)) continue;
-    for (const f of readdirSync(dirPath)) {
-      if (f.endsWith(".py") && f !== "__init__.py") pyFiles.push(join(dirPath, f));
-    }
-  }
+  const pyFiles: string[] = listAppPython(base);
   const mainPy = join(base, "main.py");
   if (existsSync(mainPy)) pyFiles.push(mainPy);
 
@@ -140,14 +133,7 @@ function checkSectionDividers(base: string): string[] {
  */
 function checkModulePrivateFunctions(base: string): string[] {
   const issues: string[] = [];
-  const pyFiles: string[] = [];
-  for (const dir of ["core", "dependencies", "models", "schemas", "repositories", "services", "routers", "batch"]) {
-    const dirPath = join(base, dir);
-    if (!existsSync(dirPath)) continue;
-    for (const f of readdirSync(dirPath)) {
-      if (f.endsWith(".py") && f !== "__init__.py") pyFiles.push(join(dirPath, f));
-    }
-  }
+  const pyFiles: string[] = listAppPython(base);
   const mainPy = join(base, "main.py");
   if (existsSync(mainPy)) pyFiles.push(mainPy);
 
@@ -199,6 +185,35 @@ function checkModulePrivateFunctions(base: string): string[] {
   }
 
   return issues;
+}
+
+/**
+ * Every module under `backend/app/`, recursively, excluding `main.py` (callers
+ * append it explicitly) and package markers.
+ *
+ * Walked, not listed. The eight-directory list this replaced missed two things
+ * at once: a directory nobody had added to it, and - after the domain folders
+ * landed - every file inside `models/integration/`, because it read one level
+ * deep. Both were silent: the loop simply had fewer files to check.
+ */
+function listAppPython(base: string): string[] {
+  const found: string[] = [];
+  const walk = (directory: string): void => {
+    if (!existsSync(directory)) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      if (entry.name === "__pycache__") continue;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        walk(path);
+        continue;
+      }
+      if (!entry.name.endsWith(".py") || entry.name === "__init__.py") continue;
+      if (directory === base && entry.name === "main.py") continue;
+      found.push(path);
+    }
+  };
+  walk(base);
+  return found;
 }
 
 /**

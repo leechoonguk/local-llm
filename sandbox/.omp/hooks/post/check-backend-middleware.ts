@@ -8,11 +8,11 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readFileSync } from "node:fs";
-import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { runAstRules } from "../lib/ast-rules.ts";
+import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
@@ -77,7 +77,7 @@ function checkBackendMiddlewareSync(): string[] {
 
   // CORS
   if (!/CORSMiddleware/.test(main)) {
-    issues.push("main.py: CORS missing — add CORSMiddleware (dev origin http://localhost:15173)");
+    issues.push("main.py: CORS missing — add CORSMiddleware (dev origin from settings.cors_origins)");
   } else if (!/allow_origins/.test(main)) {
     issues.push("main.py: CORSMiddleware allow_origins must be configured (from settings)");
   }
@@ -110,6 +110,25 @@ function checkBackendMiddlewareSync(): string[] {
   const loggingPath = join(projectRoot, "backend", "app", "core", "logging.py");
   if (!existsSync(loggingPath)) {
     issues.push("app/core/logging.py: structured logging missing — add it (structlog, JSON in prod)");
+  }
+
+  // Registration, not just definition. Measured: deleting
+  // `app.add_middleware(SecurityHeaders)` left every header string in place
+  // inside the class body, so this check stayed green while the app served
+  // responses with no security headers at all. A middleware that is defined and
+  // never added is the same as one that does not exist.
+  for (const middleware of [
+    "TrustedHostMiddleware",
+    "CsrfProtection",
+    "SecurityHeaders",
+    "CORSMiddleware",
+  ]) {
+    if (!new RegExp(`add_middleware\\(\\s*${middleware}`).test(main)) {
+      issues.push(
+        `main.py: ${middleware} is never registered — add ` +
+          `app.add_middleware(${middleware}); a defined middleware that is not added does nothing`,
+      );
+    }
   }
 
   return issues;

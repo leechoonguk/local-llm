@@ -144,22 +144,7 @@ Rules use Markdown with these section conventions:
 | `# <Title>` | Main topic | Matches rule name: `backend-domain.md` → `# Backend Domain` |
 | `## Adding a New <Domain>` | How-to | Numbered steps or code blocks |
 | `## <Topic> Conventions` | Rules | Bullet lists |
-| `## Extensions (`.omp/extensions/*.ts`)
-
-Workspace-local extensions auto-load into every omp session started in this
-project — bench cells and real work run the same configuration, no opt-in flag.
-
-- Entry point first: `export default function` before helper functions
-  (`check-code-layout` enforces top-down reading order on these files too).
-- Node builtins (`node:fs`, `node:path`) need `// @ts-expect-error — Node
-  builtin, not project-compiled` above the import (`check-omp-types`).
-- English only, like every other harness file.
-- Prefer triggers that fire **only when the session is unhealthy** (stalls,
-  failing-state finishes). Measured: triggers that cannot tell health from
-  sickness (context-size, similarity) fire during productive work and cost
-  re-reads that can push a task past its deadline.
-
-## Never Do These` | Anti-patterns | Negative bullet list |
+| `## Never Do These` | Anti-patterns | Negative bullet list |
 | `## <Topic> Pattern` | Examples | Code blocks with language hint |
 
 ### Section Ordering

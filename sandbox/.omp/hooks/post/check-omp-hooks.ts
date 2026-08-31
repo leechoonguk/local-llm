@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint, ruleForHook } from "../lib/hook-rule-hint.ts";
+import { checkHookDomainLiterals } from "../lib/hook-domain-literals.ts";
 
 declare const process: {
   argv: string[];
@@ -58,6 +59,16 @@ const MUTATING_TOOLS = new Set([
   "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
+/**
+ * The scopes a hook name can carry, and the top-level path each governs.
+ * `check-backend-*` governs `backend/`, `check-omp-*` governs `.omp/`.
+ */
+const HOOK_SCOPES: Array<{ prefix: string; path: string }> = [
+  { prefix: "backend-", path: "backend" },
+  { prefix: "frontend-", path: "frontend" },
+  { prefix: "omp-", path: ".omp" },
+];
+
 export default function checkOmpHooks(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-omp-hooks", event, () => {
     // Skip read-only tools — they cannot change .omp/ files.
@@ -79,6 +90,23 @@ export default function checkOmpHooks(pi: ExtensionAPI): void {
     console.error(warning);
     return { content: wrapWarning(warning, event.content, "check-omp-hooks") };
   }));
+}
+
+/**
+ * A hook is cross-cutting when its name carries **no** scope prefix:
+ * `check-makefiles`, `check-verify`, `check-code-layout`, `check-tooling`,
+ * `check-decks-sync` all govern every scope at once, so serving several rules
+ * is their job, not hook sprawl.
+ *
+ * Measured, not listed. Naming the two cross-cutting hooks that happened to
+ * exist (`check-makefiles`, `check-verify`) left `check-code-layout`,
+ * `check-tooling`, and `check-decks-sync` outside an exemption whose own
+ * reasoning covers them — latent only because none of them owns two
+ * same-scope rules yet.
+ */
+function isCrossCuttingHook(hook: string): boolean {
+  const scoped = hook.replace(/^(check|strict)-/, "");
+  return !HOOK_SCOPES.some(({ prefix }) => scoped.startsWith(prefix));
 }
 
 /** Comments and doc prose name forbidden shapes on purpose; only code counts. */
@@ -387,6 +415,9 @@ function checkOmpHooksSync(): string[] {
 
   // --- 7. Every warning says where it applies ---
   issues.push(...checkIssuesNameTheirPlace());
+
+  // --- 8. Hooks measure the domains they govern, never name them ---
+  issues.push(...checkHookDomainLiterals());
 
   return issues;
 }
@@ -836,19 +867,13 @@ function checkHarnessGuardrails(): string[] {
 
 /**
  * Verifies hook name ↔ path scope consistency per omp-naming-consistency.md:
- * a scoped hook (check-backend-*, strict-backend-*, check-frontend-*,
- * check-omp-*, strict-omp-*) must reference its scope's top-level path in
- * its code. Prefix-less hooks (check-makefiles, check-verify,
- * strict-command-routing, strict-no-subagents) are cross-cutting — exempt.
+ * a scoped hook (its name carries one of `HOOK_SCOPES`' prefixes) must
+ * reference that scope's top-level path in its code. A hook whose name carries
+ * no scope prefix is cross-cutting and falls through untested — by the loop
+ * below finding no matching prefix, not by being named here.
  */
 function checkHookNameScope(actualFiles: Set<string>): string[] {
   const issues: string[] = [];
-  const scopeByPrefix: Array<{ prefix: string; path: string }> = [
-    { prefix: "backend-", path: "backend" },
-    { prefix: "frontend-", path: "frontend" },
-    { prefix: "omp-", path: ".omp" },
-  ];
-
   for (const actual of actualFiles) {
     const fileName = actual.split("/").pop() ?? "";
     const hookPath = join(ompDir, "hooks", actual);
@@ -857,7 +882,7 @@ function checkHookNameScope(actualFiles: Set<string>): string[] {
     // Strip the check-/strict- prefix, then match the scope: check-backend-*
     // → backend, check-omp-* → omp, etc.
     const scoped = fileName.replace(/^(check|strict)-/, "");
-    for (const { prefix, path } of scopeByPrefix) {
+    for (const { prefix, path } of HOOK_SCOPES) {
       if (!scoped.startsWith(prefix)) continue;
       // The scope must appear as an actual path reference, not just in the
       // docstring (a hook's own name mentions its scope). Path contexts:
@@ -1134,7 +1159,7 @@ function checkRuleHookMapping(mdContent: string, actualFiles: Set<string>): stri
   for (const [hook, rules] of hookToRules) {
     const owned = rules.filter((rule) => !ttsrRules.has(rule));
     if (owned.length <= 1) continue;
-    if (hook.startsWith("check-makefiles") || hook.startsWith("check-verify") || hook.startsWith("check-omp-") || hook.startsWith("strict-")) continue;
+    if (isCrossCuttingHook(hook) || hook.startsWith("check-omp-") || hook.startsWith("strict-")) continue;
     const scopes = new Set(owned.map((r) => r.replace(/\.md$/, "").split("-")[0]));
     if (scopes.size === 1) {
       issues.push(

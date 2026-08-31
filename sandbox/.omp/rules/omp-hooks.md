@@ -22,8 +22,9 @@ file count.
 
 - A domain rule normally maps to one post hook and one lib module when
   cross-file checks are needed.
-- Cross-cutting hooks (`check-makefiles`, `check-verify`, `check-omp-*`) and
-  `strict-*` pre hooks may be shared by multiple rules.
+- A hook whose name carries no scope prefix is cross-cutting, as are `strict-*`
+  pre hooks; both may be shared by multiple rules. Membership follows from the
+  absent prefix, not from a list of hook names.
 - When a new concern is not cross-cutting, split a new rule and hook pair.
 - Example: `backend-domain.md` → `check-backend-domain.ts` →
   `lib/backend-domain-structure.ts` → `ast-grep/rules/model/`
@@ -35,8 +36,17 @@ frontend checks never collide:
 |---|---|---|
 | `backend-` | Backend checks | `lib/backend-domain-structure.ts`, `lib/backend-auth.ts` |
 | `frontend-` | Frontend checks | `lib/frontend-code.ts` (future) |
-| `hook-` | Cross-cutting guard shared by every hook | `lib/hook-safety-guard.ts`, `lib/hook-dormancy.ts`, `lib/hook-visibility.ts`, `lib/hook-metrics.ts` |
+| `hook-` | Cross-cutting guard shared by every hook | `lib/hook-safety-guard.ts`, `lib/hook-dormancy.ts`, `lib/hook-visibility.ts`, `lib/hook-metrics.ts`, `lib/hook-tool-paths.ts`, `lib/hook-domain-literals.ts` |
 | *(none)* | Shared runner | `lib/ast-rules.ts` (scope-agnostic) |
+
+**Payload shapes are read in one place.** `lib/hook-tool-paths.ts` answers "which
+files is this call about to write": `write` carries `input.path`, while `edit`
+names its files in `[path#TAG]` section headers (and `MV` targets) inside the
+patch body. Every write-path guard read only `input.path` and therefore ignored
+`edit` entirely — measured by rewriting a **pushed** migration with `edit` and
+watching the immutability guard stay silent. The same bypass existed in
+`strict-backend-app-structure` and `strict-tooling`. A fourth guard cannot
+repeat it: the question has one answer now.
 
 A lib module name mirrors its rule: `backend-domain.md` →
 `lib/backend-domain-structure.ts` (rule name + `-structure` for the 5-layer
@@ -129,6 +139,57 @@ Every trigger is built the same way, and `check-omp-rules` proves it:
    scope-prefixed: `backend-`/`frontend-`)
 5. Register the Makefile target + add the mapping table row
 6. Run `make verify` — the split must not change behavior (all checks still pass)
+
+## Measure The Domain, Never Name It
+
+A hook must discover the domains it governs. Writing a domain's name into a
+classifier is the one defect in this harness that fails **silently**: the check
+keeps passing, it just stops applying.
+
+Measured, three times in one session (upstream fast-api-standard tree), when
+`models/integration.py` became five files:
+
+| Hook | What it wrote | What it should have asked |
+|---|---|---|
+| `check-backend-tests.ts` | `new Set(["integration"])` | does this domain own more than one model file? |
+| `check-backend-transaction.ts` | `file !== "integration.py"` | same question |
+| `lib/backend-domain-structure.ts` | `name === "integration"` | same question |
+| `check-frontend-api-layer.ts` (upstream) | `/(?:auth\|user\|batch\|integration)/` | which prefixes do the routers serve? |
+
+None of them errored on the day they went blind. The fourth had also been
+missing `/health` for its whole life, and nothing said so.
+
+**The rule.** A discoverable domain name may not appear as a literal in a
+*classification* position — equality, a membership call (`.has`, `.includes`,
+`.startsWith`, `.endsWith`), a collection literal, or a regex alternation.
+Discover instead, from the same source the domain checks use:
+`services/*.py`, `routers/*.py`, `models/*.py`, or (where a frontend exists)
+`frontend/src/lib/api/services/*.service.ts`. Shared discovery already exists —
+`lib/hook-domain-literals.ts` discovers the domains and the per-table entities
+they own from exactly those sources.
+
+A literal that *addresses* one file (`join(routersDir, "auth.py")`) is not this
+defect: it points at a file the hook is about, and it fails loudly when that
+file moves.
+
+**Two escapes, both self-invalidating:**
+
+1. **A dedicated hook may name its domain.** `lib/backend-integration-*.ts`
+   exists to check `integration`; measuring that would be circular. Membership
+   is read from the hook's own filename, so there is no list to maintain.
+2. **`// domain-literal: <reason>`** on the line, or the line above. The reason
+   is required and must be a sentence, because some collisions are real —
+   a guard comparing a transcript *message role* named `user` is not
+   classifying the `user` domain. An annotation on a line that classifies
+   nothing fails as stale, so exemptions cannot pile up unread.
+
+Enforced by `lib/hook-domain-literals.ts`, run from `check-omp-hooks.ts` over
+`post/`, `lib/`, and `pre/`. Rule docs are **not** gated the same way: the same
+detector over rule prose was measured at roughly half false positives (the word
+"exception" usually means a Python exception), and a noisy gate is worse than a
+written standard. So for prose the standard is stated, not enforced — state the
+structural property that makes a case special, never the name of the case.
+
 
 ## AST Rule Contract
 
@@ -571,6 +632,47 @@ return { content: wrapWarning(warning, event.content, "check-omp-rules") };
 - The shared guard receives hook names already prefixed with `check-`; compact
   notices must therefore direct users to `make <hookName>`, never
   `make check-<hookName>`.
+
+## Break It Once, Before You Trust It
+
+A check that passes proves nothing about a dirty tree; it may be asleep. Three
+times in one session a check reported PASS on a violation it claimed to own — a
+digit-only literal parser, TypeScript inheritance resolved per file, and
+`useUser` matched as a prefix of `useUserList`. Every one was found by breaking
+the tree on purpose while writing the check.
+
+So the rule is a working practice, not a machine:
+
+**When you add or change a claim, violate it once and paste the failure into the
+commit message.** Copy the tree (or edit and revert), plant the smallest
+violation, run the owning check, and read *which* message fired.
+
+Reading the message matters more than the exit code. A falsification of the
+path-arity claim once changed the path as well: route coverage failed instead,
+the arity claim never ran, and the author read the output as a pass.
+
+### Why this is not automated
+
+A standing mutation suite was built and removed. Measured, over 38 cases:
+
+- the three real parser defects above were found while writing the checks, never
+  by the suite
+- the suite's own finds were mostly its own bugs (matching a banner line instead
+  of a `FAIL:` line; a scratch copy without `.git`, which turned 19 migration
+  claims into phantom failures)
+- 16 cases anchored in product internals: six never fired at all, and the rest
+  would break on a rename the product is free to make
+- a per-check coverage gate turned "prove the claims" into "produce 40 cases" and
+  found no defects
+
+What did find defects, both times, was an ad-hoc probe written for one question:
+planting a limiter and a raw `StreamingResponse` showed that
+`check-backend-rate-limit` only looked at two files and that
+`check-backend-sse` collected its AST violations and then dropped them in a
+dormancy early-return. Both are fixed. Neither needed a suite.
+
+Dormancy stays visible the cheap way: `make hook-report` lists which hooks have
+never warned across measured runs.
 
 ## Harness Construction Guardrails
 

@@ -726,6 +726,54 @@ export function listUnreadableOperationSeeds(): string[] {
   return unreadable;
 }
 
+/**
+ * Two providers on one host — a portal duplicated per dataset.
+ *
+ * A provider **is** a portal: one `base_url` and one credential, with an
+ * operation per dataset under it. The seeded row said
+ * `공공데이터포털 식품영양성분DB` / `data-go-kr-food-nutrition` instead, which
+ * names a dataset in the provider — and a dataset in the provider leaves the
+ * portal's *second* dataset nowhere to go but a second provider row holding a
+ * second copy of the same `service-key`. The sibling portal shows the shape that
+ * works: `mfds-food-safety-korea` carries four operations under one key.
+ *
+ * Checked by host, not by name, because the name is exactly what drifted. The
+ * newest revision per provider seed wins, so a `_correct_` that moves a host and
+ * a `_replace_` that reseeds one are both read as today's value.
+ */
+export function listProvidersSharingAHost(): string[] {
+  if (!existsSync(versionsDir)) return [];
+  const BASE_URL = /"base_url":\s*"([^"]+)"|BASE_URL\s*=\s*"([^"]+)"/;
+  const newest = new Map<string, { revision: number; host: string }>();
+  for (const filename of readdirSync(versionsDir).filter((f: string) => f.endsWith(".py")).sort()) {
+    const content = readFileSync(join(versionsDir, filename), "utf-8");
+    if (!tableBindings(content).tables.has(PROVIDER_TABLE)) continue;
+    const seed = PROVIDER_SEED.exec(content)?.[1];
+    const url = BASE_URL.exec(content);
+    const revision = Number.parseInt(filename.split("_")[0], 10);
+    if (seed === undefined || url === null || Number.isNaN(revision)) continue;
+    // 전역 `URL` 은 dom lib 에서만 온다(하네스 tsconfig 는 ES2024 전용) — authority 를 정규식으로 뽑는다.
+    const authority = /^[a-z][\w+.-]*:\/\/(?:[^/?#@]*@)?([^/?#]+)/i.exec(url[1] ?? url[2]);
+    if (authority === null) continue;
+    const host = authority[1].toLowerCase();
+    if ((newest.get(seed)?.revision ?? -1) < revision) newest.set(seed, { revision, host });
+  }
+  const seedsByHost = new Map<string, string[]>();
+  for (const [seed, { host }] of newest) {
+    seedsByHost.set(host, [...(seedsByHost.get(host) ?? []), seed]);
+  }
+  const issues: string[] = [];
+  for (const [host, seeds] of seedsByHost) {
+    if (seeds.length < 2) continue;
+    issues.push(
+      `${host}: ${seeds.length} providers seed the same host (${seeds.sort().join(", ")}) — ` +
+        "a provider is a portal, so a second dataset on it is another operation under the " +
+        "existing row, not a second provider carrying a second copy of the same credential",
+    );
+  }
+  return issues;
+}
+
 const TABLE_PATTERNS = [
   /op\.(?:create_table|drop_table|add_column|drop_column|alter_column|batch_alter_table)\(\s*["']([^"']+)["']/g,
   /op\.create_index\(\s*[^,]+,\s*["']([^"']+)["']/g,
@@ -864,6 +912,22 @@ export function checkMigrationPolicy(): string[] {
           "but nothing in the body reads as an integration table");
     }
 
+    // A `_correct_` revision UPDATEs columns of a row a seed already wrote, and
+    // that is the whole reason it exists: a provider `_replace_` deletes the row
+    // first, and `integration_operation.provider_id` is ON DELETE CASCADE — the
+    // replace at revision 20 erased `search-domestic-food-products` exactly that
+    // way. A delete inside a correction is the cascade coming back, so it is
+    // checked whether the file is pushed or not.
+    if (/_correct_.*_integration_/.test(filename)) {
+      const upgrade = /\ndef upgrade\(\) -> None:\n([\s\S]*?)(?=\ndef |$)/.exec(content);
+      if (upgrade !== null && PROVIDER_DELETE.test(upgrade[1])) {
+        issues.push(
+          `${filename}: a _correct_ revision deletes rows — correct a seeded row with an ` +
+            "UPDATE in place, because integration_operation.provider_id is ON DELETE CASCADE",
+        );
+      }
+    }
+
     const relativePath = `backend/alembic/versions/${filename}`;
     if (state !== null && state.pushed.has(relativePath)) {
       if (state.modified.has(relativePath)) {
@@ -890,6 +954,13 @@ export function checkMigrationPolicy(): string[] {
       );
     }
   }
+
+  // Read across files, not per file: the defect is two rows, and each of them is
+  // legal on its own.
+  issues.push(...listProvidersSharingAHost());
+
+  // fast-api-standard 쪽에는 여기에 env.py transaction_per_migration 검사가 더 있다 — 이 baseline 의
+  // env.py 는 그 설정이 없고 피험자 소스는 불변이라 트리별 유지(2026-08-31 머지 결정).
 
   return issues;
 }

@@ -32,6 +32,7 @@ const exceptionsModule = join(appDir, "core", "exceptions.py");
  * why the class cannot be a core class: it is raised by a library, not by us.
  */
 const EXTERNAL_HANDLED: Record<string, string> = {
+  IntegrityError: "raised by the driver on a constraint violation; mapped to 409 rather than a 500",
   StaleDataError: "raised by SQLAlchemy's optimistic lock (version_id_col)",
 };
 

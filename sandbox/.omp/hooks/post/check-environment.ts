@@ -170,7 +170,7 @@ function checkBackendEnvironmentSync(): string[] {
     }
   }
 
-  // --- 3. Root ↔ backend shared variable sync ---
+  // --- 4. Root ↔ backend shared variable sync ---
   // docker-compose.yml passes APP_NAME/ADMIN_EMAIL/ITEMS_PER_USER from the
   // root .env into the backend container. If the values differ from
   // backend/.env, Docker and local runs diverge silently.
@@ -225,7 +225,7 @@ function checkBackendEnvironmentSync(): string[] {
     }
   }
 
-  // --- 4. .env ↔ .env.example pair sync (root + backend) ---
+  // --- 5. .env ↔ .env.example pair sync (root + backend) ---
   // The rule (environment.md) requires the same keys and the same `# --- <Section> ---`
   // markers across `.env` and `.env.example` for every pair. A missing key in the
   // real file breaks runtime; a key absent from the example drifts the committed
@@ -233,45 +233,24 @@ function checkBackendEnvironmentSync(): string[] {
   issues.push(...checkEnvPairSync(rootEnvPath, rootEnvExamplePath, "root .env", "root .env.example"));
   issues.push(...checkEnvPairSync(envPath, envExamplePath, "backend/.env", "backend/.env.example"));
 
-  // --- 5. docker-compose.yml env indirection ---
-  // Every backend-service environment value must be a `${VAR}` reference
-  // resolved from the root .env — literal values in docker-compose.yml are
-  // hardcoded configuration (except the phoenix SQL URL, which composes
-  // POSTGRES_* fragments). The root .env (or .env.example) must define every
-  // referenced variable.
+  // --- 6. docker-compose.yml env wiring ---
+  // The backend container is configured by mapping the root .env as a file, not
+  // by listing one key per line. A per-key list is a second declaration of the
+  // settings schema and it drops whatever nobody remembered to add: SECRET_KEY
+  // was missing, so the container crash-looped on a Pydantic "Field required"
+  // while every other check passed. Other services keep explicit values — they
+  // must not see the app's secrets — so their entries are still checked for
+  // ${VAR} indirection.
   const composePath = join(projectRoot, "docker-compose.yml");
   if (existsSync(composePath)) {
     const compose = readFileSync(composePath, "utf-8");
     const rootEnvAll = `${rootEnvContent}\n${rootEnvExampleContent}`;
-    // Find the backend service's environment block, then check each entry.
-    const backendEnvMatch = compose.match(/backend:\n(?:\s+.*\n)*?\s+environment:\n((?:\s+[A-Z_]+:.*\n)+)/);
-    const block = backendEnvMatch ? backendEnvMatch[1] : "";
-    for (const m of block.matchAll(/^\s*([A-Z_]+):\s*(.+)$/gm)) {
-      const [, varName, rawValue] = m;
-      const value = rawValue.trim();
-      const ref = value.match(/^\$\{([^}]+)\}$/);
-      if (!ref) {
-        // Allow the phoenix-style compose: `postgresql://${A}:${B}@...`
-        // only when it references POSTGRES_* variables that exist.
-        const inlineRefs = [...value.matchAll(/\$\{([^}]+)\}/g)].map((x) => x[1]);
-        const allDefined = inlineRefs.length > 0 && inlineRefs.every((r) => new RegExp(`^\\s*${r}\\s*=`, "m").test(rootEnvAll));
-        if (!allDefined) {
-          issues.push(
-            `docker-compose.yml: ${varName} is hardcoded ("${value}") — use \${VAR} resolved from root .env`,
-          );
-        }
-        continue;
-      }
-      // The referenced variable must exist in root .env / .env.example.
-      if (!new RegExp(`^\\s*${ref[1]}\\s*=`, "m").test(rootEnvAll)) {
-        issues.push(
-          `docker-compose.yml: ${varName} references \${${ref[1]}} but it is not defined in root .env (or .env.example)`,
-        );
-      }
-    }
+    // 트리 고유(2026-08-31): 이 sandbox 는 backend 도 키별 \${VAR} 매핑을 유지한다(포트를 compose 에
+    // 고정한 축소 사본). fast-api-standard 쪽은 checkBackendEnvFile 이 env_file 매핑을 강제한다.
+    issues.push(...checkComposeIndirection(compose, rootEnvAll));
   }
 
-  // --- 6. Shared variable order + comments sync ---
+  // --- 7. Shared variable order + comments sync ---
   // APP_NAME/ADMIN_EMAIL/ITEMS_PER_USER (plus ENV/DATABASE_URL which exist
   // in both files) must appear in the same relative order and carry the
   // same comment line in root .env and backend/.env. A reorder or a
@@ -407,6 +386,47 @@ function checkEnvPairSync(
         "the pair must carry the same value (credentials excepted); split environments into " +
         "their own env file instead of diverging one pair",
     );
+  }
+  return issues;
+}
+
+/**
+ * Every value another service declares must be a `${VAR}` reference resolved
+ * from the root `.env`. These services keep explicit values on purpose — a
+ * database must not receive the app's signing key — so the indirection rule is
+ * what keeps configuration out of the compose file.
+ */
+function checkComposeIndirection(compose: string, rootEnvAll: string): string[] {
+  const issues: string[] = [];
+  for (const service of compose.matchAll(/\n  (\w[\w-]*):\n((?:(?:    .*)?\n)*)/g)) {
+    const [, name, block] = service;
+    const envBlock = /^\s+environment:\n((?:\s+[A-Z_]+:.*\n)+)/m.exec(block);
+    if (envBlock === null) continue;
+    for (const entry of envBlock[1].matchAll(/^\s*([A-Z_]+):\s*(.+)$/gm)) {
+      const [, varName, rawValue] = entry;
+      const value = rawValue.trim();
+      const references = [...value.matchAll(/\$\{([^}:]+)(?::-[^}]*)?\}/g)].map((m) => m[1]);
+      if (references.length === 0) {
+        // A literal is configuration in the wrong file — unless it is a
+        // container-local binding (`PHOENIX_HOST: "0.0.0.0"`) that no
+        // deployment ever changes.
+        if (!/^["']?(?:0\.0\.0\.0|localhost)["']?$/.test(value)) {
+          issues.push(
+            `docker-compose.yml: ${name}.${varName} is hardcoded ("${value}") — ` +
+              "use ${VAR} resolved from root .env",
+          );
+        }
+        continue;
+      }
+      for (const reference of references) {
+        if (!new RegExp(`^\\s*${reference}\\s*=`, "m").test(rootEnvAll)) {
+          issues.push(
+            `docker-compose.yml: ${name}.${varName} references \${${reference}} but ` +
+              "root .env (or .env.example) does not define it",
+          );
+        }
+      }
+    }
   }
   return issues;
 }

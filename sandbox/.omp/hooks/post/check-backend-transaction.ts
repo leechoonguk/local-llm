@@ -6,6 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { runAstRules } from "../lib/ast-rules.ts";
+import { aggregateDomains, belongsToAggregateDomain } from "../lib/backend-domain-structure.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
@@ -69,14 +70,21 @@ function checkBackendTransactionSync(): string[] {
   }
 
   // domain/ — within simple CRUD services, only create/update/delete may open
-  // a transaction. The integration aggregate has synchronous validation helpers
-  // and relationship replacement validated by its dedicated configuration hook.
+  // a transaction. A multi-table aggregate has synchronous validation helpers
+  // and relationship replacement validated by its own file-shape hooks and,
+  // when one exists, its dedicated configuration hook — never by a hardcoded
+  // domain name, which is exactly what stopped excluding anything the day
+  // `integration.py` became five files (measured, twice, in one session).
   const domainRules = join(projectRoot, ".omp", "ast-grep", "rules", "domain");
   if (existsSync(domainRules)) {
+    const aggregates = aggregateDomains();
     const aggregatePaths = ["services", "repositories"].flatMap((directory) => {
       const directoryPath = join(base, directory);
       return readdirSync(directoryPath)
-        .filter((file: string) => file.endsWith(".py") && file !== "integration.py")
+        .filter((file: string) => {
+          if (!file.endsWith(".py")) return false;
+          return !belongsToAggregateDomain(file.replace(/\.py$/, ""), aggregates);
+        })
         .map((file: string) => join(directoryPath, file));
     });
     issues.push(...runAstRules(domainRules, aggregatePaths));

@@ -1,3 +1,4 @@
+import { writtenPaths } from "../lib/hook-tool-paths.ts";
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync } from "node:fs";
@@ -40,25 +41,19 @@ export default function strictBackendMigrations(pi: ExtensionAPI): void {
       };
     }
 
-    if (toolName !== "write" && toolName !== "edit") return;
-
-    // 편집의 대상 경로는 세 모양으로 온다: 깨끗한 `path`, 내용 태그가 붙은 `path`
-    // (`0072_add_notice.py#0D77`), 그리고 `path` 가 아예 없고 패치 본문 첫 줄의
-    // `[상대경로#TAG]` 헤더에만 있는 형태. 앞의 둘만 읽으면 패치형 편집이 푸시된 리비전을
-    // 그대로 고쳐도 이 가드는 경로를 못 봐서 통과시킨다. strict-additive-writes 와 같은
-    // 해석을 쓴다 — 태그를 벗기고, 없으면 헤더에서 읽고, 그래도 없으면 fail-open.
-    const patch = typeof event.input.input === "string" ? event.input.input : "";
-    const header = /^\s*\[([^\]\n#]+)/.exec(patch);
-    const path = String(event.input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "") || (header?.[1] ?? "");
-    if (path === "") return; // 경로를 못 읽으면 조용히 통과한다 — 훅은 절대 던지지 않는다
-    if (!isMigrationPath(path)) return;
+    // 경로 판독은 lib/hook-tool-paths.ts 한 곳이다(2026-08-31 fas 와 통합) — write 의 내용 태그
+    // 스트립, edit 패치의 `[path#TAG]` 섹션 헤더 전부, MV 이동 대상까지. 이 가드가 자체 파서를
+    // 갖고 있던 동안 fas 쪽에서는 edit 우회가 실측됐고(푸시 리비전 edit 재작성 무차단), 여기서는
+    // 단일 경로만 읽어 다중 파일 패치의 둘째 파일부터 못 봤다. 빈 결과 = fail-open(훅은 안 던진다).
+    const paths = writtenPaths(toolName, event.input).filter(isMigrationPath);
+    if (paths.length === 0) return;
 
     // Hand-creating a revision file skips `make migrate-gen`'s auto-numbering.
     // Measured: a local model guessed occupied revision numbers (72/73) and thrashed
     // through ten filename variants before landing on a free one — the migrations
     // rule that says to use migrate-gen only fires on bash migration commands, which
     // a direct write never triggers. Enforce the workflow here, at the write itself.
-    if (toolName === "write" && !existsSync(resolve(projectRoot, path))) {
+    if (toolName === "write" && paths.some((p2) => !existsSync(resolve(projectRoot, p2)))) {
       return {
         block: true,
         reason:
@@ -68,13 +63,15 @@ export default function strictBackendMigrations(pi: ExtensionAPI): void {
       };
     }
 
-    if (!isPushedMigration(path)) return;
+    const pushed = paths.filter(isPushedMigration);
+    if (pushed.length === 0) return;
 
     return {
       block: true,
       reason:
-        "pushed migration is immutable — create a new revision for the correction. " +
-        "Unpushed migration files remain editable.",
+        "pushed migration is immutable — create a new revision for the correction (" +
+        pushed.join(", ") +
+        "). Unpushed migration files remain editable.",
     };
   });
 }

@@ -21,11 +21,12 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { hasLayer } from "../lib/backend-domain-layers.ts";
-import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
+import { aggregateDomains, belongsToAggregateDomain, listModelFiles } from "../lib/backend-domain-structure.ts";
+import { hasLayer } from "../lib/backend-domain-layers.ts";
+import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
@@ -49,13 +50,10 @@ const FILLER_WORDS: Record<string, true> = {
 };
 const coreTestDir = join(testsDir, "core");
 const modelsDir = join(projectRoot, "backend", "app", "models");
+const servicesDir = join(projectRoot, "backend", "app", "services");
 // 요구 방향(omp-hooks.md): 테스트는 라우터가 선 뒤에 owed 다. 완성의 정의는 한 곳에서 온다.
-
 const API_VERSION_PREFIX = "(?:/api/v\\d+)?";
 
-// Integration configuration has a dedicated aggregate contract and 100%
-// behavioral coverage. It is not a one-resource CRUD domain.
-const SPECIALIZED_AGGREGATE_DOMAINS = new Set(["integration"]);
 
 /**
  * Read-only tools never change files — running the check after them wastes
@@ -165,6 +163,7 @@ function checkDocstringSubstance(testsDir: string): string[] {
 
 function checkBackendTestsSync(): string[] {
   const issues: string[] = [];
+  const aggregates = aggregateDomains();
 
   if (!existsSync(testsDir)) {
     issues.push("backend/tests/ directory not found");
@@ -188,13 +187,19 @@ function checkBackendTestsSync(): string[] {
     }
   }
 
-  // --- 1. Every CRUD model has tests/api/test_<name>.py ---
-  if (existsSync(apiDir)) {
+  // --- 1. Every domain has tests/api/test_<domain>.py ---
+  //
+  // Domains come from `services/`, not from model files: one table per model file
+  // is the model rule (`backend-model-files.md`), so `models/integration_call.py`
+  // is a table of the `integration` domain and never a domain of its own. Reading
+  // model files here demanded `test_integration_call.py` for every table the
+  // moment the aggregate was split.
+  if (existsSync(apiDir) && existsSync(servicesDir)) {
     const apiFiles = new Set(readdirSync(apiDir).filter((f: string) => f.endsWith(".py")));
-    for (const f of readdirSync(modelsDir)) {
-      if (!f.endsWith(".py") || f === "__init__.py" || f === "base.py") continue;
+    for (const f of readdirSync(servicesDir)) {
+      if (!f.endsWith(".py") || f === "__init__.py") continue;
       const name = f.replace(/\.py$/, "");
-      if (SPECIALIZED_AGGREGATE_DOMAINS.has(name)) continue;
+      if (belongsToAggregateDomain(name, aggregates)) continue;
       // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
       // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
@@ -211,7 +216,7 @@ function checkBackendTestsSync(): string[] {
     for (const f of readdirSync(apiDir)) {
       if (!f.startsWith("test_") || !f.endsWith(".py")) continue;
       const name = f.replace(/^test_|\.py$/g, "");
-      if (SPECIALIZED_AGGREGATE_DOMAINS.has(name)) continue;
+      if (belongsToAggregateDomain(name, aggregates)) continue;
       if (!existsSync(join(modelsDir, `${name}.py`))) continue;
       const content = readFileSync(join(apiDir, f), "utf-8");
       const routerPath = join(projectRoot, "backend", "app", "routers", `${name}.py`);
@@ -319,43 +324,49 @@ function checkBackendTestsSync(): string[] {
     }
   }
 
-  // --- 7. Repository modules ↔ tests/repositories/test_<module>.py ---
-  // Every repository module in app/repositories/*.py must have a matching
-  // test file in tests/repositories/.
+  // --- 7. Repository modules ↔ tests/repositories/<same path> ---
+  // The test tree mirrors the source tree: `repositories/integration/secret.py`
+  // is tested by `tests/repositories/integration/test_secret.py`. Reading only
+  // the top level made a folder invisible - the loop found no `.py` files and
+  // reported success on nothing.
   const reposSrcDir = join(projectRoot, "backend", "app", "repositories");
   if (existsSync(reposSrcDir) && existsSync(repositoriesTestDir)) {
-    for (const f of readdirSync(reposSrcDir)) {
-      if (!f.endsWith(".py") || f === "__init__.py") continue;
-      const name = f.replace(/\.py$/, "");
-      if (SPECIALIZED_AGGREGATE_DOMAINS.has(name)) continue;
+    for (const f of listModelFiles(reposSrcDir)) {
+      const name = f.replace(/\.py$/, "").split("/").pop() ?? "";
+      const domain = f.includes("/") ? f.split("/")[0] : name;
+      if (belongsToAggregateDomain(domain, aggregates)) continue;
       // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
       // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
-      if (!hasLayer(projectRoot, "router", name)) continue;
-      const repoTestPath = join(repositoriesTestDir, `test_${name}.py`);
+      if (!hasLayer(projectRoot, "router", domain)) continue;
+      const repoTestPath = join(repositoriesTestDir, testPathFor(f));
       if (!existsSync(repoTestPath)) {
-        issues.push(`repository module '${name}' has no tests/repositories/test_${name}.py — add repository unit tests`);
+        issues.push(
+          `repository module '${f}' has no tests/repositories/${testPathFor(f)} — ` +
+            "add repository unit tests",
+        );
       }
     }
   }
 
-  // --- 8. Service modules ↔ tests/services/test_<module>.py ---
-  // Every service module in app/services/*.py must have a matching test file
-  // in tests/services/, and every public method must be referenced there.
-  // HTTP tests alone cannot cover service-layer contracts (NotFoundError
-  // raising, transaction boundaries, ConflictError/AuthenticationError paths).
-  const servicesDir = join(projectRoot, "backend", "app", "services");
+  // --- 8. Service modules ↔ tests/services/<same path> ---
+  // Every service module must have a matching test file, and every public
+  // method must be referenced there. HTTP tests alone cannot cover
+  // service-layer contracts (NotFoundError raising, transaction boundaries,
+  // ConflictError/AuthenticationError paths).
   if (existsSync(servicesDir) && existsSync(servicesTestDir)) {
-    for (const f of readdirSync(servicesDir)) {
-      if (!f.endsWith(".py") || f === "__init__.py") continue;
-      const name = f.replace(/\.py$/, "");
+    for (const f of listModelFiles(servicesDir)) {
+      const serviceDomain = f.includes("/") ? f.split("/")[0] : f.replace(/\.py$/, "");
       // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
       // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
-      if (!hasLayer(projectRoot, "router", name)) continue;
-      const servicesTestPath = join(servicesTestDir, `test_${name}.py`);
+      if (!hasLayer(projectRoot, "router", serviceDomain)) continue;
+      const relativeTest = testPathFor(f);
+      const servicesTestPath = join(servicesTestDir, relativeTest);
       if (!existsSync(servicesTestPath)) {
-        issues.push(`service module '${name}' has no tests/services/test_${name}.py — add service unit tests`);
+        issues.push(
+          `service module '${f}' has no tests/services/${relativeTest} — add service unit tests`,
+        );
         continue;
       }
       const content = readFileSync(join(servicesDir, f), "utf-8");
@@ -363,7 +374,10 @@ function checkBackendTestsSync(): string[] {
       for (const m of content.matchAll(/^    async def (\w+)\(/gm)) {
         const method = m[1];
         if (!servicesTestContent.includes(method)) {
-          issues.push(`service method '${method}' (${f}) not tested — add a test in tests/services/test_${name}.py`);
+          issues.push(
+            `service method '${method}' (${f}) not tested — add a test in ` +
+              `tests/services/${relativeTest}`,
+          );
         }
       }
     }
@@ -425,4 +439,15 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-t
   printRuleHint("check-backend-tests");
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
+}
+
+
+/**
+ * `integration/secret.py` → `integration/test_secret.py`: the test tree mirrors
+ * the source tree, so a reader finds a module's test at the module's own path.
+ */
+function testPathFor(sourceRelativePath: string): string {
+  const parts = sourceRelativePath.split("/");
+  const file = parts.pop() ?? "";
+  return [...parts, `test_${file}`].join("/");
 }

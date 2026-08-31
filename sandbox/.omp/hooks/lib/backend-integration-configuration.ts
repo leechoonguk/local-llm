@@ -21,6 +21,7 @@ import {
   listUnknownSeedColumns,
   listWireNamedCallerKeys,
 } from "./backend-migration-policy.ts";
+import { listDomainLayerFiles, readLayerSource } from "./backend-domain-structure.ts";
 
 const cwd = process.cwd();
 const projectRoot = existsSync(join(cwd, "backend", "app"))
@@ -28,48 +29,102 @@ const projectRoot = existsSync(join(cwd, "backend", "app"))
   : join(cwd, "..");
 const backendRoot = join(projectRoot, "backend");
 
+/**
+ * This hook is the `integration` domain's dedicated contract checker, so it
+ * names its own domain - the one case the domain-literal gate allows, read
+ * from this file's name rather than from a list (`omp-hooks.md`).
+ */
+const DOMAIN = "integration";
+
+/**
+ * Where a schema class sits in the request's life: the base and the create
+ * pair, the read response, the update pair, then the execute pair. Derived
+ * from the suffix, so a new table's classes rank themselves.
+ *
+ * `null` means "not one of the standard shapes" - ordering says nothing about
+ * it, so it is skipped rather than treated as rank zero.
+ */
+function schemaClassRank(name: string): number | null {
+  if (/Base$/.test(name) || /Create(Request|Internal)$/.test(name)) return 0;
+  if (/ReadResponse$/.test(name)) return 1;
+  if (/Update(Request|Internal)$/.test(name)) return 2;
+  if (/Execute(Request|Response)$/.test(name)) return 3;
+  return null;
+}
+
+/**
+ * The classes this domain's schema layer must expose, wherever in the folder
+ * they live. This is the contract itself (`backend-integration-configuration.md`),
+ * not an exemption list - which is why it is spelled out here, in the domain's
+ * own checker, and why ordering is derived rather than listed.
+ */
+const REQUIRED_SCHEMA_CLASSES = [
+  "IntegrationBase",
+  "IntegrationCreateRequest",
+  "IntegrationCreateInternal",
+  "IntegrationReadResponse",
+  "IntegrationUpdateRequest",
+  "IntegrationUpdateInternal",
+  "IntegrationSecretCreateRequest",
+  // fast-api-standard 계약에는 IntegrationSecretUpdateRequest 가 더 있다 — 이 baseline 의
+  // 스키마 계층에는 그 흐름이 없어 트리별 유지(2026-08-31 머지 결정).
+  "IntegrationSecretReadResponse",
+  "IntegrationFieldCreateRequest",
+  "IntegrationFieldReadResponse",
+  "IntegrationOperationCreateRequest",
+  "IntegrationOperationReadResponse",
+  "IntegrationExecuteRequest",
+  "IntegrationExecuteResponse",
+];
+
 export function checkIntegrationConfiguration(): string[] {
   const issues: string[] = [];
-  const modelPath = join(backendRoot, "app", "models", "integration.py");
-  const schemaPath = join(backendRoot, "app", "schemas", "integration.py");
-  const repositoryPath = join(
-    backendRoot,
-    "app",
-    "repositories",
-    "integration.py",
-  );
-  const servicePath = join(backendRoot, "app", "services", "integration.py");
-  const routerPath = join(backendRoot, "app", "routers", "integration.py");
-  const clientPath = join(backendRoot, "app", "core", "integration.py");
-  const settingsPath = join(backendRoot, "app", "core", "settings.py");
-  const integrationTestPath = join(
-    backendRoot,
-    "tests",
-    "core",
-    "test_integration.py",
-  );
+  // Every layer of this domain is several files, so each side of the contract
+  // is read as the whole layer, not one path. `listDomainLayerFiles` and
+  // `readLayerSource` answer that for a flat `<domain>_*.py` split and for the
+  // `<domain>/` folder alike (`backend-model-files.md`), so this hook does not
+  // carry a second opinion about where a domain's files live - it carried one
+  // before, and the folder move turned three of these checks into no-ops that
+  // still reported success.
+  const appDir = join(backendRoot, "app");
+  const modelFiles = listDomainLayerFiles(join(appDir, "models"), DOMAIN);
+  const repositoryFiles = listDomainLayerFiles(join(appDir, "repositories"), DOMAIN);
+  const schemaSource = readLayerSource(join(appDir, "schemas"), DOMAIN);
+  const serviceSourceText = readLayerSource(join(appDir, "services"), DOMAIN);
+  const routerPath = join(appDir, "routers", `${DOMAIN}.py`);
+  const clientPath = join(appDir, "core", `${DOMAIN}.py`);
+  const settingsPath = join(appDir, "core", "settings.py");
+  const integrationTestPath = join(backendRoot, "tests", "core", `test_${DOMAIN}.py`);
   const externalApiTestPath = join(
     backendRoot,
     "tests",
     "core",
-    "test_integration_external_api.py",
+    `test_${DOMAIN}_external_api.py`,
   );
   const requiredPaths = [
-    [modelPath, "app/models/integration.py"],
-    [schemaPath, "app/schemas/integration.py"],
-    [repositoryPath, "app/repositories/integration.py"],
-    [servicePath, "app/services/integration.py"],
-    [routerPath, "app/routers/integration.py"],
-    [clientPath, "app/core/integration.py"],
-    [integrationTestPath, "tests/core/test_integration.py"],
-    [externalApiTestPath, "tests/core/test_integration_external_api.py"],
+    [routerPath, `app/routers/${DOMAIN}.py`],
+    [clientPath, `app/core/${DOMAIN}.py`],
+    [integrationTestPath, `tests/core/test_${DOMAIN}.py`],
+    [externalApiTestPath, `tests/core/test_${DOMAIN}_external_api.py`],
   ] as const;
+  if (modelFiles.length === 0) {
+    issues.push(`app/models/${DOMAIN}/<table>.py is required - one file per table`);
+  }
+  if (repositoryFiles.length === 0) {
+    issues.push(`app/repositories/${DOMAIN}/<table>.py is required - one file per table`);
+  }
+  if (schemaSource === null) {
+    issues.push(`app/schemas/${DOMAIN}/*.py is required`);
+  }
+  if (serviceSourceText === null) {
+    issues.push(`app/services/${DOMAIN}.py is required`);
+  }
   for (const [path, label] of requiredPaths) {
     if (!existsSync(path)) issues.push(`${label} is required`);
   }
-  if (issues.length > 0) return issues;
+  if (issues.length > 0 || schemaSource === null || serviceSourceText === null) return issues;
 
-  const model = readFileSync(modelPath, "utf-8");
+  const model = modelFiles.map((file: string) => readFileSync(file, "utf-8")).join("\n");
   for (const table of [
     "integration_provider",
     "integration_secret",
@@ -77,45 +132,45 @@ export function checkIntegrationConfiguration(): string[] {
     "integration_field",
   ]) {
     if (!model.includes(`__tablename__ = \"${table}\"`)) {
-      issues.push(`models/integration.py: ${table} table is required`);
+      issues.push(`models/integration_*.py: ${table} table is required`);
     }
   }
   if (/config_revision/.test(model)) {
     issues.push(
-      "models/integration.py: config_revision is outside the live-configuration standard",
+      "models/integration_*.py: config_revision is outside the live-configuration standard",
     );
   }
   // A secret is a named row owned by the provider, resolved through a field FK.
   // Storing the value on the field row loses it whenever fields are replaced.
   if (!/class IntegrationSecret\b/.test(model) || !/secret_id/.test(model)) {
     issues.push(
-      "models/integration.py: named secrets require IntegrationSecret plus a field secret_id FK",
+      "models/integration_*.py: named secrets require IntegrationSecret plus a field secret_id FK",
     );
   }
   if (/\b(secret_ref|secret_value|literal_value|default_value|source_key)\b/.test(model)) {
     issues.push(
-      "models/integration.py: sparse value columns are replaced by value + secret_id",
+      "models/integration_*.py: sparse value columns are replaced by value + secret_id",
     );
   }
   if (!/response_root/.test(model)) {
     issues.push(
-      "models/integration.py: response_root defines the response contract — absent maps a " +
+      "models/integration_*.py: response_root defines the response contract — absent maps a " +
         "record, present maps every element of the page it names",
     );
   }
   if (/response_mode/.test(model)) {
     issues.push(
-      "models/integration.py: response_mode is removed — mapping is the only response " +
+      "models/integration_*.py: response_mode is removed — mapping is the only response " +
         "contract, so a mode column carries one legal value",
     );
   }
   if (/response_schema/.test(model)) {
     issues.push(
-      "models/integration.py: response_schema duplicated the response field rows — removed",
+      "models/integration_*.py: response_schema duplicated the response field rows — removed",
     );
   }
 
-  const schema = readFileSync(schemaPath, "utf-8");
+  const schema = schemaSource;
   // Read models expose a secret by name only; the value never leaves the database.
   if (
     !/class IntegrationSecretReadResponse\b/.test(schema) ||
@@ -143,40 +198,42 @@ export function checkIntegrationConfiguration(): string[] {
       );
     }
   }
-  // Class ordering: request-side before response-side before update-side,
-  // then standalone request/response pairs, then to_read helpers last.
-  const order = [
-    "IntegrationSecretCreateRequest",
-    "IntegrationFieldCreateRequest",
-    "IntegrationOperationCreateRequest",
-    "IntegrationCreateRequest",
-    "IntegrationCreateInternal",
-    "IntegrationSecretReadResponse",
-    "IntegrationFieldReadResponse",
-    "IntegrationOperationReadResponse",
-    "IntegrationReadResponse",
-    "IntegrationUpdateRequest",
-    "IntegrationUpdateInternal",
-    "IntegrationExecuteRequest",
-    "IntegrationExecuteResponse",
-  ];
-  let lastIndex = -1;
-  for (const cls of order) {
-    const index = schemaClasses.indexOf(cls);
-    if (index === -1) {
-      issues.push(`schemas/integration.py: required class ${cls} is missing`);
-      continue;
+  // Class ordering: create-side, then read-side, then update-side, then the
+  // execute pair - the order a reader follows a request through.
+  //
+  // The rank comes from the class suffix, not from a list of the thirteen
+  // classes that happened to exist. That list also encoded a single-file
+  // reading order, so splitting the layer into `schemas/integration/*.py` made
+  // it fail on a grouping that is strictly better: each file now holds one
+  // table's request and response next to each other. Ordering is a per-file
+  // property, so it is now checked per file.
+  for (const file of listDomainLayerFiles(join(appDir, "schemas"), DOMAIN)) {
+    const source = readFileSync(file, "utf-8");
+    const label = `schemas/${DOMAIN}/${file.split("/").pop()}`;
+    let lastRank = -1;
+    let lastClass = "";
+    for (const match of source.matchAll(/^class (\w+)\b/gm)) {
+      const cls = match[1];
+      const rank = schemaClassRank(cls);
+      if (rank === null) continue;
+      if (rank < lastRank) {
+        issues.push(
+          `${label}: class ${cls} is out of order - create-side, then read-side, ` +
+            `then update-side, then the execute pair (it follows ${lastClass})`,
+        );
+      }
+      lastRank = Math.max(lastRank, rank);
+      lastClass = cls;
     }
-    if (index < lastIndex) {
-      issues.push(
-        `schemas/integration.py: class ${cls} is out of order — ` +
-          "request-side, then response-side, then update-side, then execute pairs",
-      );
+  }
+  for (const cls of REQUIRED_SCHEMA_CLASSES) {
+    if (!schemaClasses.includes(cls)) {
+      issues.push(`schemas/${DOMAIN}/*.py: required class ${cls} is missing`);
     }
-    lastIndex = index;
   }
   if (schemaClasses.indexOf("to_read") !== -1) {
-    issues.push("schemas/integration.py: to_read is a function, not a class");
+    // 이 baseline 은 평면 schemas/integration.py 를 유지한다 — 라벨만 트리별.
+    issues.push(`schemas/${DOMAIN}.py: to_read is a function, not a class`);
   }
   // Every Read class exposes the optimistic-lock revision its caller holds.
   for (const readClass of [
@@ -191,17 +248,18 @@ export function checkIntegrationConfiguration(): string[] {
     }
   }
 
-  const repository = readFileSync(repositoryPath, "utf-8");
+  const repository = repositoryFiles.map((file: string) => readFileSync(file, "utf-8")).join("\n");
   if (
     !/async def get_operation\(/.test(repository) ||
     !/selectinload\(IntegrationOperation/.test(repository)
   ) {
     issues.push(
-      "repositories/integration.py: operation resolution must eager-load configuration children",
+      "repositories/integration_operation.py: operation resolution must eager-load " +
+        "configuration children",
     );
   }
 
-  const service = readFileSync(servicePath, "utf-8");
+  const service = serviceSourceText;
   if (!/Draft202012Validator\.check_schema/.test(service)) {
     issues.push(
       "services/integration.py: JSON Schema 2020-12 configuration validation is required",
@@ -222,12 +280,15 @@ export function checkIntegrationConfiguration(): string[] {
   }
 
   const router = readFileSync(routerPath, "utf-8");
-  if (
-    !/prefix=\"\/integration\"/.test(router) ||
-    !/IntegrationServiceDep/.test(router)
-  ) {
+  // The router injects this domain's service DI. Which aliases exist depends on
+  // how the service layer is split, so the check is "a service alias for this
+  // domain", not one alias name that a split renames out of existence.
+  const injectsDomainService = new RegExp(
+    `Integration\\w*ServiceDep\\b`,
+  ).test(router);
+  if (!new RegExp(`prefix="/${DOMAIN}"`).test(router) || !injectsDomainService) {
     issues.push(
-      "routers/integration.py: authenticated integration configuration CRUD is required",
+      `routers/${DOMAIN}.py: authenticated integration configuration CRUD is required`,
     );
   }
 
@@ -446,7 +507,7 @@ export function checkIntegrationConfiguration(): string[] {
   // on it. A JSON-only client silently 502s every XML provider.
   if (!/response_format/.test(model)) {
     issues.push(
-      "models/integration.py: integration_operation.response_format (JSON|XML) is required",
+      "models/integration_*.py: integration_operation.response_format (JSON|XML) is required",
     );
   }
   if (!/response_format/.test(schema)) {

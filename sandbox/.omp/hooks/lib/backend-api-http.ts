@@ -68,8 +68,28 @@ const HEADER_CONTINUATION_INDENT = 11;
 const BASE_VARIABLE = "API_ORIGIN";
 const BASE_DECLARATION = `@base = {{$dotenv ${BASE_VARIABLE}}}/api/v1`;
 
-/** An origin — scheme, host, the fixed API port. No path: `/health` sits above `/api/v1`. */
-const BASE_VALUE = /^https?:\/\/[^\s/:]+:18000$/;
+/**
+ * An origin — scheme, host, the port the backend actually serves. No path:
+ * `/health` sits above `/api/v1`.
+ *
+ * The port is read from `BACKEND_PORT` in the root env, not written here. A
+ * literal port was the old rule, and moving the stack off the default ports
+ * would have failed every `.http` file for naming the port it now serves on.
+ */
+function baseValuePattern(): RegExp {
+  return new RegExp(`^https?://[^\\s/:]+:${backendPort()}$`);
+}
+
+/** `BACKEND_PORT` from the root env pair, which docker-compose publishes. */
+function backendPort(): string {
+  for (const file of [".env", ".env.example"]) {
+    const path = join(projectRoot, file);
+    if (!existsSync(path)) continue;
+    const declared = /^BACKEND_PORT\s*=\s*(\d+)\s*$/m.exec(readFileSync(path, "utf-8"));
+    if (declared !== null) return declared[1];
+  }
+  return "18000"; // 트리 고유 폴백: sandbox 는 포트를 docker-compose.yml 에 고정한다(18000) — env 에 BACKEND_PORT 가 없다
+}
 
 /**
  * The five endpoints that make a router a CRUD router. The update slot is not a
@@ -92,18 +112,47 @@ const CRUD_ENDPOINTS = [
  * 필드가 전부 optional(`= None` 기본값)이면 부분 갱신 = PATCH, 하나라도 필수면
  * 전체 교체 = PUT. 스키마를 못 찾으면 null — 그 파일은 메서드 판정을 보류한다.
  */
+function readOrNull(p: string): string | null {
+  try { return readFileSync(p, "utf-8"); } catch { return null; }
+}
+
 export function expectedUpdateMethod(schemaPath: string): "PUT" | "PATCH" | null {
-  let text: string;
-  try { text = readFileSync(schemaPath, "utf-8"); } catch { return null; }
+  // 도메인 폴더 분할(schemas/<name>/*.py — fas 의 integration)을 지원한다: 플랫 파일이 없거나
+  // UpdateRequest 가 없으면 폴더에서 그 클래스를 가진 첫 파일을 쓴다. 실측(2026-08-31): 이
+  // 조회가 플랫 파일만 볼 때 fas 의 all-optional IntegrationUpdateRequest 뒤의 PUT 이 침묵 통과했다.
+  let text: string | null = readOrNull(schemaPath);
+  if (text === null || !/class \w+UpdateRequest\(/.test(text)) {
+    const dir = schemaPath.replace(/\.py$/, "");
+    try {
+      for (const f of readdirSync(dir)) {
+        if (!f.endsWith(".py")) continue;
+        const t = readOrNull(join(dir, f));
+        if (t !== null && /class \w+UpdateRequest\(/.test(t)) { text = t; break; }
+      }
+    } catch { /* 폴더도 없음 */ }
+  }
+  if (text === null) return null;
   const start = text.search(/class \w+UpdateRequest\(/);
   if (start < 0) return null;
   const rest = text.slice(text.indexOf("\n", start) + 1);
   const end = rest.search(/^\S/m); // 다음 톱레벨 선언에서 클래스 본문이 끝난다
   const body = end < 0 ? rest : rest.slice(0, end);
-  const fields = body.split("\n").map((l) => l.trim()).filter((l) =>
-    /^[a-z_]\w*\s*:/.test(l) && !l.startsWith("model_config"));
+  // 필드 선언은 여러 줄일 수 있다 — `x: str | None = Field(` 다음 줄에 `default=None,` 이 오는
+  // 스타일(실측: fast-api-standard user/batch UpdateRequest)을 한 줄 판정이 "필수" 로 오독했다.
+  // 선언 단위로 이어 붙인 뒤 판정한다.
+  const fields: string[] = [];
+  for (const raw of body.split("\n")) {
+    const line = raw.trim();
+    if (line === "") continue;
+    const indent = raw.length - raw.trimStart().length;
+    if (/^[a-z_]\w*\s*:/.test(line) && !line.startsWith("model_config") && indent === 4) {
+      fields.push(line);
+    } else if (fields.length > 0 && indent > 4) {
+      fields[fields.length - 1] += ` ${line}`; // 열린 선언의 연속 줄
+    }
+  }
   if (fields.length === 0) return null;
-  return fields.every((f) => /=\s*None\b/.test(f) || /=\s*Field\([^)]*default/.test(f)) ? "PATCH" : "PUT";
+  return fields.every((f) => /=\s*None\b/.test(f) || /\bdefault(?:_factory)?\s*=/.test(f)) ? "PATCH" : "PUT";
 }
 
 interface HttpRequest {
@@ -167,7 +216,11 @@ export function checkDomainApiHttp(): string[] {
     // 어긋나면 여기서 잡는다 — "둘 다 허용" 이 아니다(2026-08-31 표준 개정).
     const expected = expectedUpdateMethod(join(base, "schemas", `${name}.py`));
     if (expected !== null) {
-      for (const e of endpoints.filter((e) => UPDATE_METHODS.includes(e.method) && /\{[^}]+\}\/?$/.test(e.path))) {
+      // item 루트(`/<name>/{id}`)만 UpdateRequest 와 비교한다. 하위 리소스는 자기 계약을 가진다 —
+      // fas 의 `PUT /{id}/secrets/{name}` 은 명명 시크릿의 전체 교체라 의미상 올바른 PUT 인데,
+      // 경로 끝 {param} 만 보면 도메인 UpdateRequest 와 비교돼 오탐이 난다(실측 2026-08-31).
+      const itemRoot = new RegExp(`^/${name}/\\{[^}]+\\}/?$`);
+      for (const e of endpoints.filter((e) => UPDATE_METHODS.includes(e.method) && itemRoot.test(e.path))) {
         if (e.method !== expected) {
           issues.push(
             `routers/${file}: ${e.method} ${e.path} — schemas/${name}.py 의 UpdateRequest 는 ` +
@@ -232,8 +285,58 @@ export function checkDomainApiHttp(): string[] {
     }
   }
 
+  issues.push(...checkPasswordLiterals(apiDir, base));
   issues.push(...checkFlowProof());
 
+  return issues;
+}
+
+/**
+ * A password a request file sends must satisfy the schema that receives it.
+ *
+ * Measured: `auth.http` and `user.http` posted `"password": "secret"` and
+ * declared 201, while `UserCreateRequest` requires `PASSWORD_MIN_LENGTH` — so
+ * both files answered 422 and every block after them died on an unresolved
+ * template. The validation arrived after the files were written (the schema's own
+ * comment records that the minimum used to live only in the browser form), and
+ * nothing static noticed for as long as nobody ran them against a live stack.
+ *
+ * Blocks that declare a 4xx are exempt: a wrong password is the point of a 401
+ * case, and a too-short one is a legitimate 422 fixture.
+ */
+function checkPasswordLiterals(apiDir: string, appDir: string): string[] {
+  const schema = join(appDir, "schemas", "user.py");
+  if (!existsSync(schema)) return [];
+  const declared = /PASSWORD_MIN_LENGTH\s*=\s*(\d+)/.exec(readFileSync(schema, "utf-8"));
+  if (declared === null) return [];
+  const minimum = Number.parseInt(declared[1], 10);
+  const issues: string[] = [];
+  for (const file of readdirSync(apiDir)) {
+    if (!file.endsWith(".http")) continue;
+    const http = readFileSync(join(apiDir, file), "utf-8");
+    const sections = parseSections(http);
+    let offset = 0;
+    http.split("\n").forEach((line: string, index: number) => {
+      const start = offset;
+      offset += line.length + 1;
+      const literal = /"password":\s*"([^"{]*)"|password=([^\s&{]+)/.exec(line);
+      if (literal === null) return;
+      const value = literal[1] ?? literal[2];
+      if (value.length >= minimum) return;
+      // The nearest section header above the line declares that block's intent.
+      let title = "";
+      for (const section of sections) {
+        if (section.index < start) title = section.title;
+      }
+      const status = declaredStatus(title);
+      if (status !== null && status.startsWith("4")) return;
+      issues.push(
+        `${file}:${index + 1}: password "${value}" is shorter than PASSWORD_MIN_LENGTH ` +
+          `(${minimum}) — the block declares ${status ?? "no status"}, so the API answers 422 ` +
+          "and every later block loses its template",
+      );
+    });
+  }
   return issues;
 }
 
@@ -265,10 +368,10 @@ function checkBaseSource(apiDir: string): string[] {
       issues.push(`${label}: missing ${BASE_VARIABLE} — api/*.http cannot resolve {{base}} without it`);
       continue;
     }
-    if (!BASE_VALUE.test(value)) {
+    if (!baseValuePattern().test(value)) {
       issues.push(
-        `${label}: ${BASE_VARIABLE} = "${value}" — must be scheme://host:18000/api/v1 ` +
-          "(the port and prefix are fixed; only the host varies)",
+        `${label}: ${BASE_VARIABLE} = "${value}" — must be scheme://host:${backendPort()} ` +
+          "(the port is BACKEND_PORT from the root env; only the host varies)",
       );
     }
   }

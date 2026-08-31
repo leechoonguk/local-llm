@@ -30,6 +30,27 @@ that requires file paths in the match context. `bash` tool calls never carry
 file paths, so a globbed TTSR rule would never trigger on `make migrate` etc.
 See `omp-conventions.md` "TTSR globs trap".
 
+**A run is atomic per migration.** `alembic/env.py` sets
+`transaction_per_migration=True`, so a multi-step run that fails stops at the last
+revision that fully applied and the version pointer still describes the rows that
+are there. `check-backend-migrations` refuses an `env.py` without it.
+
+**A half-applied chain is not a migration defect.** Measured here: a
+`downgrade base` that failed part-way left a database whose pointer said 65 while
+an operation row from revision 66 was still present, the next `upgrade head` died
+on `uq_integration_operation_provider_code`, and half an hour went into diagnosing
+an ordering bug that does not exist — the same chain steps down cleanly from a
+consistent database, all the way to the first revision. So when a migration error
+names a constraint rather than your change:
+
+1. `make db-init` — put the database back where the files say it is;
+2. reproduce. If it passes, the defect was the state, not the chain;
+3. only then read the migrations, and read them **in revision order**, because a
+   downgrade error names the revision it ran, not the one that made it fail.
+
+Never walk the whole chain down on a database you are about to diagnose from:
+`make db-init` is the reset (it drops the volume), and it is one command.
+
 ## Enforcement
 
 `strict-backend-migrations` blocks edits to pushed revisions before they happen,

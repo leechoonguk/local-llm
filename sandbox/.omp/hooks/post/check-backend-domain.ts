@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { runAstRules } from "../lib/ast-rules.ts";
-import { checkDomainStructure, checkRelationshipLoading } from "../lib/backend-domain-structure.ts";
+import { aggregateDomains, belongsToAggregateDomain, checkDomainStructure, checkRelationshipLoading } from "../lib/backend-domain-structure.ts";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
@@ -62,13 +62,19 @@ function checkBackendDomainSync(): string[] {
   const issues: string[] = [];
   const base = join(projectRoot, "backend", "app");
 
-  // AST rules apply to simple CRUD models. The integration aggregate contains
-  // SQLAlchemy relationships and is validated by its dedicated configuration hook.
+  // AST rules apply to simple CRUD models. A multi-table aggregate contains
+  // SQLAlchemy relationships and is validated by its dedicated configuration
+  // hook — excluded by measure (aggregateDomains), never by filename: the
+  // hardcoded `integration.py` skip is what silently stopped matching in
+  // fast-api-standard the day that file became five files.
+  // (fast-api-standard 쪽은 field-mapped-pattern.yml 이 relationship() 을 알아 무필터로 돌린다 —
+  // 이 트리의 yml 은 아직 몰라서 측정 필터를 유지한다. 트리별 차이 2026-08-31.)
   const modelRules = join(projectRoot, ".omp", "ast-grep", "rules", "model");
   const modelsDir = join(base, "models");
   if (existsSync(modelRules) && existsSync(modelsDir)) {
+    const aggregates = aggregateDomains();
     const modelPaths = readdirSync(modelsDir)
-      .filter((file: string) => file.endsWith(".py") && file !== "integration.py")
+      .filter((file: string) => file.endsWith(".py") && !belongsToAggregateDomain(file.replace(/\.py$/, ""), aggregates))
       .map((file: string) => join(modelsDir, file));
     issues.push(...runAstRules(modelRules, modelPaths));
   }

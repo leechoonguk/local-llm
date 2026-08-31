@@ -13,11 +13,12 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { runAstRules } from "../lib/ast-rules.ts";
+import { listDomainLayerFiles } from "../lib/backend-domain-structure.ts";
+import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 
@@ -205,8 +206,13 @@ function checkTransportContainment(): string[] {
     join("core", "integration.py"), // the client itself
     join("main.py"), // lifespan owns the shared client
     join("dependencies", "integrations.py"), // injects the shared client
-    join("services", "integration.py"), // passes the shared client through
   ]);
+  // The service that passes the shared client through is one file or a folder
+  // of them (`backend-model-files.md`) - listed from disk, so splitting the
+  // service does not quietly turn its own transport use into a violation.
+  for (const file of listDomainLayerFiles(join(appDir, "services"), "integration")) {
+    allowed.add(join("services", file.slice(join(appDir, "services").length + 1)));
+  }
   const issues: string[] = [];
   const walk = (dir: string, relative: string): void => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
