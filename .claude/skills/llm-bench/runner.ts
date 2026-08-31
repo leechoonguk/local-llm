@@ -15,7 +15,7 @@
  *
  * 사용:
  *   node .claude/skills/llm-bench/runner.ts --dry-run                          # 세팅→채점→원복만, 모델 없이
- *   node .claude/skills/llm-bench/runner.ts --model omlx/…Qwen3.6…:mtp --campaign omlx-3.6
+ *   node .claude/skills/llm-bench/runner.ts --model omlx/Qwen3.6-35B-A3B-5bit --campaign omlx-3.6
  *   node .claude/skills/llm-bench/runner.ts --models a,b --campaign <name> --timeout 2700 [--restart-omlx]
  *   node .claude/skills/llm-bench/runner.ts --matrix                           # DEFAULT_MODELS
  *   node .claude/skills/llm-bench/runner.ts --revert-only                      # 중단된 셀 뒤처리
@@ -53,7 +53,7 @@ const TASKS: Record<string, Task> = {
     spec: "integration_spec.md",
     reference: "a1aebf3",   // 기대 산출물 목록(정답 사본은 reference/answers/, 트리에는 없다)
     expect: 6,
-    prompt: (spec) => `Add the 바코드연계제품정보 API (service C005, operation code `search-barcode-linked-product`) to this repository — it is not there yet.
+    prompt: (spec) => `Add the 바코드연계제품정보 API (service C005, operation code \`search-barcode-linked-product\`) to this repository — it is not there yet.
 
 1. Read the skill first: .omp/skills/integration/SKILL.md. Follow it.
 2. Read ${spec} — the measurement is already done, do NOT call any live API.
@@ -94,7 +94,7 @@ const TASKS: Record<string, Task> = {
 
 /** --matrix 의 기본 후보. 현재 서빙(oMLX)에 등록된 코더 — omp/models.yml 참고. */
 const DEFAULT_MODELS = [
-  "omlx/Qwen3.6-35B-A3B-5bit:coder",
+  "omlx/Qwen3.6-35B-A3B-5bit",
   "omlx/Qwen3.8-27B-4bit",
 ];
 
@@ -221,7 +221,7 @@ function ensureServer(): void {
   if (parent && !/oMLX\.app/.test(parent)) console.error(`  !! oMLX 서버가 앱 관리가 아니다(부모: ${parent.trim().slice(0, 40)}) — 앱 메뉴바 서버로 검증할 것`);
 }
 
-/** omlx/ 접두사를 뗀 서버 모델 id (프로파일 포함): `omlx/mlx-…-5bit:mtp` → `mlx-…-5bit:mtp`. */
+/** omlx/ 접두사를 뗀 서버 모델 id: `omlx/Qwen3.6-35B-A3B-5bit` → `Qwen3.6-35B-A3B-5bit`(bare — 프로파일 suffix 는 2026-08-31 폐지, active_profile 이 서버쪽에서 적용된다). */
 const omlxId = (model: string): string => model.replace(/^omlx\//, "");
 
 const OMLX_ADMIN = "http://127.0.0.1:9090/admin/api";
@@ -373,7 +373,8 @@ function classifyFailures(out: string, models: Set<string>): { regressions: stri
 }
 
 function grade(task: Task, models: Set<string>, snapshot: string): Record<string, unknown> {
-  const files = gitWs(["status", "--porcelain", "--", "sandbox/api", "sandbox/backend"]).split("\n").filter((l) => l.trim());
+  // 풀스택 과제(notice)의 화면 산출물도 센다 — frontend/src 를 빼면 expect 21 은 도달 불능이다(2026-09-01).
+  const files = gitWs(["status", "--porcelain", "--", "sandbox/api", "sandbox/backend", "sandbox/frontend/src"]).split("\n").filter((l) => l.trim());
   const { code, out } = make("verify");
   const { regressions, incomplete } = classifyFailures(out, models);
   // baseline 스냅샷 대비 지워진 assert 행 수(sandbox 에 git 이 없으므로 --no-index diff).
@@ -445,7 +446,7 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   if (model.startsWith("ollama/")) unloadOllama();
 
   // aux 역할 고정: tiny/smol 을 **실제 4B aux 모델**로 고정한다(코더가 아니다 — 실사용 구성으로 검증).
-  // 이렇게 하면 셀 동안 로드될 수 있는 물리 모델은 {대상 코더(--model), 그 :mtp 드래프터(같은 계열),
+  // 이렇게 하면 셀 동안 로드될 수 있는 물리 모델은 {대상 코더(--model), (MTP 를 쓰는 모델이면) 그 드래프터,
   // 4B aux} 로 한정된다 — 깨끗한 재시작(위)과 합쳐 **구성상** 엉뚱한 코더가 상주할 수 없다.
   // 코더 자체 설정(thinking·샘플링)은 불변. compaction 은 세션 모델 자신이 돈다(compactionModel 은 죽은 키).
   // BENCH_BAKED=1: **라이브 설정만으로** 셀을 돌린다(오버레이·--smol·--model·어드바이저 주입 없음).
@@ -510,20 +511,8 @@ async function one(model: string, taskName: string, opts: { timeoutS: number; dr
   }
 
   const started = Date.now();
-  // 2단계 분해(BENCH_PHASE2=1, 2026-08-28 설계): 구현 세션 → fresh-context 마감 세션.
-  // 중간 revert 없음 — 종반 분산이 긴 컨텍스트와 상관이라는 부검 관찰의 구조 실험.
-  const phase2 = process.env.BENCH_PHASE2 === "1";
-  const p1cap = Number(process.env.BENCH_P1_TIMEOUT ?? 1500);
-  const p2cap = Number(process.env.BENCH_P2_TIMEOUT ?? 1500);
-  const FINISH_PROMPT = `The \`notice\` CRUD domain has been partially implemented in this repository by a previous session. Your job is to FINISH it to the gate:
-
-1. Run \`make verify\` from the sandbox root first — treat its output as the todo list.
-2. Fix everything it reports: wiring (alembic/env.py, app/main.py, app/dependencies/services.py), the migration, the request file, and the sibling-parity tests at 100% coverage (backend/tests/{api,repositories,services}/test_notice.py, plus the expected-http-files list in backend/tests/core/test_seed_api_actor.py).
-3. Do not refactor working code; add what is missing, fix what is red.
-4. Finish only when a fresh full \`make verify\` passes end-to-end.`;
-  const sessionPlans: Array<[string, number]> = phase2
-    ? [[task.prompt(spec), p1cap], [FINISH_PROMPT, p2cap]]
-    : [[task.prompt(spec), opts.timeoutS]];
+  // 2단계 분해(BENCH_PHASE2)는 2026-08-28 기각·2026-09-01 제거(bench/2026-08-28.s2.final.md) — 죽은 FINISH_PROMPT 가 백엔드-only 로 남아 있었다.
+  const sessionPlans: Array<[string, number]> = [[task.prompt(spec), opts.timeoutS]];
   let timedOut = false;
   const phaseWalls: number[] = [];
   // 셀 훅로그: 모델·과제·시작시각으로 이름을 만든다(캠페인 stem 은 이 스코프에 없다).

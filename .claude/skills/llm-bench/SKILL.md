@@ -45,14 +45,14 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 - **로컬 모델은 대상 모델만 상주해야 한다(러너가 보장·검증).** 세 겹이다:
   1. **시작 격리** — `omlx/` 셀은 `omlx restart` 로 서버를 비우고, `ollama/` 셀은 다른 모델을 `ollama stop`. 이전 셀 잔재 제거.
   2. **aux 역할 고정** — omp 의 `modelRoles.tiny/smol` 을 셀 동안 **실제 4B aux(`omlx/mlx-community--Qwen3.5-4B-4bit`)로 고정**한다(`--config` 오버레이 + `--smol`). 코더가 아니라 실사용 aux 로 고정하는 것 — 코더에 제목·메모리를 시키는 비현실적 구성이 아니라 실제 환경 그대로 잰다. **코더 설정(thinking·샘플링)은 불변**이고 `--model` 외 튜닝이 아니다.
-  3. **구성상 보장** — 위 두 겹으로, 셀 동안 로드될 수 있는 물리 모델은 {대상 코더, 그 `:mtp` 드래프터, 4B aux} 셋으로 한정된다(compaction 은 별도 모델 없이 세션 모델 자신이 수행한다 — 2026-08-30 확인). 엉뚱한 코더가 상주할 수 없다. 검증이 아니라 **구성**이 보장한다 — 코더(23GB)+aux(4B)가 함께 들어가려면 `iogpu.wired_limit_mb`(RAM−8GB, `omlx/install.sh` 가 부팅 지속으로 설정)가 맞아야 한다.
+  3. **구성상 보장** — 위 두 겹으로, 셀 동안 로드될 수 있는 물리 모델은 {대상 코더, (MTP 모델이면) 드래프터, 4B aux} 셋으로 한정된다(compaction 은 별도 모델 없이 세션 모델 자신이 수행한다 — 2026-08-30 확인). 엉뚱한 코더가 상주할 수 없다. 검증이 아니라 **구성**이 보장한다 — 코더(23GB)+aux(4B)가 함께 들어가려면 `iogpu.wired_limit_mb`(RAM−8GB, `omlx/install.sh` 가 부팅 지속으로 설정)가 맞아야 한다.
   4. **기록** — 러너가 상주를 실측해 행 `residency` 에 남긴다: oMLX `/health` 의 `loaded_count`·`current_model_memory`, Ollama `ollama ps`. `loaded_count` 가 예상(코더+드래프터+aux=1~3)을 벗어나면 `ok:false` 로 경고(재시작 실패·설정 누락 신호) → 재실행. 클라우드 모델은 `residency:null`.
 - thinking 조건을 **명시**한다. 3.6 은 `reasoning_effort` no-op → 무제한/`thinking_budget` 중 무엇인지, 3.8 은 값이 무엇인지 `omp/models.yml` 에서 확인해 결과 `.md` 조건 절에 적는다. 러너는 `--model` 외 플래그를 omp 에 주지 않는다 — 측정 대상은 "실제로 쓰는 설정"이다.
 
 ### 1. 실행
 ```bash
 node .claude/skills/llm-bench/runner.ts --dry-run                             # 세팅/채점/원복 점검(모델 없음, 두 과제)
-node .claude/skills/llm-bench/runner.ts --model omlx/mlx-community--Qwen3.6-35B-A3B-5bit:coder --campaign omlx-3.6
+node .claude/skills/llm-bench/runner.ts --model omlx/Qwen3.6-35B-A3B-5bit --campaign omlx-3.6
 node .claude/skills/llm-bench/runner.ts --models a,b --campaign <name> --timeout 2700
 node .claude/skills/llm-bench/runner.ts --matrix                              # DEFAULT_MODELS × 두 과제
 node .claude/skills/llm-bench/runner.ts --revert-only                         # 중단된 셀 뒤처리
