@@ -161,7 +161,7 @@ suffix(`:coder`)를 붙이지 않는다 — oMLX 가 `active_profile_name` 을 b
 | `omlx/gemma-4-26b-a4b-it-5bit` | `mlx-community/gemma-4-26b-a4b-it-5bit` | 18GB | 선택지(사용자 요청, 2026-08-31 등록). MoE 26B/활성 4B. 창 131072 / 출력 8192, temp 1.0·top_p 0.95·top_k 64(카드값), thinking budget 2048 |
 
 **Gemma 4 는 `-it` 판을 받아야 한다 (2026-08-31 실측).** 베이스 판(`mlx-community/gemma-4-26b-a4b-5bit`,
-`-4bit`)에는 대화 템플릿도 stop 토큰도 없다 — 서버 로그가 `stop_tokens=[]` 를 찍고, 5 토큰짜리 프롬프트
+`-4bit` — 확인 후 같은 날 스토어에서 삭제, 32GB)에는 대화 템플릿도 stop 토큰도 없다 — 서버 로그가 `stop_tokens=[]` 를 찍고, 5 토큰짜리 프롬프트
 ("Reply with exactly: OK")가 그대로 5 토큰으로 들어가 모델이 프롬프트를 되풀이하는 출력만 냈다
 (4bit·5bit 동일, temp 0 에서도 동일). `-it-5bit` 로 바꾸니 같은 요청이 프롬프트 21 토큰으로 들어가고
 `content: "OK"` · `reasoning_content` 분리 · `finish_reason: stop` 으로 끝났다(34.8 tok/s, 로드 6.3s).
