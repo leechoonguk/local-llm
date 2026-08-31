@@ -1,0 +1,109 @@
+{
+  "why": "One measured page of the 바코드연계제품정보 service (C005): the key and the window travel in the path, the filter is a trailing segment, and the envelope states the real outcome.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3,
+    "barcode": "8801234567890"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "C005": {
+        "total_count": "152",
+        "row": [
+          {
+            "PRDLST_REPORT_NO": "20240001001",
+            "PRMS_DT": "20240115",
+            "END_DT": "",
+            "PRDLST_NM": "오뚜기 진라면",
+            "POG_DAYCNT": "24개월",
+            "PRDLST_DCNM": "즉석식품",
+            "BSSH_NM": "오뚜기주식회사",
+            "INDUTY_NM": "식품제조가공업",
+            "SITE_ADDR": "서울특별시 동작구 남부순환로 230",
+            "CLSBIZ_DT": ""
+          },
+          {
+            "PRDLST_REPORT_NO": "20240001002",
+            "PRMS_DT": "20240220",
+            "END_DT": "",
+            "PRDLST_NM": "농심 신라면",
+            "POG_DAYCNT": "18개월",
+            "PRDLST_DCNM": "즉석식품",
+            "BSSH_NM": "농심주식회사",
+            "INDUTY_NM": "식품제조가공업",
+            "SITE_ADDR": "경기도 용인시 처인구 모현면 농심로 1",
+            "CLSBIZ_DT": ""
+          },
+          {
+            "PRDLST_REPORT_NO": "20240001003",
+            "PRMS_DT": "20230601",
+            "END_DT": "20240601",
+            "PRDLST_NM": "삼양식품 순한맛 라면",
+            "POG_DAYCNT": "12개월",
+            "PRDLST_DCNM": "즉석식품",
+            "BSSH_NM": "삼양식품주식회사",
+            "INDUTY_NM": "식품제조가공업",
+            "SITE_ADDR": "경기도 성남시 분당구 분당내곡로 166",
+            "CLSBIZ_DT": "20240601"
+          }
+        ],
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/C005/json/1/3/BAR_CD=8801234567890",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "item_report_no": "20240001001",
+        "permit_date": "20240115",
+        "production_end_date": "",
+        "product_name": "오뚜기 진라면",
+        "shelf_life": "24개월",
+        "food_type": "즉석식품",
+        "manufacturer_name": "오뚜기주식회사",
+        "industry_name": "식품제조가공업",
+        "site_address": "서울특별시 동작구 남부순환로 230",
+        "closure_date": ""
+      },
+      {
+        "item_report_no": "20240001002",
+        "permit_date": "20240220",
+        "production_end_date": "",
+        "product_name": "농심 신라면",
+        "shelf_life": "18개월",
+        "food_type": "즉석식품",
+        "manufacturer_name": "농심주식회사",
+        "industry_name": "식품제조가공업",
+        "site_address": "경기도 용인시 처인구 모현면 농심로 1",
+        "closure_date": ""
+      },
+      {
+        "item_report_no": "20240001003",
+        "permit_date": "20230601",
+        "production_end_date": "20240601",
+        "product_name": "삼양식품 순한맛 라면",
+        "shelf_life": "12개월",
+        "food_type": "즉석식품",
+        "manufacturer_name": "삼양식품주식회사",
+        "industry_name": "식품제조가공업",
+        "site_address": "경기도 성남시 분당구 분당내곡로 166",
+        "closure_date": "20240601"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "152"
+    }
+  }
+}

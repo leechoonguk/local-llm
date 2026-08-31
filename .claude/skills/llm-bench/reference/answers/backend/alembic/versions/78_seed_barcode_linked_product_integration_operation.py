@@ -1,4 +1,4 @@
-"""seed barcode item info integration operation
+"""seed food safety korea integration operation
 
 Revision ID: 72
 Revises: 71
@@ -12,26 +12,23 @@ from sqlalchemy.sql import column, table
 
 from alembic import op
 
-revision: str = "72"
-down_revision: str | Sequence[str] | None = "71"
+revision: str = "78"
+down_revision: str | Sequence[str] | None = "77"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 PROVIDER_ID = uuid5(NAMESPACE_URL, "fast-api-standard/mfds-food-safety-korea/provider")
-OPERATION_ID = uuid5(NAMESPACE_URL, "fast-api-standard/mfds-food-safety-korea/search-barcode-item-info")
+OPERATION_ID = uuid5(NAMESPACE_URL, "fast-api-standard/mfds-food-safety-korea/barcode-linked-product")
 
-# 식품 바코드 품목정보 코드 (service I2570) — a fourth operation on the portal seeded at revision
+# 바코드연계제품정보 (service C005) -- a fourth operation on the portal seeded at revision
 # 64, so the provider and its path-carried key are reused rather than duplicated.
 #
-# Measured: the URL is `.../{start}/{end}` with an optional filter appended as a trailing
-# path segment (변수명=값). The response wrapper is `{"I2570": {...}}` with `total_count`
-# at the wrapper level and the row array under `I2570/row`.
-#
-# Unfiltered total_count is 53242; the window moves and resizes normally. PRDT_NM=김치
-# (as a path segment) filters to 1475; the same filter as a query string is ignored.
+# The URL is `.../{startIdx}/{endIdx}/변수명=값&변수명=값2`, so filters append
+# as a trailing path segment after the window. The response wrapper is `{"C005": {...}}`
+# with `total_count` at the wrapper level and the row array under `C005/row`.
 
-PAGE_ROOT = "/I2570/row"
-PATH_TEMPLATE = "/api/{service_key}/{service_id}/{data_type}/{range_start}/{range_end}"
+PAGE_ROOT = "/C005/row"
+PATH_TEMPLATE = "/api/{service_key}/C005/{data_type}/{range_start}/{range_end}"
 
 
 def _operation_table():
@@ -65,7 +62,7 @@ def upgrade() -> None:
             {
                 "id": OPERATION_ID,
                 "provider_id": PROVIDER_ID,
-                "code": "search-barcode-item-info",
+                "code": "search-barcode-linked-product",
                 "method": "GET",
                 "path_template": PATH_TEMPLATE,
                 "request_media_type": None,

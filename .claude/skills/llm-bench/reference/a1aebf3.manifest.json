@@ -1,10 +1,10 @@
 {
-  "source": "fast-api-standard a1aebf3 — feat(integration): add the 바코드연계 품목정보 API (I2570)",
+  "source": "user session 2026-08-31 (stash) — 바코드연계제품정보 C005 (search-barcode-linked-product), renumbered onto the fas-adopted chain (78/79 after 77)",
   "added": [
-    "api/integration.search-barcode-item-info.http",
-    "backend/alembic/versions/72_seed_barcode_item_info_integration_operation.py",
-    "backend/alembic/versions/73_seed_barcode_item_info_integration_field.py",
-    "backend/tests/core/fixtures/integration/search-barcode-item-info.json"
+    "api/integration.search-barcode-linked-product.http",
+    "backend/alembic/versions/78_seed_barcode_linked_product_integration_operation.py",
+    "backend/alembic/versions/79_seed_barcode_linked_product_integration_field.py",
+    "backend/tests/core/fixtures/integration/search-barcode-linked-product.json"
   ],
   "modified": [
     "backend/tests/core/test_integration_external_api.py",
