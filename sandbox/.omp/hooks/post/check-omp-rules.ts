@@ -1,7 +1,11 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+// @ts-expect-error — Node builtin, not project-compiled
+import { createHash } from "node:crypto";
+// @ts-expect-error — Node builtin, not project-compiled
+import { execFileSync } from "node:child_process";
 import { touchesStrict } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
@@ -379,6 +383,76 @@ function checkTriggerLiveness(file: string, body: string, condition: string, sco
       );
     }
   }
+  issues.push(...engineLiveness(file, condition, scope, samples, keyOf));
+  return issues;
+}
+
+/**
+ * 정규식 플로어 위에 **omp 실엔진 검증**을 얹는다 — `omp ttsr test --rule` 은 우리 JS 재구현이
+ * 못 보는 것(glob 라우팅, 소스 구분, 직렬화)까지 실제 매칭 경로로 판정한다. 실측(2026-08-31):
+ * JS 검증을 통과한 crash-guard 표본이 직렬화형(\") 에선 엔진 무발화였다.
+ *
+ * 비용 제어: 호출당 ~0.3s 라 glob 당 대표 스트림 1회만 돌리고, 결과를 규칙 내용 해시로
+ * `.omp/state/ttsr-liveness-cache.json` 에 캐시한다 — 규칙이 안 바뀌면 엔진 호출 0.
+ * 따옴표 든 condition 은 표본의 JSON 직렬화 변형도 함께 대 본다(스트리밍 직렬화 내성).
+ * omp CLI 가 없는 호스트는 정규식 플로어만으로 통과시킨다(fail-open, stderr 에 한 줄).
+ */
+function engineLiveness(
+  file: string,
+  condition: string,
+  scope: string,
+  samples: Map<string, string>,
+  keyOf: (s: string) => string,
+): string[] {
+  const issues: string[] = [];
+  const rulePath = join(cwd, ".omp", "rules", file);
+  let ruleText: string;
+  try { ruleText = readFileSync(rulePath, "utf-8"); } catch { return issues; }
+  const hash = createHash("sha256").update(ruleText).digest("hex").slice(0, 16);
+  const cachePath = join(cwd, ".omp", "state", "ttsr-liveness-cache.json");
+  let cache: Record<string, string[]> = {};
+  try { cache = JSON.parse(readFileSync(cachePath, "utf-8")) as Record<string, string[]>; } catch { /* 첫 실행 */ }
+  const cacheKey = `${file}@${hash}`;
+  if (cacheKey in cache) return cache[cacheKey];
+
+  const seen = new Set<string>();
+  for (const stream of scope.split(",").map((x) => x.trim()).filter(Boolean)) {
+    const key = keyOf(stream);
+    if (seen.has(key)) continue; // edit/write 쌍은 같은 내용을 나른다 — glob 당 1회
+    seen.add(key);
+    const sample = samples.get(key);
+    if (sample === undefined) continue; // 표본 부재는 위에서 이미 이슈다
+    const args = ["ttsr", "test", "--json", "--rule", rulePath];
+    const m = /^tool:(\w+)(?:\(([^)]+)\))?$/.exec(stream);
+    if (m) {
+      args.push("--source", "tool", "--tool", m[1]);
+      if (m[2]) args.push("--path", m[2].trim().replace(/\*\*\//g, "x/").replace(/\*\*/g, "x").replace(/\*/g, "sample"));
+    } else {
+      args.push("--source", stream); // text | thinking
+    }
+    const variants = [sample];
+    if (/["']/.test(condition)) variants.push(JSON.stringify(sample).slice(1, -1)); // 직렬화형
+    for (const v of variants) {
+      let out: string;
+      try {
+        out = execFileSync("omp", [...args, v], { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], timeout: 15000 });
+      } catch {
+        console.error("check-omp-rules: omp CLI 실행 불가 — 엔진 liveness 는 건너뜀(정규식 플로어만 적용)");
+        return issues;
+      }
+      let fired = false;
+      try { fired = ((JSON.parse(out) as { triggered?: unknown[] }).triggered ?? []).length > 0; } catch { /* 파싱 실패 = 미발화로 본다 */ }
+      if (!fired) {
+        issues.push(
+          `${file}: omp 엔진에서 '${stream}' 표본${v === sample ? "" : "(직렬화형)"} 이 발화하지 않는다 — ` +
+            `\`omp ttsr test --rule .omp/rules/${file} ${args.slice(5).join(" ")} '${v.slice(0, 40)}'\` 로 재현. ` +
+            "정규식은 맞는데 엔진이 침묵하면 scope 라우팅이나 직렬화 문제다",
+        );
+      }
+    }
+  }
+  cache[cacheKey] = issues;
+  try { mkdirSync(join(cwd, ".omp", "state"), { recursive: true }); writeFileSync(cachePath, JSON.stringify(cache)); } catch { /* 캐시 실패는 무해 */ }
   return issues;
 }
 

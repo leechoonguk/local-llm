@@ -44,8 +44,12 @@ the sample requirement is what would have stopped it.
 stream serialized — measured 2026-08-31: `pi.on("tool_result"` fired the
 crash-guard while `pi.on(\"tool_result\"` did not, until the condition gained
 `\\?` before each quote. Any condition containing `"` or `'` needs the same.
-(omp's own TTSR authoring guide states this; `omp ttsr test` is the proof tool —
-run the sample in both raw and escaped form.)
+(omp's own TTSR authoring guide states this.) `check-omp-rules` runs the proof
+itself: each glob's sample goes through `omp ttsr test --rule` (the real engine
+— glob routing, source selection, and the serialized variant when the condition
+carries a quote), cached by rule-content hash in `.omp/state/` so an unchanged
+rule costs zero engine calls (~0.3s per call cold, measured). A failure prints
+the exact repro command. Hosts without the omp CLI fall back to the regex floor.
 
 **A rulebook entry delivers nothing but its description line.** `globs` are not
 used to select rulebook content: editing a matching file injects no body, so a

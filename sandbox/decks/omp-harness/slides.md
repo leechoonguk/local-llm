@@ -74,8 +74,8 @@ style: |
 <!-- sync: frontend-code-conventions.md=b372444a2ca6c4e1 -->
 <!-- sync: frontend-makefile.md=3c32695481893fee -->
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
-<!-- sync: omp-conventions.md=0df171938404ad0a -->
-<!-- sync: omp-hook-crash-guard.md=4451a822ddbd1386 -->
+<!-- sync: omp-conventions.md=23082fc5ca93f25f -->
+<!-- sync: omp-hook-crash-guard.md=a738e96b64572770 -->
 <!-- sync: omp-hooks.md=b708e838eb2f83f4 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
@@ -120,7 +120,7 @@ style: |
 <!-- sync: check-frontend-code.ts=8d2638d68947d133 -->
 <!-- sync: check-makefiles.ts=a232a657107e6577 -->
 <!-- sync: check-omp-hooks.ts=9d7449f363a47750 -->
-<!-- sync: check-omp-rules.ts=ce917d0cf9178972 -->
+<!-- sync: check-omp-rules.ts=ae4dab8106a0dfd3 -->
 <!-- sync: check-omp-skills.ts=67831f31a4b0b420 -->
 <!-- sync: check-omp-types.ts=8171ad53424a7feb -->
 <!-- sync: check-tooling.ts=10b444f2217c3588 -->

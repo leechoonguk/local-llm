@@ -6,7 +6,7 @@ interruptMode: always
 alwaysApply: false
 ---
 
-<!-- fires-on .omp/hooks/post/*.ts: pi.on(\"tool_result\", (event) => { -->
+<!-- fires-on .omp/hooks/post/*.ts: pi.on("tool_result", (event) => { -->
 
 # OMP Hook Crash Guard
 
