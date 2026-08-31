@@ -23,6 +23,7 @@ Lifecycle columns do not change OMP discovery, prompt exposure, `skill://`, or
 | `commit` | User asks to commit, push, publish, or prepare a verified commit | Root `make verify` succeeds before Git commit or push | active |
 | `integration` | User asks to integrate an external API, add a provider or operation, or change an integration's fields, paging, or response contract | `make check-api-flow` runs every `api/*.http` against the live stack and reports state neutral | active |
 | `slidev` | User asks to create or present a technical slide deck | `make build` succeeds in `decks/` | active |
+| `screen-check` | User asks to verify, fix, or refine anything visible in the web UI - layout, spacing, click behaviour, dialogs, grids | A browser run reports the before/after numbers for the changed surface, taken from a fresh entry with a real pointer; `make verify` green | active |
 
 ## Catalog Conventions
 

@@ -24,7 +24,8 @@ context resets and compactions.
 An additive task must not wipe existing code: prefer targeted edits over
 full-file rewrites of existing files, and never truncate a file with `>`.
 Never replace an existing import line with yours — add it alongside; existing
-imports register models and behavior other code depends on.
+imports register models and behavior other code depends on. Never strip an
+existing `with`/`try` wrapper while keeping the code it wraps.
 
 Run the verification after wiring each layer or file group, not only at the
 end — failures discovered early are cheaper than one pile at the finish.

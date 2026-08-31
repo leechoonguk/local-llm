@@ -89,7 +89,7 @@ style: |
 <!-- sync: omp-hook-crash-guard.md=a738e96b64572770 -->
 <!-- sync: omp-hooks.md=b1ee26ca27e100cf -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
-<!-- sync: omp-skills.md=4a9d11a9c8538d89 -->
+<!-- sync: omp-skills.md=b7a6665acf3eb2c2 -->
 <!-- sync: root-git-workflow.md=d623ac8f064686ae -->
 <!-- sync: root-makefile.md=5bf6c79431df879c -->
 <!-- sync: tooling.md=3f0fbcc88756686c -->
@@ -163,7 +163,6 @@ style: |
 <!-- sync: lib/backend-orm-sync.ts=43d591cd8eb0e234 -->
 <!-- sync: lib/backend-repository-files.ts=abf6a4b480ded88b -->
 <!-- sync: lib/backend-service-injection.ts=695f8b8b7ccb602f -->
-<!-- sync: lib/backend-verify-twice.ts=40cf959ceda8ee26 -->
 <!-- sync: lib/frontend-component-split.ts=5d7c4040d53a408c -->
 <!-- sync: lib/frontend-contract.ts=2c683f9dd7045c4a -->
 <!-- sync: lib/frontend-i18n.ts=6d311e5592da6d1f -->
