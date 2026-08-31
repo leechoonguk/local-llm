@@ -3,7 +3,13 @@ valid:
   - |
     class Batch(Base, AuditMixin):
         name: Mapped[str] = mapped_column(String(255), nullable=False)
+  - |
+    class Integration(Base, AuditMixin):
+        operations: Mapped[list[IntegrationOperation]] = relationship(back_populates="provider")
 invalid:
   - |
     class Batch(Base, AuditMixin):
         name: str = Column(String(255), nullable=False)
+  - |
+    class Batch(Base, AuditMixin):
+        items: list[Item] = relationship()

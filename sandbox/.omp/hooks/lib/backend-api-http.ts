@@ -88,7 +88,7 @@ function backendPort(): string {
     const declared = /^BACKEND_PORT\s*=\s*(\d+)\s*$/m.exec(readFileSync(path, "utf-8"));
     if (declared !== null) return declared[1];
   }
-  return "18000"; // 트리 고유 폴백: sandbox 는 포트를 docker-compose.yml 에 고정한다(18000) — env 에 BACKEND_PORT 가 없다
+  return "8000";
 }
 
 /**
@@ -1167,7 +1167,7 @@ function checkActorLifecycle(
   if (login === undefined) return issues; // the structure check already reports this
   const loginBody = blockBody(http, login, requests);
 
-  // domain-literal: auth 는 도메인이 아니라 액터 수명주기 파일 자체다 — 계정 생성·삭제는 이 한 파일만 담당한다(backend-api-http.md)
+  // domain-literal: dispatches to a stricter check, not an exemption - auth.http owns account creation and the login contract itself
   if (name === "auth") return checkAuthActorLifecycle(http, loginBody, requests, sections);
 
   // Domain files: log in as the seeded actor, with the credentials written out.

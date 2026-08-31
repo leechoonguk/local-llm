@@ -52,7 +52,7 @@ style: |
     text-align: center;
   }
 ---
-<!-- sync: backend-api-http.md=1d4ca22c74870840 -->
+<!-- sync: backend-api-http.md=3d39899fbd261b93 -->
 <!-- sync: backend-api-keys.md=240f10d0c15e7197 -->
 <!-- sync: backend-app-forbidden-tokens.md=8b80f9d9fabee937 -->
 <!-- sync: backend-app-setup.md=17d665e697444fd2 -->
@@ -65,7 +65,7 @@ style: |
 <!-- sync: backend-domain.md=c27f2d99e9a0f1eb -->
 <!-- sync: backend-exceptions.md=63e9a9e48c73778d -->
 <!-- sync: backend-file-upload.md=417dc0174bf98a36 -->
-<!-- sync: backend-identity-tokens.md=6cb5ac851893ae08 -->
+<!-- sync: backend-identity-tokens.md=e3d64c5cb15a48f5 -->
 <!-- sync: backend-integration-configuration.md=e8f046146137257b -->
 <!-- sync: backend-integration.md=f9cd0a15ed9ea08c -->
 <!-- sync: backend-makefile.md=8660e10d5670f0da -->
@@ -99,9 +99,9 @@ style: |
 <!-- sync: frontend-routing.md=7a4605df9f4fb4c0 -->
 <!-- sync: frontend-screens.md=75deaa56a527046b -->
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
-<!-- sync: omp-conventions.md=fc872bbd4033e574 -->
+<!-- sync: omp-conventions.md=6e5009774ca324a6 -->
 <!-- sync: omp-hook-crash-guard.md=a738e96b64572770 -->
-<!-- sync: omp-hooks.md=b1ee26ca27e100cf -->
+<!-- sync: omp-hooks.md=50beab38a8dac824 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
 <!-- sync: omp-skills.md=b7a6665acf3eb2c2 -->
 <!-- sync: root-git-workflow.md=d623ac8f064686ae -->
@@ -163,8 +163,8 @@ style: |
 <!-- sync: check-tooling.ts=10b444f2217c3588 -->
 <!-- sync: check-verify.ts=5a28d5df52b21485 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
-<!-- sync: lib/backend-api-flow.ts=6a4e5db31d94f1c3 -->
-<!-- sync: lib/backend-api-http.ts=98352c1f5cf5a8e3 -->
+<!-- sync: lib/backend-api-flow.ts=26e8483ad319865c -->
+<!-- sync: lib/backend-api-http.ts=e9c8e23bb9b17cae -->
 <!-- sync: lib/backend-auth.ts=a5bca744745861b0 -->
 <!-- sync: lib/backend-domain-layers.ts=2ff2f5555721a967 -->
 <!-- sync: lib/backend-domain-structure.ts=b5bfd745c7280afc -->
@@ -205,7 +205,7 @@ style: |
 <!-- sync: ast-grep/rules/conventions/=f9af2070ed6ab3d6 -->
 <!-- sync: ast-grep/rules/domain/=9deae1c972838f6c -->
 <!-- sync: ast-grep/rules/env-security/=b3302595d17d11db -->
-<!-- sync: ast-grep/rules/environment/=d6f02a1f06b0032a -->
+<!-- sync: ast-grep/rules/environment/=fb6e9a8e5845def9 -->
 <!-- sync: ast-grep/rules/exceptions/=16910346cf860f6d -->
 <!-- sync: ast-grep/rules/factory/=f12bdc8bde61c55a -->
 <!-- sync: ast-grep/rules/frontend-api/=c7b82385c1a92ade -->
@@ -213,7 +213,7 @@ style: |
 <!-- sync: ast-grep/rules/integration/=90b1990249a39920 -->
 <!-- sync: ast-grep/rules/layering/=0cd53dee4be2a527 -->
 <!-- sync: ast-grep/rules/logging/=e8a48abc7061fc3c -->
-<!-- sync: ast-grep/rules/model/=d95cd8eeec07de9d -->
+<!-- sync: ast-grep/rules/model/=bac1703a11ddad1d -->
 <!-- sync: ast-grep/rules/naming/=20d21ed70309940d -->
 <!-- sync: ast-grep/rules/offload/=4bb3cc65a9370b86 -->
 <!-- sync: ast-grep/rules/ownership/=9723397c4a35ebf5 -->

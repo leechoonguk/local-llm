@@ -30,7 +30,7 @@
       "skipFiles": ["<node_internals>/**"]
     },
     {
-      "name": "Chrome: Vite (5173)",
+      "name": "Chrome: Vite (15173)",
       "type": "chrome",
       "request": "launch",
       "url": "http://localhost:15173",

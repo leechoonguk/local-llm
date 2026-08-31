@@ -104,7 +104,7 @@ answers 422 — declare that in its request file until the seed is finished.
    never written into a request file: REST Client resolves `$dotenv` from the
    `.env` beside the `.http` file, and `check-api-flow` reads the same pair, so
    the editor and the runner cannot drift onto different servers. The declared
-   value is an **origin** (`scheme://host:18000`, no path) because `/health` sits
+   value is an **origin** (`scheme://host:<BACKEND_PORT>`, no path) because `/health` sits
    above the version prefix; `/api/v1` therefore stays visible in the files.
    A literal host was the previous rule and it rotted: five files pointed at a
    public IP while the check still demanded localhost.
@@ -337,7 +337,7 @@ that could never answer.
 - Seed a `path_template` placeholder that no `PATH` field fills
 - Number sections out of order, or omit the expected status from a title
 - Write a host into `@base` instead of `{{$dotenv API_ORIGIN}}/api/v1`, or point
-  `API_ORIGIN` at a port other than 18000, or give it a path
+  `API_ORIGIN` at a port other than the root .env BACKEND_PORT, or give it a path
 - Keep an `.http` file for a router that no longer exists
 - Leave a created row behind, or delete a seeded row
 - Create an actor account outside `api/auth.http` — one file owns that lifecycle

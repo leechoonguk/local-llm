@@ -34,3 +34,17 @@ make db-init && make verify       # git 없이 exit 0 이어야 벤치 baseline
 ## 원본 동기화
 
 의도적으로 자동화하지 않는다. fast-api-standard 가 바뀌면 `git -C ~/Workspace/fast-api-standard archive <rev> | tar -x -C sandbox` 후 위 표의 포트 치환·벤치 자산 제거·마이그레이션 정리를 다시 한다(`.claude/skills/llm-bench/` 의 절차). 반대로 sandbox 에서 실측으로 잡은 하네스 구멍은 원본으로 보내는 후보다.
+
+## fast-api-standard 와의 의도 분기 원장 (2026-09-01 전면 싱크 후)
+
+이 트리는 `~/Workspace/fast-api-standard` 와 **하네스·피험자 코드가 동일**하다. 남는 차이는 전부 의도된 것이고, 아래가 전량이다 — 여기 없는 diff 가 생기면 싱크 부채다.
+
+| 항목 | fas | sandbox | 사유 |
+|---|---|---|---|
+| VCS 정책 | `strict-verified-git` + `strict-publish-consent`(+lib), `make commit/push`, RULES.md 발행 절 | `strict-no-vcs-publish`, RULES.md 금지 절 | 실사용은 검증된 발행, 벤치 피험자는 VCS 전면 금지 |
+| `strict-no-subagents` 사유문 | 일반론 | 로컬 모델 한 슬롯(GPU 공유) | 정책은 같고 근거가 트리별 |
+| 포트 대역 | 2xxxx (`.env`·`api/.env`·`launch.json`) | 1xxxx | 동시 기동 가능해야 한다 |
+| compose 프로젝트명 | `fast-api-standard` | `local-llm-sandbox` | 볼륨 분리 |
+| `SANDBOX.md` | 없음 | 이 파일 | 벤치 트리 설명 |
+| 벤치 과제 도려내기 | — | `search-barcode-linked-product` 산출물 부재(정답은 `.claude/skills/llm-bench/reference/answers/`) | 과제 성립 조건 — 현재 양쪽 다 부재라 코드 diff 는 없음 |
+| `decks/*/slides.md` | 각자 재생성 | 각자 재생성 | sync 해시·정책 가드 목록이 트리별 |

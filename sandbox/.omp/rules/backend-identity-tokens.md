@@ -31,7 +31,8 @@ async def delete_user(user_id: UUID, user_service: UserServiceDep, current_user:
 ```
 
 An ownership check then belongs in the service, on the plain value
-(`created_by != actor_id` → `ForbiddenError`). Details: `rule://backend-auth`
+(`created_by != actor_id` → a core exception mapped to 403; none is declared yet,
+because nothing here is owner-scoped). Details: `rule://backend-auth`
 and `rule://backend-ownership`.
 
 ## Enforcement

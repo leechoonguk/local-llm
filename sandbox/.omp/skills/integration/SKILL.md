@@ -56,9 +56,31 @@ Then ask the two questions that catch silent failures:
 
 **Measure per operation, never per provider.** Two services of one portal disagreed on
 both counts that matter: a zero start index is `ERROR-331` on I1250 and accepted on
-I2510, and a malformed date answers `ERROR-601` ("SQL 문장 오류") where the shared
-documentation promises `ERROR-302`. A provider is a host and a credential; the contract
+I2510, and a malformed date answers `ERROR-601` ("SQL 문장 오류") on I1250 while
+I2530 answers the documented `ERROR-302` for the same input. A provider is a host and a credential; the contract
 is per operation.
+
+**A provider may refuse by the clock, and it refuses everything.** Measured on
+`openapi.foodsafetykorea.go.kr`: between 09:00 and 19:00 KST every service answers
+HTTP 200 with `ERROR-503 09시~19시에는 서비스가 일시적으로 원활하지 않을수있습니다` —
+a service already seeded and working, and the documented **sample key** too. So a
+blanket refusal is not a bad key: the key was already proven by the code changing
+from `INFO-100 인증키가 유효하지 않습니다` to `ERROR-503`. Two facts follow:
+
+- do not seed from a window you could not measure — a success shape guessed from
+  the vendor page is exactly what step 1 exists to prevent;
+- schedule the measurement instead of narrating it. `bash` with `sleep` until the
+  window opens costs one background job, and the probe then reports real numbers
+  (I2530 at 19:01: `INFO-000`, `total_count` 3393, the window moving and resizing,
+  `LAST_UPDT_DTM=20200318` filtering to 116 as a path segment and being ignored as
+  a query string).
+
+**When a seed problem names a database constraint, reset before diagnosing.** A
+half-applied migration chain reports defects the migrations do not have: measured
+here as `uq_integration_operation_provider_code` on a re-upgrade, which read like a
+seed inserting a duplicate and was a database whose version pointer no longer
+described its rows. `make db-init` is one command, and the same chain then steps
+down cleanly to the first revision (`rule://backend-migrations`).
 
 ### 2. Derive the shape from the measurements
 

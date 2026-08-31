@@ -190,7 +190,7 @@ filenames only for rules whose `globs` span more than one top-level directory.
 ## Extensions (`.omp/extensions/*.ts`)
 
 Workspace-local extensions auto-load into every omp session started in this
-project — bench cells and real work run the same configuration, no opt-in flag.
+project — every session (bench cell or real work) runs the same configuration, no opt-in flag.
 
 - Entry point first: `export default function` before helper functions
   (`check-code-layout` enforces top-down reading order on these files too).

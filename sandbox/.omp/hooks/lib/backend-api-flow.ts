@@ -77,7 +77,7 @@ SELECT table_name || '=' || (xpath(
  * the committed example as the fallback. A second literal here is how the
  * runner and the request files start testing two different servers.
  */
-const API_BASE = `${readDotenv("API_ORIGIN") ?? "http://localhost:18000"}/api/v1`;
+const API_BASE = `${readDotenv("API_ORIGIN") ?? "http://localhost:8000"}/api/v1`;
 
 /**
  * The account every domain file authenticates as, seeded by migration 57 so it
