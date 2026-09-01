@@ -41,10 +41,16 @@ collection — no list, no CRUD dialog, no navigation entry.
 3. `lib/api/queryKeys.ts` — add `<domain>Keys = createQueryKeys('<plural>')`
 4. `lib/api/services/<domain>.service.ts` — five functions, `api.*` only
 5. `lib/api/hooks/use<Domain>.ts` — five hooks, keys from the factory
-6. `sections/<domain>/` — copy the nearest screen of the same type and change
-   the columns, the fields and the strings
+6. `sections/<domain>/` — the screen's **type is a property judgement** (list /
+   form-dialog / read-only), made before choosing what to copy: copy the nearest
+   screen of the *same type*, never the most familiar name, then change the
+   columns, the fields and the strings
 7. `pages/<Domain>Page.tsx`, `PATHS.<domain>`, a `NAV_ITEMS` entry
-8. `frontend/src/locales/ko.ts` + `en.ts` — a namespace for the domain
+8. `frontend/src/locales/ko.ts` + `en.ts` — a namespace for the domain — **both** locales:
+   `check-frontend-i18n` fails on a key present in one language only.
+9. Verify as you go, finish end to end: `make -C frontend verify` after the wiring,
+   then the root `make verify` — the contract/type/routing checks prove the screen
+   against the backend it calls (rule://frontend-contract).
 9. `make verify`
 
 ## Layering

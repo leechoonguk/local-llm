@@ -70,10 +70,15 @@ async def purge_stale_batches(days: int = 30) -> int:
 
 ## Adding a New Batch Job
 
-1. Create `app/batch/<name>.py` following the pattern above
-2. Register in `app/main.py` `lifespan` hook if it's a scheduled task
-3. Test with `settings.env == "test"` — scheduler is disabled
-4. Add manual test for the async function if needed
+1. Create `app/batch/<name>.py` following the pattern above — `make check-backend-batch`
+   proves the shape (session-per-run, no HTTP-layer imports).
+2. Register it in `app/main.py`'s lifespan **alongside** the existing jobs — registries
+   accumulate (rule://backend-domain); a job that is defined but never scheduled is
+   dead code the checks read as drift.
+3. Prove the run path with a targeted test (`make -C backend test-fast t="tests/batch/..."`)
+   — the scheduler is disabled under `settings.env == "test"`, so the test calls the
+   async function directly.
+4. Finish with `make -C backend verify`; the root gate owns the final word.
 
 
 ## Job Registration

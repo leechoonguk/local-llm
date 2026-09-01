@@ -59,7 +59,7 @@ style: |
 <!-- sync: backend-audit-log.md=8ff51ab42272c7b2 -->
 <!-- sync: backend-auth.md=94bcf2878675992d -->
 <!-- sync: backend-background-tasks.md=f44f5777655cd583 -->
-<!-- sync: backend-batch.md=492e3b1f8bb99e91 -->
+<!-- sync: backend-batch.md=69e360f96552e3c9 -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-core-config.md=2df96e9e761e6fea -->
 <!-- sync: backend-domain.md=fe2388099b899e5d -->
@@ -93,13 +93,13 @@ style: |
 <!-- sync: frontend-components.md=7ee4b218f49d81b6 -->
 <!-- sync: frontend-contract.md=adcdb4376126cc8f -->
 <!-- sync: frontend-design.md=7a5cfb3a6d9f0b74 -->
-<!-- sync: frontend-domain.md=df77751b59345d4f -->
+<!-- sync: frontend-domain.md=c1cb27d012094a6e -->
 <!-- sync: frontend-i18n.md=2e3fe1bebc2cad91 -->
 <!-- sync: frontend-makefile.md=f524b841137120d9 -->
 <!-- sync: frontend-routing.md=7a4605df9f4fb4c0 -->
 <!-- sync: frontend-screens.md=75deaa56a527046b -->
 <!-- sync: omp-ast-rules.md=c1c935f06f6ec5fe -->
-<!-- sync: omp-conventions.md=6e5009774ca324a6 -->
+<!-- sync: omp-conventions.md=f15148f96ba61fcc -->
 <!-- sync: omp-hook-crash-guard.md=a738e96b64572770 -->
 <!-- sync: omp-hooks.md=50beab38a8dac824 -->
 <!-- sync: omp-naming-consistency.md=23a6c62b84d1fc6d -->
@@ -157,7 +157,7 @@ style: |
 <!-- sync: check-frontend-types.ts=c6b04081395c5d84 -->
 <!-- sync: check-makefiles.ts=03eec069e9e6e72f -->
 <!-- sync: check-omp-hooks.ts=959d6e2fdb461e17 -->
-<!-- sync: check-omp-rules.ts=ae4dab8106a0dfd3 -->
+<!-- sync: check-omp-rules.ts=6241c71eee4133e3 -->
 <!-- sync: check-omp-skills.ts=67831f31a4b0b420 -->
 <!-- sync: check-omp-types.ts=8171ad53424a7feb -->
 <!-- sync: check-tooling.ts=10b444f2217c3588 -->

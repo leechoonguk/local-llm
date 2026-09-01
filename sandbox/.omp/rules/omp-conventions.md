@@ -51,6 +51,24 @@ carries a quote), cached by rule-content hash in `.omp/state/` so an unchanged
 rule costs zero engine calls (~0.3s per call cold, measured). A failure prints
 the exact repro command. Hosts without the omp CLI fall back to the regex floor.
 
+**How-to sections follow the proven ordered-verified structure.** Measured
+2026-09-01: the fullstack notice cell went from a 60-minute-cap timeout (one
+failing check left) to a 65.5-minute self-terminated green when the domain
+rule's artifact list became this structure — the three late-red classes
+(unapplied migration, wrong exemplar for a unique field, wiring) reproduced
+zero times. `check-omp-rules` enforces the mechanical half:
+
+- **Ordered steps**, not an artifact list — say *when*, not only *what*.
+- **Each step names its own verification** (a make target, pytest, or the
+  owning `rule://`) — never one pile of checking at the end.
+- **Choices are made by property, not by name or habit** — the documentation
+  face of "Measure The Domain, Never Name It" (e.g. a unique field selects the
+  unique-domain exemplar; a screen's *type* selects which screen to copy).
+- **Apply what you generate immediately** — an unapplied artifact makes every
+  later verification fail on it instead of on the actual work.
+- **No task hints** — a rule teaches the general principle; task briefs point
+  here instead of carrying answers.
+
 **A rulebook entry delivers nothing but its description line.** `globs` are not
 used to select rulebook content: editing a matching file injects no body, so a
 rulebook rule is the *documentation* of an invariant that a hook enforces

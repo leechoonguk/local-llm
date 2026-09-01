@@ -178,6 +178,7 @@ function checkOmpRulesSync(): string[] {
       issues.push(`${file}: 'alwaysApply' must be false (got ${String(fm["alwaysApply"])})`);
     }
     issues.push(...checkTtsrTrigger(file, content, fm));
+    issues.push(...checkProcedureSections(file, content));
   }
 
   // Check 4: keep the always-apply set tiny
@@ -294,6 +295,29 @@ function checkOmpRulesSync(): string[] {
  * scope also watches assistant prose, so merely *writing about*
  * `HTTPException` would abort the turn.
  */
+/**
+ * How-to 절은 순서+검증 구조여야 한다 (2026-09-01, omp-conventions "ordered-verified").
+ * 실측: 산출물 목록뿐이던 도메인 절차가 이 구조가 되자 풀스택 셀이 TO→초록으로 넘어갔다
+ * (종반 red 3부류 재현 0). 기계 최소치만 강제한다 — 제목이 절차형(Add/Creat/Build/New/추가)
+ * 인 ## 절은 (a) 순서 목록(`1.`)을 갖고 (b) 검증 참조(make 타깃·pytest·rule://·check-)를
+ * 최소 1개 담는다. 단계별 검증의 "충분함"은 기계가 못 재니 저작 표준(문서)이 담당한다.
+ */
+function checkProcedureSections(file: string, body: string): string[] {
+  const issues: string[] = [];
+  for (const sec of body.split(/^## /m).slice(1)) {
+    const title = sec.split("\n", 1)[0].trim();
+    if (!/\b(Add(ing)?|Creat(e|ing)|Build|New [A-Z])\b|추가할 때|만들 때/.test(title)) continue;
+    const secBody = sec.slice(title.length);
+    if (!/^\s*\d+\.\s/m.test(secBody)) {
+      issues.push(`${file}: "## ${title}" — 절차 절인데 순서 목록이 없다. 산출물 나열이 아니라 순서 있는 단계로 쓴다 (omp-conventions, ordered-verified)`);
+    }
+    if (!/make [a-z][\w-]+|pytest|rule:\/\/|check-[a-z-]+/.test(secBody)) {
+      issues.push(`${file}: "## ${title}" — 절차 절에 검증 참조가 하나도 없다. 각 단계가 어느 검사/타깃으로 서는지 명시한다 (omp-conventions, ordered-verified)`);
+    }
+  }
+  return issues;
+}
+
 function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown>): string[] {
   const issues: string[] = [];
   const condition = fm["condition"];
