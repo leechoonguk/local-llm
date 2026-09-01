@@ -1,0 +1,58 @@
+[
+ {
+  "at": "2026-09-01T20:27:17.261Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit",
+  "task": "batch",
+  "shape": "greenfield",
+  "wall_s": 2700,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 6,
+  "expected": 5,
+  "files": [
+   "M sandbox/backend/app/core/scheduler.py",
+   " M sandbox/backend/app/services/user.py",
+   " M sandbox/backend/tests/services/test_user.py",
+   "?? sandbox/backend/alembic/versions/81_seed_purge_stale_users_batch_job.py",
+   "?? sandbox/backend/app/batch/stale_users.py",
+   "?? sandbox/backend/tests/batch/test_stale_users.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-fast-api-standard/2026-09-01T12-45-15-803Z_01a05d00-9a9b-72a0-8c4f-8899fab1fd39.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 41,
+  "tools": {
+   "bash": 253,
+   "read": 190,
+   "write": 41,
+   "glob": 4
+  },
+  "gate_runs": 26,
+  "first_full_gate_s": 361,
+  "advisory_skips": 0,
+  "piped_gates": 23,
+  "first_green_s": 4907,
+  "no_work": false
+ }
+]

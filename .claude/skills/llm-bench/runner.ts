@@ -70,7 +70,7 @@ const TASKS: Record<string, Task> = {
     shape: "greenfield",
     spec: "batch_spec.md",
     expect: 5, // 추정(2026-09-02 등록, 미캘리브레이션): 신규 3(잡·시드 마이그레이션·잡 테스트) + 편집 2~3(레지스트리·서비스 랩퍼·서비스 테스트)
-    capS: 2700, // 추정 — integration(28~45m 자체종료)보다 작은 체인. 첫 셀 실측 후 재보정할 것
+    capS: 3600, // 실측(2026-09-02 첫 셀): 45분 캡에서 게이트 초록(6/5·회귀 0·첫 풀게이트 6분)인 채 자체종료 못 하고 TO — 종료 여유로 60분
     prompt: (spec) => `Add the \`purge_stale_users\` batch job to this repository — it is not there yet.
 
 1. Read the batch rule first: .omp/rules/backend-batch.md — the job/registry/seed-row chain it
