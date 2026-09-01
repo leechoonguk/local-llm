@@ -57,7 +57,9 @@ const PATTERN_OK: Record<string, RegExp> = {
 const FAS_ONLY_TARGETS = new Set(["commit", "push"]);
 
 const EXCLUDES = [".git", "node_modules", ".venv", "__pycache__", ".pytest_cache",
-  ".ruff_cache", "dist", "state", "slides.html", ".DS_Store", ".coverage"];
+  ".ruff_cache", "dist", "state", "slides.html", ".DS_Store", ".coverage",
+  // tsc 증분 캐시 — 빌드마다 달라지는 생성물이라 싱크 대상이 아니다(2026-09-01, 셀 잔재로 오탐 1회)
+  "tsconfig.tsbuildinfo"];
 
 export const notes: string[] = [];
 
