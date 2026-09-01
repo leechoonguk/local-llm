@@ -31,16 +31,17 @@ if [ "${1:-}" != "--restart" ] && alive && app_managed; then
   exit 0
 fi
 
-echo "omlx: 교정 — 기존 서버 stop → 앱 확인 → 앱 경유 start"
-"$SHUTTLE" stop >/dev/null 2>&1; sleep 2
-pgrep -x oMLX >/dev/null || { open -a oMLX; sleep 3; }
-"$SHUTTLE" start >/dev/null 2>&1
-for _ in $(seq 1 15); do alive && break; sleep 2; done
+echo "omlx: 교정 — 서버·앱 재시작(auto_start_on_launch=true 로 앱이 자식 서버를 띄운다)"
+"$SHUTTLE" stop >/dev/null 2>&1; sleep 1
+pkill -f omlx-server 2>/dev/null; sleep 1   # 셔틀이 모르는 고아까지(실측: stop 이 못 잡은 고아 1건)
+APP_PID=$(pgrep -f "oMLX.app/Contents/MacOS/oMLX" | head -1)
+[ -n "$APP_PID" ] && { kill -TERM "$APP_PID" 2>/dev/null; sleep 3; }
+open -a oMLX
+for _ in $(seq 1 20); do alive && break; sleep 2; done
 
 alive || { echo "omlx: 서버가 :9090 에 안 뜬다 — oMLX.app 메뉴바에서 Start 후 재실행" >&2; exit 1; }
 if ! app_managed; then
-  echo "omlx: 서버가 여전히 앱 소유가 아니다(고아) — 셔틀 start 도 앱 밖에 띄운다는 뜻이다." >&2
-  echo "omlx: oMLX.app 메뉴바에서 직접 Start 하라(앱 자식으로 뜨는 유일한 확인된 경로), 그 뒤 이 스크립트로 재검증." >&2
+  echo "omlx: 서버가 여전히 앱 소유가 아니다 — ~/.omlx/settings.json 의 server.auto_start_on_launch 가 true 인지 확인하고(check-autostart 가 검사), 앱을 재시작하라." >&2
   exit 1
 fi
 echo "omlx: 앱 소유 서버 가동(검증 완료)"

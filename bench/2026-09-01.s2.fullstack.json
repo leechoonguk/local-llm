@@ -1,0 +1,67 @@
+[
+ {
+  "at": "2026-08-31T23:44:25.320Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit",
+  "task": "integration",
+  "shape": "greenfield",
+  "wall_s": 1682,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.5-4B-4bit",
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 6,
+  "expected": 6,
+  "files": [
+   "M sandbox/backend/tests/core/test_integration_external_api.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/integration.search-barcode-linked-product.http",
+   "?? sandbox/backend/alembic/versions/78_seed_barcode_linked_product_integration_operation.py",
+   "?? sandbox/backend/alembic/versions/79_seed_barcode_linked_product_integration_field.py",
+   "?? sandbox/backend/tests/core/fixtures/integration/search-barcode-linked-product.json",
+   "?? sandbox/backend/tests/core/fixtures/integration/search-barcode-linked-product.refused.json"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [
+   "api/integration.search-barcode-linked-product.http",
+   "backend/alembic/versions/78_seed_barcode_linked_product_integration_operation.py",
+   "backend/alembic/versions/79_seed_barcode_linked_product_integration_field.py",
+   "backend/tests/core/fixtures/integration/search-barcode-linked-product.json"
+  ],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-08-31T23-45-13-293Z_01a05a36-744d-776a-ba3a-538080f43df2.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 38,
+  "tools": {
+   "read": 40,
+   "glob": 8,
+   "write": 20,
+   "bash": 31,
+   "edit": 18,
+   "grep": 4
+  },
+  "gate_runs": 5,
+  "first_full_gate_s": 1246,
+  "advisory_skips": 0,
+  "piped_gates": 3,
+  "first_green_s": 1253,
+  "no_work": false
+ }
+]

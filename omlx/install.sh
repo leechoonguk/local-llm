@@ -74,7 +74,7 @@ import json, os
 p = os.path.expanduser('~/.omlx/settings.json')
 d = json.load(open(p)) if os.path.exists(p) else {}
 d.setdefault('server', {})['port'] = 9090
-d['server']['auto_start_on_launch'] = False   # 자동 시작 끔 - 서버는 앱 메뉴바 Start 로만 띄운다(omlx start=brew services=금지)
+d['server']['auto_start_on_launch'] = True    # 서버 수명=앱 수명(2026-09-01 반전) - 셔틀 start 는 고아를 띄우므로 앱 재시작이 앱 자식 서버의 유일 경로다. 로그인 자동 기동(로그인 항목)은 여전히 금지
 d.setdefault('memory', {})['memory_guard_tier'] = 'safe'
 import subprocess
 _ram_gb = int(subprocess.run(['sysctl','-n','hw.memsize'], capture_output=True, text=True).stdout.strip() or 0) // (1024**3)

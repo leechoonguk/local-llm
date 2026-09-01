@@ -5,14 +5,14 @@
  *  레포 쪽(항상):
  *  - ollama/com.ollama.serve.plist.template: RunAtLoad·KeepAlive 가 false. oMLX 는 LaunchAgent 를 두지 않는다(GUI 앱이 서버 관리)
  *  - ollama/install.sh, omlx/install.sh: `brew services start|restart|run` 없음. omlx/install.sh 는
- *    settings.json 의 auto_start_on_launch 를 False 로 쓴다
+ *    settings.json 의 auto_start_on_launch 를 True 로 쓴다(서버 수명=앱 수명 — 앱 자식 서버의 유일 보장 경로, 2026-09-01 반전)
  *  라이브 쪽(미설치는 skip):
  *  - `brew services list` 에서 ollama·omlx 가 started/scheduled 가 아니다
  *  - ~/Library/LaunchAgents 에 homebrew.mxcl.(ollama|omlx).plist, 예전 com.local-llm.omlx.plist 가 없고,
  *    com.ollama.serve.plist 는 RunAtLoad·KeepAlive 가 false 이거나 launchctl 에서 disabled 다
  *  - /Library/LaunchAgents, /Library/LaunchDaemons 에 ollama/omlx 항목이 없다
  *  - 로그인 항목(System Events)에 Ollama/oMLX 앱이 없다(권한이 없으면 skip)
- *  - ~/.omlx/settings.json server.auto_start_on_launch === false (키가 없으면 oMLX 기본값 true → 위반)
+ *  - ~/.omlx/settings.json server.auto_start_on_launch === true — 2026-09-01 반전: 셔틀 start/restart 는 앱 밖 고아 서버(PPID 1)를 띄운다는 실측으로, 앱 재시작이 앱 자식 서버의 유일 경로가 됐다. 로그인 자동 기동 금지(로그인 항목·LaunchAgent)는 그대로다
  */
 import { execFileSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -41,7 +41,7 @@ function checkRepo(root: string): Issue[] {
     for (const m of t.matchAll(/^[^#\n]*\bbrew\s+services\s+(start|restart|run)\b.*$/gm)) issues.push(`${rel}: '${m[0].trim()}' — brew services 로 띄우지 않는다(KeepAlive/RunAtLoad true)`);
   }
   const omlx = read(root, "omlx/install.sh") ?? "";
-  if (!/\['auto_start_on_launch'\]\s*=\s*False/.test(omlx)) issues.push("omlx/install.sh: settings.json 의 server.auto_start_on_launch 를 False 로 쓰지 않는다");
+  if (!/\['auto_start_on_launch'\]\s*=\s*True/.test(omlx)) issues.push("omlx/install.sh: settings.json 의 server.auto_start_on_launch 를 True 로 쓰지 않는다(앱 자식 서버 보장 — 2026-09-01 반전)");
   return issues;
 }
 
@@ -95,7 +95,7 @@ function checkLive(): Issue[] {
   if (existsSync(sp)) {
     try {
       const s = JSON.parse(readFileSync(sp, "utf-8")) as { server?: { auto_start_on_launch?: unknown } };
-      if (s.server?.auto_start_on_launch !== false) issues.push(`${sp}: server.auto_start_on_launch = ${JSON.stringify(s.server?.auto_start_on_launch ?? "없음(기본 true)")} — false 여야 한다(omlx/install.sh 가 쓴다, 또는 admin 설정)`);
+      if (s.server?.auto_start_on_launch !== true) issues.push(`${sp}: server.auto_start_on_launch = ${JSON.stringify(s.server?.auto_start_on_launch ?? "없음")} — true 여야 한다(서버 수명=앱 수명, 앱 자식 서버의 유일 보장 경로 — 2026-09-01 반전. 로그인 자동 기동 금지는 별개로 유지)`);
     } catch (e) { issues.push(`${sp}: JSON 파싱 실패 — ${(e as Error).message}`); }
   } else notes.push("oMLX: ~/.omlx/settings.json 없음 — 건너뜀");
   return issues;
