@@ -8,7 +8,7 @@ import { frontendSrc, readSources } from "../lib/frontend-source.ts";
 import { existsSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { basename, join } from "node:path";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-Code Post Hook
@@ -28,9 +28,6 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 /** Files the entry point cannot be assembled without. */
 const REQUIRED_FILES = ["main.tsx", "App.tsx", "styles.css"];

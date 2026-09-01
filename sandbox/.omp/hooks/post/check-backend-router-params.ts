@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
 /**
  * Check-Backend-Router-Params Post Hook
@@ -39,14 +40,9 @@ declare const process: {
 // Constants
 // ============================================================
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 const routerDir = join(projectRoot, "backend", "app", "routers");
 const queryModule = join(projectRoot, "backend", "app", "dependencies", "query.py");
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 /**
  * `@router.<method>("<path>", …)`, any further decorators, then the signature.
@@ -117,7 +113,6 @@ export default function checkBackendRouterParams(pi: ExtensionAPI): void {
 export function checkBackendRouterParamsSync(): string[] {
   const issues: string[] = [];
   if (!existsSync(routerDir)) return issues;
-
 
   for (const file of readdirSync(routerDir).sort()) {
     if (!file.endsWith(".py") || file === "__init__.py") continue;

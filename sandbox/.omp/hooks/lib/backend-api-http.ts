@@ -3,6 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { isMounted } from "./backend-domain-layers.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 import {
   listIntegrationCallerInputs,
   listIntegrationOperations,
@@ -36,8 +37,7 @@ import {
  * Pure validation — no ast-grep, no side effects.
  */
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 /** Public endpoints that legitimately carry no Authorization header. */
 const PUBLIC_REQUESTS = [
@@ -671,8 +671,31 @@ function checkStructure(
   if (sections.length === 0) {
     issues.push(`${name}.http: request blocks must open with "### N. <title>" sections`);
   } else {
+    // Duplicated blocks come first (measured 2026-09-01: after a stale full
+    // rewrite plus partial edits, the same section run appeared twice; the
+    // out-of-sequence cascade below then reads as "fix the numbers" and drove
+    // a renumbering loop). A number or title seen twice means a repeated
+    // block, not a numbering mistake — say so, and silence the cascade.
+    const seenNumbers = new Set<number>();
+    const seenTitles = new Set<string>();
+    const duplicated: string[] = [];
+    for (const section of sections) {
+      const titleKey = section.title.trim();
+      if (seenNumbers.has(section.number) || seenTitles.has(titleKey)) {
+        duplicated.push(`"${section.number}. ${section.title}"`);
+      }
+      seenNumbers.add(section.number);
+      seenTitles.add(titleKey);
+    }
+    if (duplicated.length > 0) {
+      issues.push(
+        `${name}.http: duplicated section block(s): ${duplicated.join(", ")} — ` +
+          "the file contains a repeated run of sections (typically a full rewrite " +
+          "followed by stale partial edits). Delete the duplicate block(s); do NOT renumber",
+      );
+    }
     sections.forEach((section, position) => {
-      if (section.number !== position + 1) {
+      if (duplicated.length === 0 && section.number !== position + 1) {
         issues.push(
           `${name}.http: section "${section.number}. ${section.title}" is out of sequence — ` +
             `expected ${position + 1} (sections are numbered 1..n in run order)`,
@@ -1287,9 +1310,43 @@ function splitBlocks(
 
 function isPublicRequest(request: HttpRequest): boolean {
   const path = request.path.replace(/\/$/, "");
-  return PUBLIC_REQUESTS.some(
-    (open) => open.method === request.method && path === open.path.replace(/\/$/, ""),
+  return (
+    PUBLIC_REQUESTS.some(
+      (open) => open.method === request.method && path === open.path.replace(/\/$/, ""),
+    ) ||
+    listCookieAuthenticatedRequests().some(
+      (open) => open.method === request.method && path === open.path.replace(/\/$/, ""),
+    )
   );
+}
+
+/**
+ * 쿠키가 자격증명인 엔드포인트 — 라우터 서명에서 도출한다(도메인 명명 금지,
+ * omp-hooks.md "Measure The Domain"). `RefreshCookieDep` 를 받는 핸들러는 Bearer
+ * 헤더 없이 부르는 것이 계약이다: 액세스 토큰이 없어서 부르는 요청이라, Bearer 를
+ * 요구하면 갱신이 불필요할 때만 가능해진다.
+ */
+let cookieAuthCache: { method: string; path: string }[] | null = null;
+function listCookieAuthenticatedRequests(): { method: string; path: string }[] {
+  if (cookieAuthCache !== null) return cookieAuthCache;
+  const out: { method: string; path: string }[] = [];
+  const routerDir = join(projectRoot, "backend", "app", "routers");
+  if (existsSync(routerDir)) {
+    for (const file of readdirSync(routerDir)) {
+      if (!file.endsWith(".py")) continue;
+      const src = readFileSync(join(routerDir, file), "utf-8");
+      const prefix = /APIRouter\([^)]*prefix="([^"]+)"/.exec(src)?.[1] ?? "";
+      const handlers = src.matchAll(
+        /@router\.(get|post|put|patch|delete)\("([^"]*)"[^)]*\)\s*\nasync def \w+\(([\s\S]*?)\)\s*->/g,
+      );
+      for (const handler of handlers) {
+        if (!handler[3].includes("RefreshCookieDep")) continue;
+        out.push({ method: handler[1].toUpperCase(), path: `${prefix}${handler[2]}` });
+      }
+    }
+  }
+  cookieAuthCache = out;
+  return out;
 }
 
 /**

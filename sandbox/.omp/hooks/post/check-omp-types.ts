@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS_NO_BASH as MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Omp-Types Post Hook
@@ -35,10 +35,6 @@ let lastRunAt = 0;
 let lastRunFailed = false;
 
 const MAX_REPORTED = 3;
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 export default function checkOmpTypes(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: { type: string; text?: string }[] }) => guarded("check-omp-types", event, () => {

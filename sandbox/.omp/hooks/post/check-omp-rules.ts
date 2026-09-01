@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Omp-Rules Post Hook
@@ -40,10 +40,6 @@ const rulesDir = join(ompDir, "rules");
  * Read-only tools never change files — running the check after them wastes
  * context. Only run after tools that can modify the workspace.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
 
 /** Keep the always-apply set tiny: each such rule injects full content every session. */
 const MAX_ALWAYS_APPLY = 2;
@@ -354,6 +350,21 @@ function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown
     );
   } else {
     issues.push(...checkTriggerScopeIsClean(file, String(condition), scope));
+    // 편집 툴 스왑 내성(2026-09-01): tool:edit(G) 만 적힌 스코프는 플러그인이 편집 툴을
+    // 갈아끼우는 순간 죽은 규칙이 된다 — 같은 글롭의 replace/insert 페어를 기계로 요구한다.
+    for (const part of scope.split(",").map((x) => x.trim())) {
+      const g = /^tool:edit\((.+)\)$/.exec(part);
+      if (g === null) continue;
+      for (const sibling of ["replace", "insert"]) {
+        if (!scope.includes(`tool:${sibling}(${g[1]})`)) {
+          issues.push(
+            `${file}: scope has tool:edit(${g[1]}) without tool:${sibling}(${g[1]}) — ` +
+              "a scope naming only the builtin edit goes dead when a plugin swaps the edit toolset " +
+              "(omp-conventions.md, code triggers)",
+          );
+        }
+      }
+    }
   }
   if (fm["interruptMode"] === undefined) {
     issues.push(

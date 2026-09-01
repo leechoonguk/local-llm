@@ -61,9 +61,9 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 // @ts-expect-error - Node builtin, not project-compiled
 import { join } from "node:path";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 const hooksDir = join(projectRoot, ".omp", "hooks");
 
 /** The directories whose `.ts` files are hooks or the libs hooks delegate to. */

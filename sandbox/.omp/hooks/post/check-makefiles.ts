@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Makefiles Post Hook
@@ -37,17 +37,12 @@ const rulesDir = join(ompDir, "rules");
  * Read-only tools never change files — running the check after them wastes
  * context. Only run after tools that can modify the workspace.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
 
 const makefileRules: Array<{ ruleFile: string; makefilePath: string; label: string }> = [
   { ruleFile: "backend-makefile.md", makefilePath: "backend/Makefile", label: "backend" },
   { ruleFile: "frontend-makefile.md", makefilePath: "frontend/Makefile", label: "frontend" },
   { ruleFile: "root-makefile.md", makefilePath: "Makefile", label: "root" },
 ];
-
 
 /**
  * 하네스 텍스트가 부르는 `make <target>` 은 실재해야 한다 (2026-09-01).

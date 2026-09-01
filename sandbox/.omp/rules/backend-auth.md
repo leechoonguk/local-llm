@@ -20,20 +20,34 @@ JWT-based auth (FastAPI OAuth2 password flow):
   verifies against `user.hashed_password` (pwdlib argon2) → returns
   `{access_token, token_type: "bearer"}`
 - `GET /auth/me` — returns the current user from the Bearer token
+- `POST /auth/refresh` — spends the httpOnly session cookie
+  (`RefreshCookieDep`) for a new access token; rotates the cookie so a stolen
+  copy is usable at most once, and a token presented twice revokes the user's
+  every live session (theft signature)
+- `POST /auth/logout` — revokes the cookie's token server-side and clears the
+  cookie; idempotent, works with an expired access token
 - `dependencies/auth.py` — `oauth2_scheme` (`OAuth2PasswordBearer`),
   `get_current_user` (decodes JWT `sub` = user id, loads the user,
-  `expunge` + `rollback` to release the read transaction), `CurrentUserDep`
+  `expunge` + `rollback` to release the read transaction), `CurrentUserDep`,
+  `RefreshCookieDep` + `set_refresh_cookie`/`clear_refresh_cookie` (httpOnly
+  session cookie; `Secure` comes from `settings.cookie_secure`, never from an
+  `env` branch)
 - `core/security.py` — `hash_password`/`verify_password` (pwdlib),
   `create_access_token`/`decode_access_token` (PyJWT, HS256)
 - Settings: `SECRET_KEY`, `ACCESS_TOKEN_EXPIRE_MINUTES` (default 30),
-  `ALGORITHM` (default HS256) in `backend/.env` + `settings.py`
+  `REFRESH_TOKEN_EXPIRE_DAYS` (default 14), `COOKIE_SECURE` (default true —
+  local http dev opts out), `ALGORITHM` (default HS256) in `backend/.env` +
+  `settings.py`
 - Protected routers inject `current_user: CurrentUserDep` and use
   `current_user.username` for `created_by`/`updated_by` — never `"system"`
 
 ## Endpoint Auth Policy
 
 **All endpoints require authentication** — only `POST /auth/login`,
-`POST /user/` (signup), and `GET /health` (readiness) are public.
+`POST /user/` (signup), and `GET /health` (readiness) are public, and the
+session pair `POST /auth/refresh` / `POST /auth/logout` authenticates by the
+refresh cookie (`RefreshCookieDep`) instead of the Bearer token — it exists
+precisely for clients whose access token is gone.
 Machine-checked by `router/auth-all.yml`.
 
 | Endpoint | Auth | Rule |
@@ -41,6 +55,7 @@ Machine-checked by `router/auth-all.yml`.
 | `POST /auth/login` | public | `auth-all.yml` exception |
 | `POST /user/` (signup) | public | `auth-all.yml` exception |
 | `GET /health` (readiness) | public | `auth-all.yml` exception |
+| `POST /auth/refresh`, `POST /auth/logout` | `refresh_token: RefreshCookieDep` (cookie) | `auth-all.yml` cookie pair |
 | all other endpoints | `current_user: CurrentUserDep` | `auth-all.yml` |
 | `PUT`/`PATCH`/`DELETE` | `current_user: CurrentUserDep` | `write-auth.yml` |
 | `current_user` outside routers | forbidden | `conventions/current-user-router-only.yml`

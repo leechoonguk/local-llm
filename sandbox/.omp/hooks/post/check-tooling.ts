@@ -6,7 +6,8 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
 /**
  * Check-Tooling Post Hook
@@ -38,11 +39,7 @@ declare const process: {
 // ============================================================
 
 const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
+const projectRoot = resolveProjectRoot();
 
 /** Python is the application's language; it is never the harness's. */
 const PYTHON_ROOTS = ["backend/app/", "backend/tests/", "backend/alembic/"];

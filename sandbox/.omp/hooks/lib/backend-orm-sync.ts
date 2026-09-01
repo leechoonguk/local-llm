@@ -4,6 +4,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error — Node builtin, not project-compiled
 import { spawnSync } from "node:child_process";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
 /**
  * ORM ↔ DB sync check — alembic check (backend-migrations.md).
@@ -17,8 +18,7 @@ import { spawnSync } from "node:child_process";
  * orchestrator.
  */
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 /** Last schema fingerprint and its verdict — reused until a model or migration changes. */
 let lastFingerprint = "";

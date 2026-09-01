@@ -10,7 +10,7 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint, ruleForHook } from "../lib/hook-rule-hint.ts";
 import { checkHookDomainLiterals } from "../lib/hook-domain-literals.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 declare const process: {
   argv: string[];
@@ -56,9 +56,6 @@ const syntaxCache = new Map<string, string>();
  * Read-only tools never change files — running the check after them wastes
  * context. Only run after tools that can modify the workspace.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 /**
  * The scopes a hook name can carry, and the top-level path each governs.
@@ -864,7 +861,6 @@ function checkHarnessGuardrails(): string[] {
 
   return issues;
 }
-
 
 /**
  * Verifies hook name ↔ path scope consistency per omp-naming-consistency.md:

@@ -5,6 +5,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { listIntegrationOperations } from "./backend-migration-policy.ts";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
 /**
  * Runtime proof of the api/*.http standard (backend-api-http.md).
@@ -39,8 +40,7 @@ declare function fetch(url: string, init?: unknown): Promise<{
 // Constants
 // ============================================================
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 const apiDir = join(projectRoot, "api");
 
 const REQUEST_LINE = /^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)\s*$/;

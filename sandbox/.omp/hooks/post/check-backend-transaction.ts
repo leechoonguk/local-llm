@@ -9,7 +9,8 @@ import { runAstRules } from "../lib/ast-rules.ts";
 import { aggregateDomains, belongsToAggregateDomain } from "../lib/backend-domain-structure.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
 /**
  * Check-Backend-Transaction Post Hook
@@ -20,13 +21,7 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
+const projectRoot = resolveProjectRoot();
 
 export default function checkBackendTransaction(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-transaction", event, () => {

@@ -4,7 +4,7 @@ import { guarded } from "../lib/hook-visibility.ts";
 import { checkModelFilesSync } from "../lib/backend-model-files.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Backend-Model-Files Post Hook
@@ -15,9 +15,6 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 export default function checkBackendModelFiles(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-model-files", event, () => {

@@ -32,7 +32,7 @@ import {
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-Contract Post Hook
@@ -52,13 +52,9 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 /** Keys the uniform error body always carries (`app/core/exceptions.py`). */
 const ERROR_BODY_KEYS = ["detail", "code", "request_id"];
-
 
 /**
  * Routes no browser calls, each with the reason it exists.
@@ -117,7 +113,6 @@ function auditFields(): string[] {
   const columns = [...mixin[1].matchAll(/^ {4}(\w+):\s*Mapped\[/gm)].map((m) => m[1]);
   return ["id", ...columns];
 }
-
 
 export function checkFrontendContractSync(): string[] {
   const issues: string[] = [];

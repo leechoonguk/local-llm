@@ -9,9 +9,15 @@ rule:
   not:
     any:
       - regex: "current_user: CurrentUserDep"
+      # 쿠키가 곧 자격증명인 세션 쌍 — 액세스 토큰이 없어서 부르는 엔드포인트라
+      # CurrentUserDep 를 요구하면 갱신이 불필요할 때만 가능해진다. 반드시
+      # RefreshCookieDep 를 받아야 이 예외에 든다.
+      - all:
+          - regex: "async def (refresh|logout)\\("
+          - regex: "refresh_token: RefreshCookieDep"
       - regex: "async def login\\("
       - regex: "async def create_user\\("
       - all:
           - regex: "@router\\.get\\(\"\"\\)"
           - regex: "async def health\\("
-message: "all endpoints must require authentication (current_user: CurrentUserDep) — only POST /auth/login, POST /user/, and GET /health are public"
+message: "all endpoints must require authentication (current_user: CurrentUserDep) — public: POST /auth/login, POST /user/, GET /health; cookie-authenticated: POST /auth/refresh, POST /auth/logout (RefreshCookieDep required)"

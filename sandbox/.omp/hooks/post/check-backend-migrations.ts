@@ -10,7 +10,7 @@ import { dormant, passLine } from "../lib/hook-dormancy.ts";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Backend-Migrations Post Hook
@@ -22,10 +22,6 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 export default function checkBackendMigrations(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: {

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 declare const process: {
   argv: string[];
@@ -29,10 +29,6 @@ const catalogPath = join(cwd, ".omp", "rules", "omp-skills.md");
 const CATALOG_HEADER = "| Skill | Trigger | Verification | Lifecycle (project metadata) |";
 
 /** Read-only tools never change skills or their catalog. */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
 
 interface CatalogRow {
   trigger: string;

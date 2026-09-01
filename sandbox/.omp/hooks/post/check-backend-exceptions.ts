@@ -9,7 +9,8 @@ import { checkBackendExceptions } from "../lib/backend-exceptions.ts";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
 /**
  * Check-Backend-Exceptions Post Hook
@@ -38,12 +39,7 @@ declare const process: {
 // Constants
 // ============================================================
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
+const projectRoot = resolveProjectRoot();
 
 // ============================================================
 // Functions

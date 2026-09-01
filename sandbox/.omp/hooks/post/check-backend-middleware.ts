@@ -15,17 +15,12 @@ import { runAstRules } from "../lib/ast-rules.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 const mainPath = join(projectRoot, "backend", "app", "main.py");
 const appDir = join(projectRoot, "backend", "app");
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
 
 export default function checkBackendMiddleware(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-middleware", event, () => {

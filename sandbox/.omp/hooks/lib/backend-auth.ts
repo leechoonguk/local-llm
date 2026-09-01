@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
 /**
  * Domain auth checks — JWT auth + domain exception patterns (backend-auth.md).
@@ -14,8 +15,7 @@ import { join } from "node:path";
  * check-backend-domain orchestrator.
  */
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 export function checkDomainAuth(): string[] {
   const issues: string[] = [];

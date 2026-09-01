@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
 /**
  * Domain structure checks — 5-layer CRUD pattern (backend-domain.md).
@@ -15,8 +16,7 @@ import { join } from "node:path";
  * check-backend-domain orchestrator.
  */
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 /**
  * Under asyncio there is no safe lazy default: a relationship touched outside a

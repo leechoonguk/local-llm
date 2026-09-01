@@ -17,7 +17,7 @@ import { touchesPath } from "../lib/hook-scope.ts";
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-API-Layer Post Hook
@@ -37,9 +37,6 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 /** Only the client may build a transport or call the platform directly. */
 const TRANSPORT_OWNER = "frontend/src/lib/api/client.ts";
@@ -86,7 +83,6 @@ function urlLiteralPattern(): RegExp {
   const segments = [...routerPathSegments(projectRoot)].sort();
   return new RegExp(`['"\`]/(?:${segments.join("|")})[/'"\`]`);
 }
-
 
 export function checkFrontendApiLayerSync(): string[] {
   const issues: string[] = [];

@@ -29,7 +29,8 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot, WALK_EXCLUDES } from "../lib/hook-project-root.ts";
 
 declare const process: {
   argv: string[];
@@ -41,12 +42,7 @@ declare const process: {
 // Constants
 // ============================================================
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
-
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
+const projectRoot = resolveProjectRoot();
 
 /** Banner vocabulary, in the order the sections must appear. */
 const BANNER_ORDER = [
@@ -519,7 +515,7 @@ function walk(dir: string, extensions: string[], recursive = true): string[] {
   if (!existsSync(dir) || !statSync(dir).isDirectory()) return [];
   const found: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (entry.name === "__pycache__" || entry.name === "node_modules" || entry.name === "dist") {
+    if (WALK_EXCLUDES.has(entry.name)) {
       continue;
     }
     const path = join(dir, entry.name);

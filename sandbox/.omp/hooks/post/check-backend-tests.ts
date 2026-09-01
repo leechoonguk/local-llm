@@ -29,10 +29,10 @@ import { hasLayer } from "../lib/backend-domain-layers.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 const testsDir = join(projectRoot, "backend", "tests");
 const apiDir = join(testsDir, "api");
 const batchTestDir = join(testsDir, "batch");
@@ -55,15 +55,10 @@ const servicesDir = join(projectRoot, "backend", "app", "services");
 // 요구 방향(omp-hooks.md): 테스트는 라우터가 선 뒤에 owed 다. 완성의 정의는 한 곳에서 온다.
 const API_VERSION_PREFIX = "(?:/api/v\\d+)?";
 
-
 /**
  * Read-only tools never change files — running the check after them wastes
  * context. Only run after tools that can modify the workspace.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
 
 /** The 10 standard API cases every CRUD domain test file must cover. */
 // 케이스마다 그것을 owed 로 만드는 라우터 메서드를 적는다(요구 방향, 2026-08-30 감사).
@@ -441,7 +436,6 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-t
   console.log(`    ${issues.length} issue(s) found`);
   process.exit(1);
 }
-
 
 /**
  * `integration/secret.py` → `integration/test_secret.py`: the test tree mirrors

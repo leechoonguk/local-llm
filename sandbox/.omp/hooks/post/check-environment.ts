@@ -7,7 +7,8 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { runAstRules } from "../lib/ast-rules.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { resolveProjectRoot } from "../lib/hook-project-root.ts";
 
 /**
  * Check-Environment Post Hook
@@ -29,18 +30,13 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  * This is a read-only check — it does NOT block tool calls.
  * Log issues for the user to address.
  */
-const cwd = process.cwd();
 // Adjust cwd to project root if running from backend/
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 /**
  * Read-only tools never change files — running the check after them wastes
  * context. Only run after tools that can modify the workspace.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
-
 
 /** Required variables per environment.md. */
 const REQUIRED_VARS = ["ENV", "DATABASE_URL", "ADMIN_EMAIL", "ITEMS_PER_USER", "APP_NAME"];

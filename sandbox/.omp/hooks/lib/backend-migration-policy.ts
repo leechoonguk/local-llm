@@ -16,9 +16,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 // @ts-expect-error — Node builtin, not project-compiled
 import { spawnSync } from "node:child_process";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 /** Migrations live in one place; the git queries below are scoped to it. */
 const MIGRATIONS_PATH = "backend/alembic/versions";

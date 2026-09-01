@@ -2,6 +2,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
 /**
  * Domain naming checks — module-private functions, conftest registration
@@ -15,8 +16,7 @@ import { join } from "node:path";
  * check-backend-domain orchestrator.
  */
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 
 export function checkDomainNaming(): string[] {
   const issues: string[] = [];

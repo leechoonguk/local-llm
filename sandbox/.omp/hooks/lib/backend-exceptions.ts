@@ -2,6 +2,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { resolveProjectRoot } from "./hook-project-root.ts";
 
 /**
  * Core exception policy — cross-file half (backend-exceptions.md).
@@ -22,8 +23,7 @@ import { join } from "node:path";
  * Pure validation — no side effects.
  */
 
-const cwd = process.cwd();
-const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
+const projectRoot = resolveProjectRoot();
 const appDir = join(projectRoot, "backend", "app");
 const exceptionsModule = join(appDir, "core", "exceptions.py");
 

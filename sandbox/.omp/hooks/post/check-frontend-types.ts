@@ -23,7 +23,7 @@ import { touchesPath } from "../lib/hook-scope.ts";
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
-import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-Types Post Hook
@@ -50,9 +50,6 @@ import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
  *
  * This is a read-only check — it does NOT block tool calls.
  */
-const MUTATING_TOOLS = new Set([
-  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
-]);
 
 const RESPONSE_SUFFIX = "ReadResponse";
 
@@ -224,7 +221,6 @@ function compareField(context: {
   return issues;
 }
 
-
 /** A query parameter the router reads must exist as a field of a params type. */
 function checkQueryParams(sharedTs: string): string[] {
   const issues: string[] = [];
@@ -254,8 +250,6 @@ function checkQueryParams(sharedTs: string): string[] {
   }
   return issues;
 }
-
-
 
 /** `UserReadResponse` → `User`; a request model keeps its own name. */
 function modelToInterface(model: string): string | null {
