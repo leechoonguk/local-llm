@@ -56,8 +56,10 @@ if (cellRunning && harnessDirty !== "") {
 
 // 2. 하네스와 피험자 트리가 **같은 커밋에** 스테이징돼 있는가.
 // 피험자 트리 단독 변경은 정상 작업이다(기준선 조정 등) — 문제는 섞이는 것이다.
-const stagedSubject = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/backend", "sandbox/api"]).trim();
-const stagedHarness = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/.omp"]).trim();
+// 하네스 = sandbox/.omp 만이 아니다 — d1741c4 사고는 .claude 변경과 피험자 산출물의 혼합이었다
+// (2026-09-01). 피험자 쪽도 frontend 를 포함한다(풀스택 과제).
+const stagedSubject = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/backend", "sandbox/api", "sandbox/frontend/src"]).trim();
+const stagedHarness = sh("git", ["diff", "--cached", "--name-only", "--", "sandbox/.omp", ".claude"]).trim();
 const staged = stagedSubject !== "" && stagedHarness !== "" ? stagedSubject : "";
 if (staged !== "") {
   issues.push(
@@ -81,9 +83,11 @@ for (const line of log === "" ? [] : log.split("\n")) {
   // 더한다 — 경로 휴리스틱은 그걸 사고로 읽었다. 사고였던 notice 커밋은 그때의 과제 정답을
   // 담았었다: 판정은 reference/*.manifest.json 의 added 목록과의 교집합으로 한다.
   const artifactAdded = added.filter((f) => taskAnswers().has(f.replace(/^sandbox\//, "")));
-  // 이미 지나간 커밋을 영구히 빨갛게 두지 않는다 — 문제는 커밋 자체가 아니라 **그 산출물이 지금도
-  // 트리에 남아 있는 것**이다(그 상태에서 셀을 띄우면 과제가 절반 끝나 있다). 남아 있을 때만 막는다.
-  const stillPresent = artifactAdded.filter((f) => existsSync(join(ROOT, f)));
+  // 이미 지나간 커밋을 영구히 빨갛게 두지 않는다 — 문제는 커밋 자체가 아니라 **그 산출물이
+  // 기준선(HEAD)에 남아 있는 것**이다. 워크트리 존재로 판정하면 도는 셀의 정상 산출물(같은
+  // 경로!)을 사고 잔재로 오독한다(2026-09-01 실측: 되돌림 커밋 후에도 셀 파일 때문에 빨강).
+  const inHead = new Set(sh("git", ["ls-tree", "-r", "--name-only", "HEAD", "--", "sandbox"]).split("\n"));
+  const stillPresent = artifactAdded.filter((f) => inHead.has(f));
   if (touchesHarness && stillPresent.length > 0) {
     issues.push(
       `커밋 ${hash.slice(0, 7)} 이 하네스 수정과 함께 진행 중이던 과제 산출물을 새로 담았다 — "${rest.join(" ").slice(0, 50)}" (${stillPresent.slice(0, 3).join(", ")}${stillPresent.length > 3 ? " 외" : ""}). ` +

@@ -1,0 +1,8 @@
+#!/bin/sh
+# 커밋 관문 (2026-09-01): 스테이징 혼합 사고를 커밋 전에 막는다.
+# 근거 실측 2회 — 6d4edaf 와 d1741c4 모두 `git add -A` 가 도는 셀의 산출물을 삼켰고,
+# add+commit 이 원자적이라 verify 가 낄 틈이 없었다. 이 훅이 그 틈이다.
+node "$(git rev-parse --show-toplevel)/.claude/hooks/check-sandbox-harness-edit.ts" || {
+  echo "pre-commit: check-sandbox-harness-edit 빨강 — 커밋 중단. 경로를 좁혀 담아라(git add sandbox/.omp .claude …)" >&2
+  exit 1
+}
