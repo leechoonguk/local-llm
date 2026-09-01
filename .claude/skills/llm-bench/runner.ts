@@ -217,12 +217,8 @@ function ensureServer(): void {
   const code = sh("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", `${OMLX_URL}/v1/models`], WORKSPACE, 5_000).out.trim();
   if (code !== "200") throw new Error(`oMLX 서버가 :9090 에 없다(http=${code}) — oMLX.app 메뉴바에서 Start 후 재실행`);
   // 앱 관리 서버인지(부모가 oMLX.app) — brew/headless 서버면 측정 일관성이 깨지므로 경고.
-  // 판정은 실질로 한다(2026-09-01 정정): 셔틀(`omlx restart`)이 서버를 detach 하면 부모가
-  // launchd(고아)가 되는 게 정상이라, "부모=oMLX.app" 휴리스틱은 셔틀 재시작마다 오탐했다.
-  // 규칙 6 의 실질은 "서비스形 관리(brew services·LaunchAgent) 금지"다 — launchctl 에
-  // com.* 형 omlx 서비스가 있을 때만 경고한다(앱 자체의 application.app.omlx UI 항목은 제외).
-  const svc = sh("bash", ["-c", "launchctl list 2>/dev/null | grep -iE '(com|homebrew)[.a-z]*omlx' || true"], WORKSPACE, 5_000).out.trim();
-  if (svc) console.error(`  !! oMLX 가 launchd 서비스로 관리되고 있다(${svc.slice(0, 60)}) — 규칙 6 위반, 서비스 해제 후 앱/셔틀로 재기동`);
+  const parent = sh("bash", ["-c", "p=$(pgrep -f omlx-server | head -1); [ -n \"$p\" ] && ps -o command= -p $(ps -o ppid= -p $p | tr -d ' ') 2>/dev/null"], WORKSPACE, 5_000).out;
+  if (parent && !/oMLX\.app/.test(parent)) console.error(`  !! oMLX 서버가 앱 관리가 아니다(부모: ${parent.trim().slice(0, 40)}) — 앱 메뉴바 서버로 검증할 것`);
 }
 
 /** omlx/ 접두사를 뗀 서버 모델 id: `omlx/Qwen3.6-35B-A3B-5bit` → `Qwen3.6-35B-A3B-5bit`(bare — 프로파일 suffix 는 2026-08-31 폐지, active_profile 이 서버쪽에서 적용된다). */
