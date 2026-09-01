@@ -1,0 +1,61 @@
+{
+  "why": "One measured page of the 바코드 연계제품정보 service (C005): a barcode filter on one path, and the query string stays empty because the provider ignores it.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3,
+    "barcode": "8801234567890"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "C005": {
+        "total_count": "152",
+        "row": [
+          {
+            "PRDLST_REPORT_NO": "20240001001",
+            "PRMS_DT": "20240115",
+            "END_DT": "",
+            "PRDLST_NM": "오뚜기 진라면",
+            "POG_DAYCNT": "24개월",
+            "PRDLST_DCNM": "즉석식품",
+            "BSSH_NM": "오뚜기주식회사",
+            "INDUTY_NM": "식품제조가공업",
+            "SITE_ADDR": "서울특별시 동작구 남부순환로 230",
+            "CLSBIZ_DT": ""
+          }
+        ],
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/C005/json/1/3/BAR_CD=8801234567890",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "product_report_no": "20240001001",
+        "license_date": "20240115",
+        "revocation_date": "",
+        "product_name": "오뚜기 진라면",
+        "shelf_life": "24개월",
+        "product_type": "즉석식품",
+        "business_name": "오뚜기주식회사",
+        "industry": "식품제조가공업",
+        "location": "서울특별시 동작구 남부순환로 230",
+        "closure_date": ""
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "152"
+    }
+  }
+}

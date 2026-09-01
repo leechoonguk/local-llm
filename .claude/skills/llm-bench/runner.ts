@@ -213,12 +213,14 @@ function unloadOllama(): void {
  * 셀 간 모델 정리는 서버 재시작 대신 oMLX 자체 관리(메모리 가드 LRU 축출)에 맡기고, `residency()` 로 검증한다.
  * (오MLX 는 단일 모델 언로드 API 를 노출하지 않는다 — 2026-08-25 실측: /unload·/eject 404.)
  */
+/**
+ * 셀 시작 관문(2026-09-01): 응답 200 + **앱 소유** 보장. 판정·교정의 정본은
+ * `omlx/ensure-app-server.sh` 하나다 — 모델 다운로드·베이크·스모크도 같은 관문을 쓴다.
+ * 실측: 셔틀 restart 가 고아 서버(PPID 1)를 만들었고 앱 재기동 후에도 그 고아가 서빙했다.
+ */
 function ensureServer(): void {
-  const code = sh("curl", ["-s", "-o", "/dev/null", "-w", "%{http_code}", `${OMLX_URL}/v1/models`], WORKSPACE, 5_000).out.trim();
-  if (code !== "200") throw new Error(`oMLX 서버가 :9090 에 없다(http=${code}) — oMLX.app 메뉴바에서 Start 후 재실행`);
-  // 앱 관리 서버인지(부모가 oMLX.app) — brew/headless 서버면 측정 일관성이 깨지므로 경고.
-  const parent = sh("bash", ["-c", "p=$(pgrep -f omlx-server | head -1); [ -n \"$p\" ] && ps -o command= -p $(ps -o ppid= -p $p | tr -d ' ') 2>/dev/null"], WORKSPACE, 5_000).out;
-  if (parent && !/oMLX\.app/.test(parent)) console.error(`  !! oMLX 서버가 앱 관리가 아니다(부모: ${parent.trim().slice(0, 40)}) — 앱 메뉴바 서버로 검증할 것`);
+  const r = sh("bash", [join(WORKSPACE, "omlx", "ensure-app-server.sh")], WORKSPACE, 90_000);
+  if (r.code !== 0) throw new Error(`oMLX 앱 소유 보장 실패 — 셀을 시작하지 않는다:\n${r.out.trim().slice(0, 300)}`);
 }
 
 /** omlx/ 접두사를 뗀 서버 모델 id: `omlx/Qwen3.6-35B-A3B-5bit` → `Qwen3.6-35B-A3B-5bit`(bare — 프로파일 suffix 는 2026-08-31 폐지, active_profile 이 서버쪽에서 적용된다). */

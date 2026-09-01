@@ -565,6 +565,7 @@ omlx/
   install.sh                       # ~/.omlx 설정 동기화 + 서비스 잔재 정리 + 앱 서버 재시작 (멱등, 앱은 DMG 로 먼저. 모델은 앱 스토어 관리)
   model_settings.json              # 모델별 설정(창/샘플링/MTP/thinking budget) → ~/.omlx/ 로 설치
   model_profiles.json              # 3.6 :coder/:nothink · 3.8-27B :coding 프로파일 → ~/.omlx/ 로 설치
+  ensure-app-server.sh             # 앱 소유 보장 관문 — oMLX 를 만지는 모든 플로우의 첫 단계(고아 서버 방지)
   smoke.sh                         # 베이크 후 검증(서빙·응답·reasoning 분리·MTP 발화·서버가 보는 설정값) — `make smoke`
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치

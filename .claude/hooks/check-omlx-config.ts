@@ -12,6 +12,8 @@
  *    `nothink` 는 enable_thinking false, `mtp` 는 vlm_mtp_enabled true
  *  - install.sh: 모델·드래프터마다 `$HF download …` 또는 앱 스토어 관리 주석에 이름 명기, memory_guard_tier 'safe', 포트 9090
  */
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { type Check, type Issue, isMain, read, runCli } from "./lib/harness.ts";
 
 type Rec = Record<string, unknown>;
@@ -78,6 +80,7 @@ export function run(root: string): Issue[] {
     if (!/\['port'\]\s*=\s*9090/.test(install)) issues.push(`${I}: 포트 9090 설정이 없다`);
     for (const f of ["model_settings.json", "model_profiles.json"]) if (!install.includes(`cp ${f} ~/.omlx/${f}`)) issues.push(`${I}: 'cp ${f} ~/.omlx/${f}' 가 없다`);
   }
+  issues.push(...checkRestartInstructions(root));
   return issues;
 }
 
@@ -106,6 +109,36 @@ function parse(root: string, rel: string, issues: Issue[]): Rec | null {
   const t = read(root, rel);
   if (t === null) { issues.push(`${rel} 가 없다`); return null; }
   try { return JSON.parse(t) as Rec; } catch (e) { issues.push(`${rel}: JSON 파싱 실패 — ${(e as Error).message}`); return null; }
+}
+
+
+/**
+ * oMLX 재기동 지시는 정본 관문(ensure-app-server.sh)이어야 한다 (2026-09-01).
+ * 셔틀 restart 직접 지시가 문서·힌트에 남으면 고아 서버 경로가 재생산된다(실측: PPID 1
+ * 고아가 하루 넘게 서빙). 스킬·훅·CLAUDE.md 에서 bare `omlx restart` 지시를 막는다 —
+ * 고아·실측을 서술하는 줄과 관문 스크립트 자신은 제외.
+ */
+function checkRestartInstructions(root: string): Issue[] {
+  const issues: Issue[] = [];
+  const files: string[] = [join(root, "CLAUDE.md")];
+  const skills = join(root, ".claude", "skills");
+  if (existsSync(skills)) for (const d of readdirSync(skills)) {
+    const f = join(skills, d, "SKILL.md"); if (existsSync(f)) files.push(f);
+  }
+  const hooks = join(root, ".claude", "hooks");
+  if (existsSync(hooks)) for (const f of readdirSync(hooks)) {
+    if (f.endsWith(".ts")) files.push(join(hooks, f));
+  }
+  for (const file of files) {
+    if (file.endsWith("check-omlx-config.ts")) continue; // 이 검사 자신의 설명문
+    readFileSync(file, "utf-8").split("\n").forEach((line, i) => {
+      if (/고아|orphan|실측|만들었|생기는|deny|막지|전면|금지/.test(line)) return; // 금지·실측 서술 줄은 지시가 아니다
+      if (/omlx (restart|start)\b/.test(line) && !line.includes("ensure-app-server")) {
+        issues.push(`${file.replace(root + "/", "")}:${i + 1}: bare \`omlx restart/start\` 지시 — 정본 관문 \`bash omlx/ensure-app-server.sh [--restart]\` 로 바꿔라(고아 서버 방지)`);
+      }
+    });
+  }
+  return issues;
 }
 
 export const check: Check = { name: "check-omlx-config", run };

@@ -20,7 +20,7 @@ make bake     # 복사(omlx settings/profiles, omp models.yml) → 재시작 →
 cp omlx/model_settings.json ~/.omlx/model_settings.json
 cp omlx/model_profiles.json ~/.omlx/model_profiles.json
 cp omp/models.yml "$(omp config path | tail -1)/models.yml"
-~/.omlx/bin/omlx restart
+bash omlx/ensure-app-server.sh --restart
 ```
 `config.yml` 은 **복사하지 않는다** — omp 자신이 쓰는 값(setupVersion, theme, 모델 셀렉터 저장값)이 함께 살기 때문에 `omp/config.fragment.yml` 의 키만 손으로 병합한다(`modelRoles`, `defaultThinkingLevel`, 선택적 `advisor`).
 

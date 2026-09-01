@@ -24,11 +24,11 @@ const cmd = (body: string): RegExp => new RegExp(`${AT}(?:env\\s+(?:\\w+=\\S*\\s
 // 사용자가 에이전트의 모델 다운로드를 명시 허용. brew services·sudo 가드만 남긴다(자동 재시작 금지·권한 안전).
 export const FORBIDDEN: Array<{ re: RegExp; reason: string }> = [
   { re: cmd(String.raw`brew\s+services\s+(?:start|restart|run)\s+(?:\S+/)?(?:ollama|omlx)\b`), reason: "규칙 6: brew services 로 Ollama/oMLX 를 띄우지 않는다(KeepAlive/RunAtLoad true = 자동 재시작). 레포 LaunchAgent 를 launchctl kickstart 로 띄운다 — .claude/rules/autostart.md" },
-  // `omlx start|restart|run|serve|launch` 는 실측(2026-08-25) brew services(homebrew.mxcl.omlx)를 조작하거나
-  // 별도 headless 서버를 띄운다 — 둘 다 GUI 앱(oMLX.app)과 충돌하고 규칙 6 위반. 단 **앱 셔틀**
-  // `~/.omlx/bin/omlx` 는 CLAUDE.md 가 문서화한 제어 경로("omlx start|stop|restart 로 제어")라 예외다
-  // — 2026-08-27 실측: admin `/reload` 는 프로파일 라우트를 떨어뜨려 레지스트리 변경 반영엔 셔틀 재시작이 필요.
-  { re: cmd(String.raw`(?:\S*/)?(?<!\.omlx/bin/)omlx(?:-cli)?\s+(?:start|restart|run|serve|launch)\b`), reason: "oMLX 서버는 GUI 앱(oMLX.app) 또는 앱 셔틀(~/.omlx/bin/omlx)로만 제어한다 — brew omlx-cli 의 start/restart 는 규칙 6 위반이고 앱 서버와 충돌한다. .claude/rules/autostart.md" },
+  // `omlx start|restart|run|serve|launch` 직접 호출은 전면 deny (2026-09-01 승격). 셔틀 예외를
+  // 뒀었으나 실측이 뒤집었다: 셔틀 restart 가 앱 밖 고아 서버(PPID 1)를 만들었고 앱 재기동 뒤에도
+  // 그 고아가 서빙했다. 유일한 정당 경로는 정본 관문 스크립트다(내부에서 stop→앱 확인→start→부모
+  // 검증까지 한다). stop 단독은 무해해서 막지 않는다.
+  { re: cmd(String.raw`(?:\S*/)?omlx(?:-cli)?\s+(?:start|restart|run|serve|launch)\b`), reason: "oMLX 기동/재기동은 정본 관문으로만 — `bash omlx/ensure-app-server.sh [--restart]` (셔틀 직접 restart 는 앱 밖 고아 서버를 만든다는 것이 실측됐다). .claude/rules/autostart.md" },
   { re: cmd(String.raw`sudo\s`), reason: "규칙 7: sudo 는 사용자가 직접 실행한다. 명령을 제시하고 기다릴 것." },
 ];
 

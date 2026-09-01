@@ -20,6 +20,16 @@ const SANDBOX = join(ROOT, "sandbox");
 
 const issues: string[] = [];
 
+// 벤치 셀 실행 중에는 피험자가 정답을 트리에 만들어 가는 중이다 — 그건 과제 수행이지
+// 기준선 오염이 아니다(셀 종료 시 원복·채점). 셀 중에는 판정하지 않는다(2026-09-01).
+import { execFileSync } from "node:child_process";
+try {
+  if (execFileSync("bash", ["-c", "pgrep -f 'omp -p' >/dev/null && echo 1 || true"], { encoding: "utf-8" }).trim() === "1") {
+    console.log("check-bench-tasks: skip — 벤치 셀 실행 중(기준선 판정은 셀 종료 후)");
+    process.exit(0);
+  }
+} catch { /* pgrep 불가 호스트 — 그대로 진행 */ }
+
 if (!existsSync(RUNNER)) {
   console.log("check-bench-tasks: skip — llm-bench 러너 없음");
   process.exit(0);

@@ -64,6 +64,10 @@ export const notes: string[] = [];
 export function run(_root: string): Issue[] {
   notes.length = 0;
   const issues: Issue[] = [];
+  // 벤치 셀이 도는 동안 피험자 산출물은 정상적으로 sandbox 에만 있다(셀 종료 시 원복) —
+  // 그 상태를 부채로 읽으면 모든 셀에서 오탐한다. 셀 중에는 판정하지 않는다(2026-09-01).
+  const cell = execFileSync("bash", ["-c", "pgrep -f 'omp -p' >/dev/null && echo 1 || true"], { encoding: "utf-8" }).trim();
+  if (cell === "1") { notes.push("harness-sync: 벤치 셀 실행 중 — 수렴 판정은 셀 종료 후"); return issues; }
   if (!existsSync(FAS) || !existsSync(SB)) {
     notes.push(`harness-sync: ${!existsSync(FAS) ? FAS : SB} 없음 — 건너뜀(이 호스트에는 짝 트리가 없다)`);
     return issues;

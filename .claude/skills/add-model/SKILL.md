@@ -34,7 +34,7 @@ README 표에 행 추가(크기는 설치 후 `du -sh ~/.omlx/models/mlx-communi
 cp omlx/model_settings.json ~/.omlx/model_settings.json
 cp omlx/model_profiles.json ~/.omlx/model_profiles.json
 cp omp/models.yml "$(omp config path | tail -1)/models.yml"
-~/.omlx/bin/omlx restart
+bash omlx/ensure-app-server.sh --restart
 # 재시작 검증은 셔틀 메시지가 아니라 uptime 으로: lsof -nP -iTCP:9090 -sTCP:LISTEN -t | xargs ps -o etime=
 curl -s http://127.0.0.1:9090/v1/chat/completions -H 'Content-Type: application/json' \
   -d '{"model":"<짧은 id>","messages":[{"role":"user","content":"Reply with exactly: OK"}],"max_tokens":2000}'

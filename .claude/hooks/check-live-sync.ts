@@ -75,7 +75,7 @@ function checkOmlx(root: string): Issue[] {
       // 앱의 내부 기본값이고, 앱 버전이 오를 때마다 레포에 베껴 넣으면 드리프트 신호가 잡음이 된다.
       // 계약은 "레포가 선언한 키는 라이브에서 그 값이어야 한다" 이다(2026-08-30).
       for (const path of mismatches(src, live, "")) {
-        issues.push(`oMLX: ${dir}/${f} 의 ${path} 가 omlx/${f} 와 다르다 — cp omlx/${f} ${dir}/${f} 후 omlx restart (메뉴바 앱)`);
+        issues.push(`oMLX: ${dir}/${f} 의 ${path} 가 omlx/${f} 와 다르다 — cp omlx/${f} ${dir}/${f} 후 bash omlx/ensure-app-server.sh --restart`);
       }
     }
   }

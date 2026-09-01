@@ -15,7 +15,7 @@ MODEL=${1:-Qwen3.6-35B-A3B-5bit}
 BASE=${MODEL%%:*}
 LOG="$HOME/.omlx/logs/server.log"
 
-curl -sf "$URL/v1/models" >/dev/null || { echo "FAIL: $URL 미가동 — oMLX.app 으로 서버를 올린다"; exit 1; }
+bash "$(dirname "$0")/ensure-app-server.sh" || exit 1  # 앱 소유 보장 관문(2026-09-01) — 모든 oMLX 플로우의 표준
 echo "서빙: $(curl -s "$URL/v1/models" | python3 -c 'import json,sys; print(", ".join(m["id"] for m in json.load(sys.stdin)["data"]))')"
 
 PID=$(lsof -nP -iTCP:9090 -sTCP:LISTEN -t 2>/dev/null | head -1)

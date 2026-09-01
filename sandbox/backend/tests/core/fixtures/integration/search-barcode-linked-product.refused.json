@@ -1,0 +1,23 @@
+{
+  "why": "The same operation, refused. Measured: an inverted window (5..1) answers HTTP 200 with ERROR-334 in the envelope, so a caller that trusts the status code reads a success that never happened. The seeded ENVELOPE row lists the codes that mean success, and everything else is a refusal.",
+  "secrets": { "service-key": "issued-key" },
+  "inputs": { "range_start": 5, "range_end": 1 },
+  "response": {
+    "status": 200,
+    "json": {
+      "C005": {
+        "total_count": "0",
+        "row": [],
+        "RESULT": {
+          "CODE": "ERROR-334",
+          "MSG": "종료위치보다 시작위치가 더 큽니다. 요청시작조회건수는 정수를 입력하세요."
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/C005/json/5/1",
+    "query": {},
+    "raises": "External API refused the request: result_code=ERROR-334"
+  }
+}

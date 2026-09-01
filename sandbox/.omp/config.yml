@@ -3,3 +3,7 @@
 
 bashInterceptor:
   enabled: true
+
+# bench-advisor off (runner-injected)
+advisor:
+  enabled: false
