@@ -66,6 +66,27 @@ const TASKS: Record<string, Task> = {
    the recorded fixture, and the test wiring the sibling has.
 6. Finish by running \`make verify\` and make it pass.`,
   },
+  batch: {
+    shape: "greenfield",
+    spec: "batch_spec.md",
+    expect: 5, // 추정(2026-09-02 등록, 미캘리브레이션): 신규 3(잡·시드 마이그레이션·잡 테스트) + 편집 2~3(레지스트리·서비스 랩퍼·서비스 테스트)
+    capS: 2700, // 추정 — integration(28~45m 자체종료)보다 작은 체인. 첫 셀 실측 후 재보정할 것
+    prompt: (spec) => `Add the \`purge_stale_users\` batch job to this repository — it is not there yet.
+
+1. Read the batch rule first: .omp/rules/backend-batch.md — the job/registry/seed-row chain it
+   defines is the deliverable.
+2. Read ${spec} — that is the requirement; the policy and the seed row values are fixed there.
+3. Model your work on the existing sibling job \`purge_expired_refreshes\`:
+   backend/app/batch/refreshes.py, its BATCH_JOBS registry entry in app/core/scheduler.py,
+   the seed migration that inserts its batch row, and backend/tests/batch/test_refreshes.py.
+4. The repository layer already has what the job needs (\`UserRepository.find_stale\` is
+   implemented and tested) — expose it through the service layer the way the sibling's
+   service does, and compose services in the job. Do not touch raw sessions in the job.
+5. Deliverables: the job module, the registry entry, the seed migration for the batch row,
+   and the tests the sibling has (the coverage gate will also demand tests for any new
+   service code).
+6. Finish by running \`make verify\` and make it pass.`,
+  },
   notice: {
     shape: "greenfield",
     spec: "notice_spec.md",
@@ -128,6 +149,17 @@ function baselineModels(): Set<string> {
 }
 
 /** 부모 저장소 기준으로 sandbox 가 깨끗한지. 추적 파일 변경이 있으면 원복이 지우므로 거부한다. */
+function assertNoLiveCell(): void {
+  // 실측 사고(2026-09-02): 셀이 도는 동안 dry-run 을 돌리면 revert() 가 셀의 산출물을
+  // 쓸어간다 — 그린필드 산출물은 전부 untracked 라 assertSandboxClean 이 통과한다.
+  // 셀 프로세스가 살아 있으면 어떤 모드든 거부한다.
+  const probe = spawnSync("pgrep", ["-f", "omp -p "], { encoding: "utf-8" });
+  if (probe.status === 0 && probe.stdout.trim() !== "") {
+    console.error("refusing to run: a bench cell (omp -p) is already running — wait for it or kill it first.");
+    process.exit(2);
+  }
+}
+
 function assertSandboxClean(): void {
   if (gitWs(["ls-files", "--", "sandbox"]).length === 0) {
     console.error("refusing to run: sandbox/ is not tracked by the workspace repo (git add sandbox first).");
@@ -169,6 +201,7 @@ function snapshotTests(): string {
 }
 
 function setup(task: Task): { baseline: number; baselineOut: string; models: Set<string>; snapshot: string } {
+  assertNoLiveCell();
   assertSandboxClean();
   if (task.reference) captureBaseline(task.reference);
   purgeCellResidue(); // 셀은 무상태로 시작한다(이전 셀 정답 잔재 제거)
