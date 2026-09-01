@@ -2,7 +2,7 @@
  "version": 1,
  "models": {
   "Qwen3.6-35B-A3B-5bit": {
-   "max_context_window": 81920,
+   "max_context_window": 90112,
    "max_tokens": 8192,
    "temperature": 0.6,
    "top_p": 0.95,

@@ -293,6 +293,15 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
 
 
+{ // B: 하드 finish-block 의 상한(2026-09-02 퇴행 루프 실측: 차단 104회가 캡을 태우고
+  //    차단 프롬프트가 ctx 를 모델 창 밖으로 밀었다). 상한 뒤에는 빨간 채로 끝나게 둔다.
+  const { handlers, sent } = makePi();
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  for (let i = 0; i < 20; i++) handlers.turn_end({}, ctx);
+  check("B1: 무한 퇴행에도 차단은 상한(8)까지만", sent.length === 8);
+  check("B2: 상한 도달 뒤의 종료 시도는 조용히 통과", (() => { const n = sent.length; handlers.turn_end({}, ctx); return sent.length === n; })());
+}
+
 { // X: 프롬프트 간 상태 — 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나다.
   // 실측(2026-08-29 4프롬프트 세션): 브리핑이 4회 반복됐고, p2·p3 가 게이트를 15회 돌았는데
   // p4 가 "이 세션은 풀 검증을 한 번도 안 돌렸다"며 다시 막았다.

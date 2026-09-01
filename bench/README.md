@@ -62,6 +62,7 @@
 | [`2026-08-27.s2.regwatch.md`](2026-08-27.s2.regwatch.md) | REG-WATCH 판 첫 묶음, n=0+정책 중단 — **묶음 조기종료 정책 첫 정식 적용**(32.5분 red 수렁 판정, 12.5분 절약). REG-WATCH 무해 확인(발화 조건 미발생), 다음 개선: agent_end 해제 후 위생 기준선 리셋(ctx 125k 팽창 대응) |
 | [`2026-08-27.s2.openingbrief.md`](2026-08-27.s2.openingbrief.md) | 첫 턴 OPENING-BRIEF(최속 셀 레시피 선행 주입), n=2 — **오프닝 유도 성립·재현**: 첫 verify 분포 9.2~26분+ → **7.2/7.4분 수렴**, 셀 #1 초록 26.2m(역대 2위). 셀 #2 는 동일 오프닝에도 종반 커버리지 수렁 TO(1/2) — **종반 분산은 오프닝 독립 변수**, 신호 축 소진 임박·운영 재시도가 실용 대안 |
 | [`2026-08-27.s2.retrypolicy.md`](2026-08-27.s2.retrypolicy.md) | 재시도 운영 정책 첫 묶음(1차+재시도), 음성 — 2회 모두 near-miss 실패(99.88% 캡·23.9m 미완성 1 종료). 부검 수확 2건: **REG-WATCH 입력 트리거 미스**(실셀 침묵, 수정=결과 콘텐츠 기반 트리거) + **finish-check 상한 1→2**(단일 체크 소진 후 종료 통과). 정책 기대는 유지, 표본 누적 필요 |
+| [`2026-09-02.s2.hashline2.md`](2026-09-02.s2.hashline2.md) | **창 81920 의 반대편 실패** — 압축 스래시(writes 240)→퇴행 루프→FINISH-BLOCK 104회: 창 90112 절충 + FINISH_BLOCK_MAX 8(프루프 B1·B2) |
 | [`2026-09-01.s2.hashline2.md`](2026-09-01.s2.hashline2.md) | **가드 정상화 재검증** — integration 41.3m 초록(통산 7/7), notice 재번호 루프 실측→중단: check-duplicate-blocks 신설 + 공통 상수 lib 단일화(48벌·35벌)로 전환 |
 | [`2026-09-01.s2.hashline.md`](2026-09-01.s2.hashline.md) | **pi-hashline-edit-pro A 셀** — integration 30.4m 초록(역대 2위), notice TO(기존 부류): 앵커 편집 50회·noop 1·write 폴백 0 — 편집 오류율 개선 정황, 도입 유지 |
 | [`2026-09-01.s2.fullstack-n5.md`](2026-09-01.s2.fullstack-n5.md) | **반복 실증 2.5회 조기 판정** — integration 통산 5/5 초록, notice 1/3: 실패 부류 확정(오류 중단 침묵·종반 1검사 TO) → discipline 중단 처리를 주체별 분리(aborted 침묵/error 재개, 프루프 36/36) |

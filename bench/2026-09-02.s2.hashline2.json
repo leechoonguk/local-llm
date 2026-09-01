@@ -1,0 +1,56 @@
+[
+ {
+  "at": "2026-09-01T15:09:52.548Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit",
+  "task": "notice",
+  "shape": "greenfield",
+  "wall_s": 5400,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 5,
+  "expected": 26,
+  "files": [
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 15,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 15,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-09-01T15-10-43-489Z_01a05d85-c721-74d4-b9a2-fc9ef078c236.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 240,
+  "tools": {
+   "read": 78,
+   "glob": 10,
+   "write": 240
+  },
+  "gate_runs": 0,
+  "first_full_gate_s": null,
+  "advisory_skips": 0,
+  "piped_gates": 0,
+  "first_green_s": null,
+  "no_work": false
+ }
+]

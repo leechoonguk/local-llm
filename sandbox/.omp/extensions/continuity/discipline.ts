@@ -42,6 +42,10 @@ const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\
 // 창의 이 비율을 넘으면 성장과 무관하게 컷. 셀마다 켜고 끌 수 있게 환경변수로 뺀다(0 이면 끔) —
 // 하네스를 고치지 않고 같은 조건에서 두 팔을 번갈아 돌리기 위해서다(2026-08-30 rest 분산 판정용).
 const END_GATE_MAX = 2;              // red-finish re-drives
+// 하드 finish-block 의 상한(2026-09-02 실측): 퇴행 루프(툴 0, 같은 사설 반복)에 무제한
+// 게이트가 물리면 차단 104회 × ~25s 로 캡을 태우고, 차단 프롬프트 자체가 ctx 를 91k 까지
+// 밀어 올려 모델 창 초과 오류로 끝났다. 상한 뒤에는 빨간 채로 끝나게 둔다 — 그 행이 측정이다.
+const FINISH_BLOCK_MAX = 8;
 const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
 const FAST_GATE_RE = /\bmake\b[^|;&]*(-C\s+backend\s+verify\b|\btest-fast\b)|\bcd\s+[^\s;&|]*backend\b[^|]*\bmake\s+verify\b|\bpytest\b/; // 타깃/백엔드 검증 명령 모양 — verify-fast 복합 타깃은 2026-09-01 제거(backend verify 가 0.5s 차이로 더 엄격), test-fast 만 남는다(전역 100% 커버리지 addopts 아래에서 타깃 실행을 성립시키는 유일한 경로)
 const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
@@ -189,6 +193,8 @@ export function registerDiscipline(pi: any): void {
           endGateSends++;
           pi.sendUserMessage(`You just finished your answer, but the last observed verification result was failing:\n${redSig.slice(0, 300)}\nRe-run the verification to confirm it actually passes, and finish the remaining failures if any are left.`);
           log(`END-GATE re-drive #${endGateSends}`);
+        } else if (gateBlocks >= FINISH_BLOCK_MAX) {
+          log(`FINISH-RELEASE (block cap ${FINISH_BLOCK_MAX} reached — ending red is the measurement)`);
         } else if (mutatedEver && (lastGateAt < lastMutationAt || (lastNoticeAt > 0 && lastNoticeAt > lastGateAt))) {
           // 하드 finish-block(무제한·멱등): 널 블록에서 full 게이트 무실행 종료와
           // backend 스코프 초록 + 서 있는 check-* 경고 위 종료가 finish-check ×2 를
