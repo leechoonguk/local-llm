@@ -73,7 +73,9 @@ const TASKS: Record<string, Task> = {
     capS: 5400, // 실측: 60분 캡에서 잔여 FAIL 1 로 TIMEOUT(백엔드 ~34m + 프론트 ~15m + 종반 교정) — 90분으로
     prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository — backend AND the screen for it.
 
-1. Read the domain rule first: .omp/rules/backend-domain.md. Follow it.
+1. Read the domain rule first: .omp/rules/backend-domain.md — follow it, including its
+   Build order (each step verifies its own layer; the exemplar for each artifact is
+   chosen by the domain's properties, as that rule and rule://backend-api-http define).
 2. Read ${spec} — that is the requirement.
 3. Model your work on the existing sibling domain \`batch\`: backend/app/models/batch.py,
    backend/app/schemas/batch.py, backend/app/repositories/batch.py, backend/app/services/batch.py,

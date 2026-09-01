@@ -134,12 +134,39 @@ Each domain creates 5 files (one per layer) and wires 1 dependency file + main.p
 - `schemas/<name>.py` — 6 Pydantic classes: `XBase`, `XCreateRequest`, `XCreateInternal`, `XReadResponse`, `XUpdateRequest`, `XUpdateInternal`
 - `repositories/<name>.py` — async CRUD repository with 7 methods: `get`, `list`, `find_stale`, `create`, `update`, `delete`, `__init__`
 - `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError`
-- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, PUT `/{id}`, DELETE `/{id}`
+- `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, the update endpoint on `/{id}` (verb follows the update schema — rule://backend-api-http), DELETE `/{id}`
 
 **Wires:**
 
 - `dependencies/services.py` — `Annotated[T, Depends(factory)]` for all domain services (receive `SessionDep` directly)
 - `main.py` — `app.include_router(name.router)` call
+
+A domain is not done at the five layers: the migration, the three test files
+(`tests/{api,repositories,services}/`), `api/<name>.http`, and — because every
+published route needs a browser caller (rule://frontend-contract) — the frontend
+domain files are part of the same delivery.
+
+### Build order (each step verifies its own layer before the next)
+
+The order is not style: every late-loop failure measured on this baseline came
+from deferring a step's verification until the end.
+
+1. `models/<name>.py` → register in `alembic/env.py` **alongside** the existing
+   imports → `make -C backend migrate-gen m="<real message>"` → **apply it
+   immediately** (`make -C backend migrate`). An unapplied migration keeps the
+   DB behind the files, and every later test run fails on that instead of on
+   your code.
+2. `schemas` → `repositories` → `services` → `routers` → wiring
+   (`dependencies/services.py`, `main.py` — add alongside, never replace).
+   After the router mounts: `make -C backend verify`.
+3. Tests (three dirs) as each layer stands — not as a pile at the end.
+4. `api/<name>.http` — **choose the exemplar by the domain's properties, not by
+   habit**: a domain with a unique field follows the unique-domain exemplar
+   (`{{$guid}}` + 409 section — rule://backend-api-http); a domain without one
+   follows a plain sibling. Copying the wrong exemplar surfaces as a late gate
+   failure on uniqueness.
+5. Frontend domain files and wiring (both locales — the i18n check fails on a
+   single-language key), then the full root `make verify`.
 
 ## Domain Naming
 
