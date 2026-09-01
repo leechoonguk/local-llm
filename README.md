@@ -570,6 +570,7 @@ omlx/
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치
   config.fragment.yml              # config.yml 에 병합할 조각 (덮어쓰지 않음)
+  plugins/pi-hashline-edit-pro/    # 앵커 해시 편집 플러그인(npm 2.8.3 벤더 사본 + omp 18.x compat 심) — `omp plugin link` 로 연결, 클론 후 `npm install --omit=dev` 필요
 ```
 
 ## 참고 자료
