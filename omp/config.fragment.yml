@@ -27,6 +27,7 @@ defaultThinkingLevel: medium
 #   modelRoles.advisor: omlx/Qwen3.5-4B-4bit                 # tiny 로 이미 상주 = 추가 로드 0
 #   (깊은 감시를 원하면 omlx/Qwen3.8-27B-4bit — 별도 15GB 를 더 물린다)
 #   advisor.enabled: true                                    # TUI 는 /advisor on|off|status
-# 조언 실물은 실전급이었다(재독 처닝 지적) — 켜고 끄기는 취향.
+# 조언 실물은 실전급이었다(재독 처닝 지적). enabled: false 고정(2026-09-01 사용자 결정) —
+# omp 가 세션마다 advisor 블록을 재생성하므로 라이브 값 표류는 check-live-sync 가 잡는다.
 advisor:
   enabled: false

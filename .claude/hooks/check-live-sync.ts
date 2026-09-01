@@ -55,6 +55,15 @@ function checkOmp(root: string): Issue[] {
       if ("defaultThinkingLevel" in y && !new RegExp(`^defaultThinkingLevel:\\s*${escapeRe(String(y.defaultThinkingLevel))}\\s*$`, "m").test(cfg)) {
         issues.push(`omp: ${dir}/config.yml defaultThinkingLevel 이 ${String(y.defaultThinkingLevel)} 이 아니다`);
       }
+      // advisor.enabled 고정(2026-09-01 사용자 결정): omp 가 세션마다 advisor 블록을 다시
+      // 만들어 값이 표류할 수 있다 — fragment 의 enabled 값(false)과 다르면 빨간불.
+      const fragAdvisor = (y.advisor as Rec | undefined)?.enabled;
+      if (fragAdvisor !== undefined) {
+        const liveAdvisor = /^advisor:\s*$[\s\S]*?^\s+enabled:\s*(\S+)\s*$/m.exec(cfg)?.[1];
+        if (liveAdvisor !== undefined && liveAdvisor !== String(fragAdvisor)) {
+          issues.push(`omp: ${dir}/config.yml advisor.enabled = ${liveAdvisor}, 레포는 ${String(fragAdvisor)} — config.yml 의 그 줄만 손으로 맞출 것`);
+        }
+      }
     } catch { /* omp-models 가 보고한다 */ }
   }
   return issues;
