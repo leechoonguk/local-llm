@@ -159,12 +159,29 @@ export function registerDiscipline(pi: any): void {
       log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);   // 계측만 남긴다 — 컷은 omp 소관
       lastTurnAt = now;
 
-      // 사용자가 Esc 로 끊은 턴은 "끝냈다"가 아니다. 중단된 턴에도 도구 결과가 없으므로 아래 prose
-      // 판정이 그대로 참이 되고, 마감 게이트가 사용자 메시지를 밀어 넣어 방금 취소한 작업을 다시
-      // 굴린다 — 사용자에게는 Esc 가 먹지 않는 것으로 보인다. omp 자신도 turn_end 직후 같은 필드를
-      // 보고 진행을 멈춘다(`stopReason === "aborted" || "error"`). 계측만 남기고 신호는 내지 않는다.
+      // 중단된 턴의 처리는 **중단 주체**에 따라 갈린다(2026-09-01 실측으로 분리).
+      //  - `aborted` = 사용자의 Esc. "끝냈다"가 아니므로 침묵한다 — 신호를 내면 방금 취소한
+      //    작업을 다시 굴려서 Esc 가 먹지 않는 것처럼 보인다(사용자 보고 → 프루프 S1).
+      //  - `error` = 런타임/제공자 오류. 여기서도 침묵했더니 **작업이 미완인 채 세션이 조용히
+      //    끝났다**: 벤치 셀 하나가 18/26 산출물·게이트 빨강 상태에서 32분 만에 종료했고
+      //    (캡의 1/3), 마감 개입은 0이었다. 사용자가 멈춘 것이 아니므로 마감 게이트는 살아
+      //    있어야 한다 — 오류로 끊긴 턴은 재개를 요청한다(한도는 END_GATE_MAX 를 공유).
       const stopReason = String(e.message?.stopReason ?? e.stopReason ?? "");
-      if (stopReason === "aborted" || stopReason === "error") { log(`turn interrupted (${stopReason}) — 신호 없음`); return; }
+      if (stopReason === "aborted") { log("turn interrupted (aborted, 사용자) — 신호 없음"); return; }
+      if (stopReason === "error") {
+        if (mutatedEver && endGateSends < END_GATE_MAX) {
+          endGateSends++;
+          pi.sendUserMessage(
+            "The previous turn ended with a runtime error, not with your work finished. " +
+            "Nothing you changed has been verified since. Re-run the verification that covers " +
+            "what you touched and continue from what it reports — do not restart from scratch.",
+          );
+          log(`turn interrupted (error) — RESUME #${endGateSends}`);
+        } else {
+          log("turn interrupted (error) — 예산 소진 또는 변경 없음, 신호 없음");
+        }
+        return;
+      }
 
       const prose = !(e.toolResults && e.toolResults.length);
       if (prose && endGateSends < END_GATE_MAX) {

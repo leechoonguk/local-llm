@@ -233,10 +233,27 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   handlers.turn_end({ message: { role: "assistant", stopReason: "aborted" } }, ctx);
   check("S1a: aborted turn -> silent (Esc 가 막히지 않는다)", sent.length === 0);
   handlers.turn_end({ message: { role: "assistant", stopReason: "error" } }, ctx);
-  check("S1b: errored turn -> silent", sent.length === 0);
+  // 오류 중단은 사용자가 멈춘 것이 아니다 — 미완인 채 조용히 끝나는 것을 막으려고 재개를 요청한다
+  // (2026-09-01 실측: 벤치 셀이 18/26·게이트 빨강 상태로 32분 만에 종료, 마감 개입 0).
+  check("S1b: errored turn -> RESUME 요청(사용자 중단과 구분)",
+    sent.length === 1 && /runtime error/.test(sent[0] ?? ""));
   handlers.turn_end({ message: { role: "assistant", stopReason: "end_turn" } }, ctx);
   check("S1c: 정상 마감은 그대로 막힌다(가드가 게이트를 죽이지 않는다)",
-    sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
+    sent.length === 2 && /has not run since your last change/.test(sent[1] ?? ""));
+}
+
+{ // S2: 오류 중단의 재개 요청도 END_GATE_MAX 예산을 공유한다(무한 재구동 금지)
+  const { handlers, sent } = makePi();
+  editOk(handlers, "a.py"); editOk(handlers, "b.py"); editOk(handlers, "c.py");
+  const err = () => handlers.turn_end({ message: { role: "assistant", stopReason: "error" } }, ctx);
+  err(); err(); err();
+  check("S2a: 오류 재개는 END_GATE_MAX(2) 까지만", sent.length === 2);
+}
+
+{ // S3: 아무것도 안 바꾼 세션의 오류 중단은 조용하다(할 말이 없다)
+  const { handlers, sent } = makePi();
+  handlers.turn_end({ message: { role: "assistant", stopReason: "error" } }, ctx);
+  check("S3: 변경 없는 오류 중단 -> 침묵", sent.length === 0);
 }
 
 { // P6: a Dep-alias replacement in services.py is announced (non-import wiring line)
