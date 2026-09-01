@@ -13,6 +13,7 @@ from app.services.batch import BatchService
 from app.services.integration.operation import IntegrationOperationService
 from app.services.integration.provider import IntegrationProviderService
 from app.services.integration.secret import IntegrationSecretService
+from app.services.refresh import RefreshService
 from app.services.user import UserService
 
 
@@ -36,6 +37,10 @@ def get_integration_operation_service(session: SessionDep) -> IntegrationOperati
     return IntegrationOperationService(session)
 
 
+def get_refresh_service(session: SessionDep) -> RefreshService:
+    return RefreshService(session)
+
+
 def get_user_service(session: SessionDep) -> UserService:
     return UserService(session)
 
@@ -54,4 +59,5 @@ IntegrationSecretServiceDep = Annotated[
 IntegrationOperationServiceDep = Annotated[
     IntegrationOperationService, Depends(get_integration_operation_service)
 ]
+RefreshServiceDep = Annotated[RefreshService, Depends(get_refresh_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]

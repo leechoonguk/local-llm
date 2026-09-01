@@ -79,3 +79,66 @@ def test_me_with_non_uuid_subject(client: TestClient) -> None:
     token = create_access_token(subject="not-a-uuid")
     response = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 401
+
+
+def test_refresh_rotates_the_session(client: TestClient) -> None:
+    """Refresh spends the cookie for a new token and plants the successor.
+
+    Rotation is the contract, not a detail: the old cookie value must stop
+    working, otherwise a stolen copy stays valid for its whole lifetime.
+    """
+    client.post(
+        "/api/v1/user/",
+        json={"username": "rosa", "email": "rosa@example.com", "password": "secret-pass"},
+    )
+    client.post("/api/v1/auth/login", data={"username": "rosa", "password": "secret-pass"})
+    first_cookie = client.cookies["refresh_token"]
+
+    response = client.post("/api/v1/auth/refresh", json={})
+    assert response.status_code == 200
+    assert "access_token" in response.json()
+    assert client.cookies["refresh_token"] != first_cookie
+
+    # 도둑 시나리오: 이미 소비된(회전 전) 쿠키를 다시 제시하면 그 사용자의 살아있는
+    # 세션 전부가 폐기된다 — 정당한 클라이언트와 도둑이 최신 토큰을 동시에 들 수 없다.
+    successor = client.cookies["refresh_token"]
+    client.cookies.set("refresh_token", first_cookie)
+    assert client.post("/api/v1/auth/refresh", json={}).status_code == 401
+    client.cookies.set("refresh_token", successor)
+    assert client.post("/api/v1/auth/refresh", json={}).status_code == 401
+
+
+def test_refresh_without_cookie(client: TestClient) -> None:
+    """No cookie is 401 — indistinguishable from a rejected one."""
+    client.cookies.clear()
+    response = client.post("/api/v1/auth/refresh", json={})
+    assert response.status_code == 401
+
+
+def test_logout_revokes_the_session(client: TestClient) -> None:
+    """Logout kills the session server-side: the cookie stops refreshing."""
+    client.post(
+        "/api/v1/user/",
+        json={"username": "nina", "email": "nina@example.com", "password": "secret-pass"},
+    )
+    client.post("/api/v1/auth/login", data={"username": "nina", "password": "secret-pass"})
+    cookie = client.cookies["refresh_token"]
+
+    response = client.post("/api/v1/auth/logout", json={})
+    assert response.status_code == 200
+    assert response.json() == {"ok": True}
+
+    # 서버측 폐기의 증명: 지워진 쿠키를 손으로 되살려도 세션은 죽어 있다.
+    client.cookies.set("refresh_token", cookie)
+    assert client.post("/api/v1/auth/refresh", json={}).status_code == 401
+
+
+def test_logout_is_idempotent(client: TestClient) -> None:
+    """A second logout (stale cookie, or none) still answers 200.
+
+    A browser holding a dead cookie must be able to get rid of it without an
+    error it cannot act on.
+    """
+    client.cookies.clear()
+    response = client.post("/api/v1/auth/logout", json={})
+    assert response.status_code == 200

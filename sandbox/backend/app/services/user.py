@@ -47,6 +47,12 @@ class UserService:
             verify_password, password, user.hashed_password
         ):
             raise AuthenticationError()
+        # Detach the user so the caller can open its own transaction via
+        # session.begin() — the lookup's autobegin would otherwise still hold
+        # the session (same idiom as get_current_user; rollback would expire
+        # the attributes of an attached instance).
+        self.session.expunge(user)
+        await self.session.rollback()
         return user
 
     async def list_users(self, offset: int = 0, limit: int = 100) -> list[User]:

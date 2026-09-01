@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     redis_url: str | None = None
     secret_key: str
     access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 14
+    # Secure-by-default: the refresh cookie is only ever sent over https unless a
+    # deployment explicitly opts out (local http dev) — security code must not
+    # branch on `env` (environment.md), the decision gets its own switch.
+    cookie_secure: bool = True
     algorithm: str = "HS256"
     cors_origins: list[str] = ["http://localhost:25173"]
     # Required, not defaulted: a Host allowlist that falls back to "accept

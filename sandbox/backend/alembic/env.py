@@ -13,6 +13,7 @@ from app.models.integration.field import IntegrationField  # noqa: F401 — on m
 from app.models.integration.operation import IntegrationOperation  # noqa: F401 — on metadata
 from app.models.integration.provider import Integration  # noqa: F401 — on metadata
 from app.models.integration.secret import IntegrationSecret  # noqa: F401 — on metadata
+from app.models.refresh import Refresh  # noqa: F401 — on metadata
 from app.models.user import User  # noqa: F401 — on metadata
 
 

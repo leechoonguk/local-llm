@@ -1,11 +1,12 @@
 /**
  * Access-token storage and the session-expiry signal.
  *
- * The backend issues a bearer access token and nothing else — there is no
- * refresh endpoint and no httpOnly cookie (`app/routers/auth.py`), so a token
- * held only in memory would log the user out on every reload. `sessionStorage`
- * is the honest middle: it survives a reload, dies with the tab, and is never
- * sent automatically by the browser to anyone.
+ * The backend issues a short-lived bearer access token; the long-lived half of
+ * the session is an httpOnly cookie the page cannot read (`app/routers/auth.py`).
+ * Only the access token lives here, and `sessionStorage` is the honest place
+ * for it: it survives a reload, dies with the tab, and is never sent
+ * automatically by the browser to anyone — expiry is the interceptor's cue to
+ * spend the cookie via the registered session refresher.
  *
  * The interceptor cannot navigate (it is outside React), so it publishes one
  * event and `AuthProvider` owns the redirect.

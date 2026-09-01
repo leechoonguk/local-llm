@@ -11,6 +11,7 @@ import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
 import type { ReactNode } from 'react'
 import { authService } from '@/lib/api/services/auth.service'
 import { getAccessToken, onSessionExpired, setAccessToken } from '@/lib/api/token'
+import { setSessionRefresher } from '@/lib/api/client'
 import type { User } from '@/types/user'
 
 interface AuthState {
@@ -53,6 +54,12 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
+  // The interceptor cannot import the service layer (the service imports the
+  // client), so the session-refresh transport is handed over here, once.
+  useEffect(() => {
+    setSessionRefresher(() => authService.refresh().then((token) => token.access_token))
+  }, [])
+
   useEffect(
     () =>
       onSessionExpired(() => {
@@ -69,6 +76,10 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const logout = useCallback(() => {
+    // Best-effort server-side revocation: the cookie's session dies even if
+    // this tab never comes back. Local sign-out proceeds regardless — a network
+    // failure must not trap the user in a session they asked to leave.
+    void authService.logout().catch(() => undefined)
     setAccessToken(null)
     setState({ user: null, isInitialised: true })
   }, [])

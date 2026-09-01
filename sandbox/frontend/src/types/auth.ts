@@ -10,6 +10,10 @@ export interface TokenResponse {
   token_type: string
 }
 
+export interface LogoutResponse {
+  ok: boolean
+}
+
 export interface LoginRequest {
   username: string
   password: string
