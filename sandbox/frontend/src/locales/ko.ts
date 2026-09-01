@@ -137,24 +137,38 @@ export const ko = {
   },
   batch: {
     title: '배치',
-    description: '배치 작업 등록 · 수정 · 삭제',
+    description: '배치잡 스케줄 — CRON 설정, 활성화, 즉시 실행과 중지',
     list_title: '배치 목록',
-    create_title: '배치 등록',
-    edit_title: '배치 수정',
-    delete_title: '배치 삭제',
+    create_title: '스케줄 등록',
+    edit_title: '스케줄 수정',
+    delete_title: '스케줄 삭제',
     table: {
       name: '이름',
+      code: '잡 코드',
+      cron: 'CRON',
+      enabled: '상태',
       description: '설명',
     },
     form: {
       name: '이름',
+      code: '잡 코드',
+      code_helper: '서버에 등록된 잡만 선택할 수 있고, 등록 후에는 바꿀 수 없다',
+      cron: 'CRON',
+      cron_helper: '5필드 표기, 예: 0 3 * * * (매일 03:00)',
+      enabled: '스케줄 실행',
       description: '설명',
     },
     filter: {
       search_placeholder: '이름 검색',
     },
+    actions: {
+      run: '즉시 실행',
+      stop: '실행 중지',
+    },
     messages: {
-      delete_confirm: '{{name}} 배치를 삭제합니다.',
+      delete_confirm: '{{name}} 스케줄을 삭제합니다.',
+      run_started: '실행을 시작했습니다',
+      run_stopped: '실행을 중지했습니다',
     },
   },
   integration: {

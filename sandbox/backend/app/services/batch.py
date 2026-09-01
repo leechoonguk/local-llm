@@ -38,6 +38,10 @@ class BatchService:
     async def list_batches(self, offset: int = 0, limit: int = 100) -> list[Batch]:
         return await self.batch_repository.list(offset, limit)
 
+    async def list_enabled_batches(self) -> list[Batch]:
+        """Return every enabled job — the schedule a starting process loads."""
+        return await self.batch_repository.list_enabled()
+
     async def find_stale(self, older_than: datetime) -> list[Batch]:
         """Return batches created before the given timestamp — used by batch jobs."""
         return await self.batch_repository.find_stale(older_than)

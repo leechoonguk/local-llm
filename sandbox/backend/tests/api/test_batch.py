@@ -2,6 +2,13 @@
 
 from fastapi.testclient import TestClient
 
+from app.core.scheduler import BatchScheduler
+
+
+CRON = "0 3 * * *"
+
+JOB_CODE = "purge_expired_refreshes"
+
 
 class BatchCache:
     """A cache that records what it was asked to store and invalidate.
@@ -36,7 +43,9 @@ class BatchCache:
 def test_create_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """A 201 carries the id later calls address the row by."""
     response = client.post(
-        "/api/v1/batch/", json={"name": "Batch 1", "description": "Batch job"}, headers=auth_headers
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Batch 1", "description": "Batch job", "cron": CRON},
+        headers=auth_headers,
     )
     assert response.status_code == 201
     body = response.json()
@@ -47,8 +56,16 @@ def test_create_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
 
 def test_list_batches(client: TestClient, auth_headers: dict[str, str]) -> None:
     """Two rows, so a query that returns only the first still fails."""
-    client.post("/api/v1/batch/", json={"name": "Alpha"}, headers=auth_headers)
-    client.post("/api/v1/batch/", json={"name": "Beta"}, headers=auth_headers)
+    client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Alpha", "cron": CRON},
+        headers=auth_headers,
+    )
+    client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Beta", "cron": CRON},
+        headers=auth_headers,
+    )
 
     response = client.get("/api/v1/batch/", headers=auth_headers)
     assert response.status_code == 200
@@ -59,7 +76,11 @@ def test_list_batches(client: TestClient, auth_headers: dict[str, str]) -> None:
 
 def test_get_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """The id from the create response resolves — the write really committed."""
-    created = client.post("/api/v1/batch/", json={"name": "Glob"}, headers=auth_headers).json()
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Glob", "cron": CRON},
+        headers=auth_headers,
+    ).json()
     batch_id = created["id"]
 
     response = client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers)
@@ -77,7 +98,11 @@ def test_get_batch_not_found(client: TestClient, auth_headers: dict[str, str]) -
 
 def test_update_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """A partial payload changes only the field it names."""
-    created = client.post("/api/v1/batch/", json={"name": "Old"}, headers=auth_headers).json()
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Old", "cron": CRON},
+        headers=auth_headers,
+    ).json()
     batch_id = created["id"]
 
     response = client.patch(f"/api/v1/batch/{batch_id}", json={"name": "New"}, headers=auth_headers)
@@ -97,7 +122,11 @@ def test_update_batch_not_found(client: TestClient, auth_headers: dict[str, str]
 
 def test_delete_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """The follow-up read proves the row is gone, not just that 200 was sent."""
-    created = client.post("/api/v1/batch/", json={"name": "Temp"}, headers=auth_headers).json()
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Temp", "cron": CRON},
+        headers=auth_headers,
+    ).json()
     batch_id = created["id"]
 
     response = client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
@@ -143,7 +172,11 @@ def test_batch_reads_use_cache_and_writes_invalidate(
     cache = BatchCache()
     app.state.redis_cache = cache
 
-    created = client.post("/api/v1/batch/", json={"name": "Cached"}, headers=auth_headers).json()
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Cached", "cron": CRON},
+        headers=auth_headers,
+    ).json()
     batch_id = created["id"]
     user_id = client.get("/api/v1/auth/me", headers=auth_headers).json()["id"]
 
@@ -166,3 +199,123 @@ def test_batch_reads_use_cache_and_writes_invalidate(
     )
     assert client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers).status_code == 200
     assert cache.invalidated_prefixes == ["batches", "batches", "batches"]
+
+
+def test_create_batch_unknown_code_422(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """A code no build can run is refused at the boundary, not discovered at 03:00."""
+    response = client.post(
+        "/api/v1/batch/",
+        json={"code": "job_from_the_future", "name": "Ghost", "cron": CRON},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_create_batch_broken_cron_422(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """An unparseable cron is a job that never fires — the write is the last check."""
+    response = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Ghost", "cron": "every tuesday"},
+        headers=auth_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_batch_writes_drive_the_running_scheduler(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """The row is the schedule, so every write has to reach the live scheduler.
+
+    Create schedules it, `enabled=false` stops it, and the delete removes it —
+    a row that changed without the scheduler changing is the failure this
+    endpoint exists to prevent.
+    """
+    from app.main import app
+
+    scheduler = BatchScheduler()
+    app.state.scheduler = scheduler
+
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Scheduled", "cron": CRON},
+        headers=auth_headers,
+    ).json()
+    batch_id = created["id"]
+    assert [job.id for job in scheduler._scheduler.get_jobs()] == [batch_id]
+
+    client.patch(f"/api/v1/batch/{batch_id}", json={"cron": "30 4 * * *"}, headers=auth_headers)
+    assert "hour='4'" in str(scheduler._scheduler.get_jobs()[0].trigger)
+
+    client.patch(f"/api/v1/batch/{batch_id}", json={"enabled": False}, headers=auth_headers)
+    assert scheduler._scheduler.get_jobs() == []
+
+    client.patch(f"/api/v1/batch/{batch_id}", json={"enabled": True}, headers=auth_headers)
+    assert [job.id for job in scheduler._scheduler.get_jobs()] == [batch_id]
+
+    client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
+    assert scheduler._scheduler.get_jobs() == []
+
+    app.state.scheduler = None
+
+
+def test_run_and_stop_a_batch_job(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """Running by hand and stopping the run are one endpoint over the wanted state.
+
+    Neither touches the schedule: the row keeps its cron and its `enabled` flag,
+    which is what separates "run it now" from "activate it".
+    """
+    from app.main import app
+
+    scheduler = BatchScheduler()
+    app.state.scheduler = scheduler
+
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Runnable", "cron": CRON, "enabled": False},
+        headers=auth_headers,
+    ).json()
+    batch_id = created["id"]
+
+    started = client.post(
+        f"/api/v1/batch/{batch_id}/run", json={"running": True}, headers=auth_headers
+    )
+    assert started.status_code == 200
+    assert started.json() == {"id": batch_id, "code": JOB_CODE, "running": True}
+
+    stopped = client.post(
+        f"/api/v1/batch/{batch_id}/run", json={"running": False}, headers=auth_headers
+    )
+    assert stopped.status_code == 200
+    assert stopped.json()["running"] is False
+
+    assert client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json()["enabled"] is False
+    client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
+    app.state.scheduler = None
+
+
+def test_run_batch_not_found(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """An unknown id is 404 before the scheduler is consulted."""
+    response = client.post(
+        "/api/v1/batch/00000000-0000-0000-0000-000000000000/run",
+        json={"running": True},
+        headers=auth_headers,
+    )
+    assert response.status_code == 404
+
+
+def test_run_batch_without_a_scheduler_409(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """A process that runs no jobs says so, instead of accepting a run nobody executes."""
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Unscheduled", "cron": CRON},
+        headers=auth_headers,
+    ).json()
+
+    response = client.post(
+        f"/api/v1/batch/{created['id']}/run", json={"running": True}, headers=auth_headers
+    )
+
+    assert response.status_code == 409
+    client.delete(f"/api/v1/batch/{created['id']}", headers=auth_headers)

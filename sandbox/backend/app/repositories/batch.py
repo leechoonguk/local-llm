@@ -29,6 +29,15 @@ class BatchRepository:
         result = await self.session.execute(select(Batch).offset(offset).limit(limit))
         return list(result.scalars().all())
 
+    async def list_enabled(self) -> list[Batch]:
+        """Every job that should be running — the scheduler's whole input.
+
+        Unpaged on purpose: a paged read would schedule the first page and
+        leave the rest silently stopped after a restart.
+        """
+        result = await self.session.execute(select(Batch).where(Batch.enabled.is_(True)))
+        return list(result.scalars().all())
+
     async def find_stale(self, older_than: datetime) -> list[Batch]:
         result = await self.session.execute(select(Batch).where(Batch.created_at < older_than))
         return list(result.scalars().all())

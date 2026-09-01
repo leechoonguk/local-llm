@@ -9,14 +9,17 @@ from uuid import UUID
 from fastapi import APIRouter, status
 
 from app.core.cache import scoped_cache_key
+from app.core.exceptions import ConflictError
 from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
-from app.dependencies.core import CacheDep
+from app.dependencies.core import CacheDep, SchedulerDep
 from app.dependencies.query import LimitQuery, OffsetQuery
 from app.dependencies.services import BatchServiceDep
 from app.schemas.batch import (
     BatchCreateRequest,
     BatchReadResponse,
+    BatchRunRequest,
+    BatchRunResponse,
     BatchUpdateRequest,
     to_read,
     to_read_list,
@@ -48,9 +51,12 @@ async def create_batch(
     batch_service: BatchServiceDep,
     current_user: CurrentUserDep,
     cache: CacheDep,
+    scheduler: SchedulerDep,
 ) -> BatchReadResponse:
     batch = await batch_service.create_batch(data, created_by=current_user.username)
     response = to_read(batch)
+    if scheduler is not None:
+        scheduler.sync(batch.id, batch.code, batch.cron, enabled=batch.enabled)
     if cache is not None:
         await cache.invalidate(BATCH_CACHE_PREFIX)
     return response
@@ -105,9 +111,15 @@ async def update_batch(
     batch_service: BatchServiceDep,
     current_user: CurrentUserDep,
     cache: CacheDep,
+    scheduler: SchedulerDep,
 ) -> BatchReadResponse:
     batch = await batch_service.update_batch(batch_id, data, updated_by=current_user.username)
     response = to_read(batch)
+    # The row is the schedule, so the write is not finished until the running
+    # process agrees with it: a cron edit or `enabled=false` that only landed in
+    # the table would keep firing the old trigger until the next restart.
+    if scheduler is not None:
+        scheduler.sync(batch.id, batch.code, batch.cron, enabled=batch.enabled)
     if cache is not None:
         await cache.invalidate(BATCH_CACHE_PREFIX)
     return response
@@ -115,9 +127,44 @@ async def update_batch(
 
 @router.delete("/{batch_id}")
 async def delete_batch(
-    batch_id: UUID, batch_service: BatchServiceDep, current_user: CurrentUserDep, cache: CacheDep
+    batch_id: UUID,
+    batch_service: BatchServiceDep,
+    current_user: CurrentUserDep,
+    cache: CacheDep,
+    scheduler: SchedulerDep,
 ) -> dict[str, bool]:
     await batch_service.delete_batch(batch_id)
+    if scheduler is not None:
+        scheduler.remove(batch_id)
     if cache is not None:
         await cache.invalidate(BATCH_CACHE_PREFIX)
     return {"ok": True}
+
+
+@router.post("/{batch_id}/run")
+async def run_batch(
+    batch_id: UUID,
+    data: BatchRunRequest,
+    batch_service: BatchServiceDep,
+    current_user: CurrentUserDep,
+    scheduler: SchedulerDep,
+) -> BatchRunResponse:
+    """Start or stop one execution — the schedule and `enabled` are untouched.
+
+    One endpoint because the client states the execution state it wants:
+    `running: true` fires the job now (409 while one is already in flight),
+    `running: false` cancels the run in flight and is idempotent.
+
+    A deactivated row may still be run by hand: `enabled` says whether the clock
+    starts the job, not whether an operator may. A process without a scheduler
+    (a web-only replica) answers 409 rather than accepting a run nothing would
+    execute.
+    """
+    batch = await batch_service.get_batch(batch_id)
+    if scheduler is None:
+        raise ConflictError("No scheduler is running in this process")
+    if data.running:
+        scheduler.run_now(batch.id, batch.code)
+    else:
+        scheduler.stop(batch.id)
+    return BatchRunResponse(id=batch.id, code=batch.code, running=data.running)

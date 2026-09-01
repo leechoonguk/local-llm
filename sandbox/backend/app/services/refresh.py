@@ -38,6 +38,10 @@ class RefreshService:
     async def list_refreshes(self, offset: int = 0, limit: int = 100) -> list[Refresh]:
         return await self.refresh_repository.list(offset, limit)
 
+    async def find_expired(self, expired_before: datetime) -> list[Refresh]:
+        """Return tokens expired before the given moment — used by batch jobs."""
+        return await self.refresh_repository.find_expired(expired_before)
+
     async def create_refresh(self, data: RefreshCreateRequest, created_by: str) -> str:
         """Issue a token for a session and return the secret, once.
 

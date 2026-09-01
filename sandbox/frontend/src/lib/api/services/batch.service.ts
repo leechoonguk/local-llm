@@ -5,7 +5,13 @@
 import { api } from '@/lib/api/client'
 import { BATCH_ENDPOINTS } from '@/lib/api/endpoints'
 import type { OffsetLimitParams, OkResponse } from '@/types/api'
-import type { Batch, BatchCreateRequest, BatchUpdateRequest } from '@/types/batch'
+import type {
+  Batch,
+  BatchCreateRequest,
+  BatchRunRequest,
+  BatchRunResponse,
+  BatchUpdateRequest,
+} from '@/types/batch'
 
 export const batchService = {
   list: (params: OffsetLimitParams) => api.get<Batch[]>(BATCH_ENDPOINTS.LIST, { params }),
@@ -18,4 +24,7 @@ export const batchService = {
     api.patch<Batch>(BATCH_ENDPOINTS.UPDATE(id), data),
 
   remove: (id: string) => api.delete<OkResponse>(BATCH_ENDPOINTS.DELETE(id)),
+
+  run: (id: string, data: BatchRunRequest) =>
+    api.post<BatchRunResponse>(BATCH_ENDPOINTS.RUN(id), data),
 }

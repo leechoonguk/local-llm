@@ -9,22 +9,24 @@ from uuid import uuid4
 
 import httpx2
 import structlog
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp
 
-from app.batch.batches import purge_stale_batches
 from app.core.cache import RedisCache
+from app.core.database import engine
 from app.core.exceptions import setup_exception_handler
 from app.core.logging import configure_logging
+from app.core.scheduler import BatchScheduler
 from app.core.settings import settings
 from app.routers import auth, batch, health, integration, user
+from app.services.batch import BatchService
 
 
 # ============================================================
@@ -101,7 +103,7 @@ class CsrfProtection(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
-    scheduler: AsyncIOScheduler | None = None
+    scheduler: BatchScheduler | None = None
     redis_client: Redis | None = None
     integration_http_client = httpx2.AsyncClient(
         timeout=httpx2.Timeout(
@@ -134,30 +136,21 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         app.state.redis_cache = None
 
     if settings.env != "test":
-        scheduler = AsyncIOScheduler()
-        scheduler.add_job(
-            purge_stale_batches,
-            "cron",
-            hour=3,
-            minute=0,
-            kwargs={"days": 30},
-            # A named job replaces itself instead of stacking a second copy on
-            # every reload; one instance at a time, because two purges racing
-            # delete the same rows twice. A restart across 03:00 still runs the
-            # job (coalesced into one) as long as it is less than an hour late.
-            id="purge_stale_batches",
-            replace_existing=True,
-            max_instances=1,
-            coalesce=True,
-            misfire_grace_time=3600,
-        )
+        # The schedule is data, not code: every trigger comes from a `batch` row,
+        # so a restart converges on whatever the table says — including the rows
+        # another process disabled while this one was down.
+        scheduler = BatchScheduler()
+        async with AsyncSession(engine) as session:
+            batch_service = BatchService(session)
+            for job in await batch_service.list_enabled_batches():
+                scheduler.sync(job.id, job.code, job.cron, enabled=job.enabled)
         scheduler.start()
-        app.state.scheduler = scheduler
+    app.state.scheduler = scheduler
 
     yield
     await integration_http_client.aclose()
     if scheduler is not None:
-        scheduler.shutdown(wait=False)
+        scheduler.shutdown()
     if redis_client is not None:
         await redis_client.aclose()
 

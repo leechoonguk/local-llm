@@ -1,9 +1,13 @@
 /**
- * Batch create/edit dialog — the form-dialog template with two fields.
+ * Batch create/edit dialog — the form-dialog template for a job schedule.
  *
  * `description` is nullable on the wire, so an empty input is sent as `null`
  * rather than `""`: the column means "no description", and two spellings of
  * absent is how a filter on it starts missing rows.
+ *
+ * `code` is only editable while creating. The server refuses to repoint an
+ * existing schedule at another job, so an editable field here would offer a
+ * change that always answers 422.
  */
 
 import { useEffect, useMemo } from 'react'
@@ -14,6 +18,7 @@ import * as yup from 'yup'
 import { Button, Dialog, DialogActions, DialogContent, Stack } from '@mui/material'
 import FormProvider from '@/components/hook-form/FormProvider'
 import FormDialogHeader from '@/components/dialog/FormDialogHeader'
+import RHFSwitch from '@/components/hook-form/RHFSwitch'
 import RHFTextField from '@/components/hook-form/RHFTextField'
 import { useCreateBatch, useUpdateBatch } from '@/lib/api/hooks/useBatch'
 import { useToast } from '@/hooks/useToast'
@@ -25,12 +30,25 @@ const NAME_MAX_LENGTH = 120
 
 const DESCRIPTION_MAX_LENGTH = 512
 
+const CODE_MAX_LENGTH = 64
+
+const CRON_MAX_LENGTH = 120
+
 interface BatchFormValues {
+  code: string
   name: string
   description: string
+  cron: string
+  enabled: boolean
 }
 
-const EMPTY_VALUES: BatchFormValues = { name: '', description: '' }
+const EMPTY_VALUES: BatchFormValues = {
+  code: '',
+  name: '',
+  description: '',
+  cron: '0 3 * * *',
+  enabled: true,
+}
 
 interface BatchFormDialogProps {
   open: boolean
@@ -50,6 +68,10 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
   const schema = useMemo(
     () =>
       yup.object({
+        code: yup
+          .string()
+          .required(tCommon('validation.required'))
+          .max(CODE_MAX_LENGTH, tCommon('validation.max_length', { count: CODE_MAX_LENGTH })),
         name: yup
           .string()
           .required(tCommon('validation.required'))
@@ -61,6 +83,11 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
             tCommon('validation.max_length', { count: DESCRIPTION_MAX_LENGTH }),
           )
           .defined(),
+        cron: yup
+          .string()
+          .required(tCommon('validation.required'))
+          .max(CRON_MAX_LENGTH, tCommon('validation.max_length', { count: CRON_MAX_LENGTH })),
+        enabled: yup.boolean().defined(),
       }),
     [tCommon],
   )
@@ -75,7 +102,13 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
     methods.reset(
       batch === null
         ? EMPTY_VALUES
-        : { name: batch.name, description: batch.description ?? '' },
+        : {
+            code: batch.code,
+            name: batch.name,
+            description: batch.description ?? '',
+            cron: batch.cron,
+            enabled: batch.enabled,
+          },
     )
   }, [open, batch, methods])
 
@@ -83,10 +116,12 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
     const payload = {
       name: values.name,
       description: values.description === '' ? null : values.description,
+      cron: values.cron,
+      enabled: values.enabled,
     }
     try {
       if (batch === null) {
-        await createMutation.mutateAsync(payload)
+        await createMutation.mutateAsync({ ...payload, code: values.code })
         toast.success(tCommon('messages.created'))
       } else {
         await updateMutation.mutateAsync({ id: batch.id, data: payload })
@@ -117,8 +152,16 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
 
         <DialogContent sx={{ p: 2 }}>
           <Stack spacing={2} sx={{ pt: 1 }}>
+            <RHFTextField
+              name="code"
+              label={t('form.code')}
+              disabled={isEdit}
+              helperText={t('form.code_helper')}
+            />
             <RHFTextField name="name" label={t('form.name')} />
+            <RHFTextField name="cron" label={t('form.cron')} helperText={t('form.cron_helper')} />
             <RHFTextField name="description" label={t('form.description')} multiline minRows={3} />
+            <RHFSwitch name="enabled" label={t('form.enabled')} />
           </Stack>
         </DialogContent>
 

@@ -11,7 +11,7 @@ import { QUERY_STALE_TIME } from '@/lib/api/queryDefaults'
 import { batchKeys } from '@/lib/api/queryKeys'
 import { batchService } from '@/lib/api/services/batch.service'
 import type { OffsetLimitParams } from '@/types/api'
-import type { BatchCreateRequest, BatchUpdateRequest } from '@/types/batch'
+import type { BatchCreateRequest, BatchRunRequest, BatchUpdateRequest } from '@/types/batch'
 
 export function useBatchList(params: OffsetLimitParams) {
   return useQuery({
@@ -56,5 +56,18 @@ export function useDeleteBatch() {
   return useMutation({
     mutationFn: (id: string) => batchService.remove(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: batchKeys.lists() }),
+  })
+}
+
+/**
+ * Run or stop one execution.
+ *
+ * No cache invalidation: an execution changes no row, so refetching the list
+ * would only make the grid flicker for a state it does not display.
+ */
+export function useRunBatch() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: BatchRunRequest }) =>
+      batchService.run(id, data),
   })
 }

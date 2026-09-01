@@ -1,13 +1,16 @@
-### Batch API — 5계층 CRUD 표준 도메인
+### Batch API — 배치잡 스케줄 CRUD (code = 등록된 잡, cron = 실행 주기, enabled = 스케줄 활성화)
 ### 전제: backend 서버 실행 중 (cd backend && make dev) + 시드 계정 적용 (`make db-init`)
-### 순차 실행: 1번부터 아래로 그대로 실행한다. 2번이 만든 batch는 6번이 지운다.
+### 순차 실행: 1번부터 아래로 그대로 실행한다. 2번이 만든 batch는 10번이 지운다.
 ###           계정은 만들지 않는다 — 행위자 계정의 생성·삭제는 api/auth.http 하나가 담당하고,
 ###           나머지 파일은 공용 계정으로 로그인만 한다(파일마다 계정을 만들면 같은 초에
 ###           재실행할 때 username이 충돌해 1번 블록부터 409가 난다).
+###           시드 배치잡(80번 마이그레이션) 행은 건드리지 않는다 — 이 파일은 자기가 만든 행만 지운다.
 ###           실행이 끝나면 DB는 실행 전과 같다. id는 손으로 넣지 않는다 — 모두 응답에서 이어받는다.
 @base = {{$dotenv API_ORIGIN}}/api/v1
 # 체이닝 변수는 요청 블록 밖에 둔다 — 바디 뒤에 두면 REST Client가 JSON에 붙여 보내 422가 된다
 @batchId = {{createBatch.response.body.id}}
+# 서버 레지스트리(app/core/scheduler.py BATCH_JOBS)에 있는 코드만 통과한다
+@jobCode = purge_expired_refreshes
 
 ### 1. 로그인 — 200 (공용 계정으로 인증 — access_token이 이후 블록에 주입된다)
 # @name login
@@ -16,65 +19,126 @@ Content-Type: application/x-www-form-urlencoded
 
 username=api-actor&password=api-actor-secret
 
-### 2. Batch 생성 — 201 (이후 블록이 쓰는 id를 만든다)
+### 2. 배치잡 등록 — 201 (이후 블록이 쓰는 id를 만든다; 스케줄러에 트리거가 등록된다)
 # @name createBatch
 POST {{base}}/batch/
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
 {
+  "code": "{{jobCode}}",
   "name": "batch-{{$timestamp}}",
-  "description": "created by api/batch.http"
+  "description": "created by api/batch.http",
+  "cron": "0 3 * * *"
 }
 
 
-### 3. Batch 목록 — 200 (2번이 만든 항목이 포함된다)
+### 3. 배치잡 목록 — 200 (2번이 만든 항목과 시드 잡이 함께 보인다)
 GET {{base}}/batch/?offset=0&limit=100
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 4. Batch 단건 조회 — 200 (version=1)
+### 4. 배치잡 단건 조회 — 200 (version=1)
 GET {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 5. Batch 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
+### 5. CRON 변경 — 200 (version=2 — 낙관적 락 카운터가 1 증가하고 트리거가 교체된다)
 PATCH {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
 {
-  "name": "batch-updated-{{$timestamp}}",
+  "cron": "30 4 * * *",
   "description": "updated by api/batch.http"
 }
 
-### 6. Batch 삭제 — 200 ({"ok": true})
-DELETE {{base}}/batch/{{batchId}}
+### 6. 즉시 실행 — 200 (running=true — cron과 무관하게 한 번 실행한다)
+POST {{base}}/batch/{{batchId}}/run
 Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
 
-### 7. Batch 단건 조회 — 404 (6번 삭제가 실제로 반영됐음을 증명한다)
-GET {{base}}/batch/{{batchId}}
+{
+  "running": true
+}
+
+### 7. 실행 중지 — 200 (running=false — 진행 중인 실행만 취소하고 스케줄은 그대로 둔다)
+POST {{base}}/batch/{{batchId}}/run
 Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
 
-### 8. Batch 수정 — 404 (없는 리소스 수정)
+{
+  "running": false
+}
+
+### 8. 스케줄 비활성화 — 200 (enabled=false — 행은 남고 스케줄러에서만 내려간다)
 PATCH {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
 {
-  "name": "ghost"
+  "enabled": false
 }
 
-### 9. Batch 삭제 — 404 (없는 리소스 삭제)
+### 9. 스케줄 활성화 — 200 (비활성화가 cron을 잃지 않았음을 증명한다 — 5번의 값 그대로 다시 걸린다)
+PATCH {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "enabled": true
+}
+
+### 10. 배치잡 삭제 — 200 ({"ok": true})
 DELETE {{base}}/batch/{{batchId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 10. Batch 생성 — 422 (필수 필드 name 누락)
+### 11. 배치잡 단건 조회 — 404 (10번 삭제가 실제로 반영됐음을 증명한다)
+GET {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 12. 배치잡 수정 — 404 (없는 리소스 수정)
+PATCH {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "cron": "0 5 * * *"
+}
+
+### 13. 배치잡 삭제 — 404 (없는 리소스 삭제)
+DELETE {{base}}/batch/{{batchId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 14. 배치잡 등록 — 422 (필수 필드 name 누락)
 POST {{base}}/batch/
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
 {
-  "description": "missing name"
+  "code": "{{jobCode}}",
+  "cron": "0 3 * * *"
 }
 
-### 11. Batch 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+### 15. 배치잡 등록 — 422 (레지스트리에 없는 code — 실행할 수 없는 스케줄은 만들 수 없다)
+POST {{base}}/batch/
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "code": "job_from_the_future",
+  "name": "ghost",
+  "cron": "0 3 * * *"
+}
+
+### 16. 배치잡 등록 — 422 (파싱되지 않는 cron — 절대 안 도는 잡은 만들 수 없다)
+POST {{base}}/batch/
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "code": "{{jobCode}}",
+  "name": "ghost",
+  "cron": "every tuesday"
+}
+
+### 17. 배치잡 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
 GET {{base}}/batch/?offset=0&limit=100

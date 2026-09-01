@@ -39,6 +39,7 @@ export const ACTION_ICONS = {
   people: 'eva:people-fill',
   clock: 'eva:clock-fill',
   server: 'eva:hard-drive-fill',
+  stop: 'eva:stop-circle-fill',
 } as const
 
 const NAV_ICON_ROOT = '/assets/icons/navbar'

@@ -132,24 +132,38 @@ export const en = {
   },
   batch: {
     title: 'Batches',
-    description: 'Create, edit and delete batch jobs',
+    description: 'Schedule batch jobs — cron, activation, run and stop',
     list_title: 'Batch list',
-    create_title: 'New batch',
-    edit_title: 'Edit batch',
-    delete_title: 'Delete batch',
+    create_title: 'New schedule',
+    edit_title: 'Edit schedule',
+    delete_title: 'Delete schedule',
     table: {
       name: 'Name',
+      code: 'Job code',
+      cron: 'Cron',
+      enabled: 'State',
       description: 'Description',
     },
     form: {
       name: 'Name',
+      code: 'Job code',
+      code_helper: 'A job the server registers; fixed once created',
+      cron: 'Cron',
+      cron_helper: 'Five fields, e.g. 0 3 * * * (03:00 daily)',
+      enabled: 'Run on schedule',
       description: 'Description',
     },
     filter: {
       search_placeholder: 'Search name',
     },
+    actions: {
+      run: 'Run now',
+      stop: 'Stop run',
+    },
     messages: {
-      delete_confirm: 'The batch {{name}} will be deleted.',
+      delete_confirm: 'The schedule {{name}} will be deleted.',
+      run_started: 'Run started',
+      run_stopped: 'Run stopped',
     },
   },
   integration: {

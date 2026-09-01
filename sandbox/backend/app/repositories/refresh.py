@@ -38,6 +38,18 @@ class RefreshRepository:
         result = await self.session.execute(select(Refresh).where(Refresh.created_at < older_than))
         return list(result.scalars().all())
 
+    async def find_expired(self, expired_before: datetime) -> list[Refresh]:
+        """Return tokens whose own expiry is already past the given moment.
+
+        Keyed on `expires_at`, never on `created_at`: the lifetime is a setting,
+        so a purge that measured age from creation would delete live sessions
+        the day someone raised it.
+        """
+        result = await self.session.execute(
+            select(Refresh).where(Refresh.expires_at < expired_before)
+        )
+        return list(result.scalars().all())
+
     async def create(self, data: RefreshCreateInternal) -> Refresh:
         refresh = Refresh(**data.model_dump())
         self.session.add(refresh)

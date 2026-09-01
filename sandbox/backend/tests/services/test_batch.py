@@ -14,6 +14,10 @@ from app.services.batch import BatchService
 
 MISSING_UUID = uuid4()
 
+CRON = "0 3 * * *"
+
+JOB_CODE = "purge_expired_refreshes"
+
 
 @pytest.mark.asyncio
 async def test_batch_service_crud(factory) -> None:
@@ -24,7 +28,7 @@ async def test_batch_service_crud(factory) -> None:
     """
     async with factory() as session:
         created = await BatchService(session).create_batch(
-            BatchCreateRequest(name="A", description="d"), "tester"
+            BatchCreateRequest(code=JOB_CODE, name="A", description="d", cron=CRON), "tester"
         )
         item_id = created.id
         assert created.name == "A"
@@ -74,14 +78,18 @@ async def test_batch_service_find_stale(factory) -> None:
     """find_stale returns only batches created before the cutoff."""
     async with factory() as session:
         service = BatchService(session)
-        old = await service.create_batch(BatchCreateRequest(name="old"), "tester")
+        old = await service.create_batch(
+            BatchCreateRequest(code=JOB_CODE, name="old", cron=CRON), "tester"
+        )
     async with factory() as session:
         batch = await session.get(Batch, old.id)
         batch.created_at = datetime.now(UTC) - timedelta(days=10)
         await session.commit()
     async with factory() as session:
         service = BatchService(session)
-        await service.create_batch(BatchCreateRequest(name="fresh"), "tester")
+        await service.create_batch(
+            BatchCreateRequest(code=JOB_CODE, name="fresh", cron=CRON), "tester"
+        )
         cutoff = datetime.now(UTC) - timedelta(days=1)
         stale = await service.find_stale(cutoff)
         assert [b.name for b in stale] == ["old"]
@@ -95,7 +103,9 @@ async def test_concurrent_update_raises_stale_data(factory) -> None:
     first one's columns (lost update).
     """
     async with factory() as session:
-        created = await BatchService(session).create_batch(BatchCreateRequest(name="seed"), "a")
+        created = await BatchService(session).create_batch(
+            BatchCreateRequest(code=JOB_CODE, name="seed", cron=CRON), "a"
+        )
     assert created.version == 1
 
     first = factory()
@@ -119,3 +129,25 @@ async def test_concurrent_update_raises_stale_data(factory) -> None:
         survivor = await session.get(Batch, created.id)
         assert survivor.name == "winner"
         assert survivor.version == 2
+
+
+@pytest.mark.asyncio
+async def test_batch_service_list_enabled_batches(factory) -> None:
+    """The startup read returns the running schedule, not the whole table."""
+    async with factory() as session:
+        service = BatchService(session)
+        await service.create_batch(
+            BatchCreateRequest(code=JOB_CODE, name="on", cron=CRON), "tester"
+        )
+        stopped = await service.create_batch(
+            BatchCreateRequest(code=JOB_CODE, name="off", cron=CRON), "tester"
+        )
+
+    async with factory() as session:
+        await BatchService(session).update_batch(
+            stopped.id, BatchUpdateRequest(enabled=False), "tester"
+        )
+
+    async with factory() as session:
+        enabled = await BatchService(session).list_enabled_batches()
+        assert [batch.name for batch in enabled] == ["on"]

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.cache import RedisCache
 from app.core.database import engine
+from app.core.scheduler import BatchScheduler
 
 
 # ============================================================
@@ -48,3 +49,11 @@ async def get_cache(request: Request) -> RedisCache | None:
 
 
 CacheDep = Annotated[RedisCache | None, Depends(get_cache)]
+
+
+async def get_scheduler(request: Request) -> BatchScheduler | None:
+    """The running scheduler, or None where none runs (tests, worker-less runs)."""
+    return request.app.state.scheduler
+
+
+SchedulerDep = Annotated[BatchScheduler | None, Depends(get_scheduler)]
