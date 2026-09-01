@@ -1,0 +1,67 @@
+[
+ {
+  "at": "2026-09-01T16:53:09.344Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit",
+  "task": "notice",
+  "shape": "greenfield",
+  "wall_s": 5410,
+  "timed_out": true,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 15,
+  "expected": 26,
+  "files": [
+   "M sandbox/backend/alembic/env.py",
+   " M sandbox/backend/app/dependencies/services.py",
+   " M sandbox/backend/app/main.py",
+   " M sandbox/backend/app/models/__init__.py",
+   " M sandbox/backend/tests/core/test_seed_api_actor.py",
+   "?? sandbox/api/notice.http",
+   "?? sandbox/backend/alembic/versions/81_add_notice_table.py",
+   "?? sandbox/backend/app/models/notice.py",
+   "?? sandbox/backend/app/repositories/notice.py",
+   "?? sandbox/backend/app/routers/notice.py",
+   "?? sandbox/backend/app/schemas/notice.py",
+   "?? sandbox/backend/app/services/notice.py",
+   "?? sandbox/backend/tests/api/test_notice.py",
+   "?? sandbox/backend/tests/repositories/test_notice.py",
+   "?? sandbox/backend/tests/services/test_notice.py"
+  ],
+  "gate_exit": 2,
+  "gate_failures": 2,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 2,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-09-01T16-53-55-998Z_01a05de4-449e-72e6-8883-59d7edbaa5b7.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 28,
+  "tools": {
+   "read": 192,
+   "glob": 8,
+   "write": 28,
+   "bash": 103
+  },
+  "gate_runs": 4,
+  "first_full_gate_s": 1197,
+  "advisory_skips": 0,
+  "piped_gates": 2,
+  "first_green_s": null,
+  "no_work": false
+ }
+]
