@@ -38,17 +38,17 @@ style: |
     font-size: 0.85em;
   }
 ---
-<!-- sync: backend-api-http.md=3d39899fbd261b93 -->
+<!-- sync: backend-api-http.md=f2787c104ebba354 -->
 <!-- sync: backend-api-keys.md=240f10d0c15e7197 -->
 <!-- sync: backend-app-forbidden-tokens.md=ea8d74690ce51928 -->
 <!-- sync: backend-app-setup.md=17d665e697444fd2 -->
 <!-- sync: backend-audit-log.md=8ff51ab42272c7b2 -->
 <!-- sync: backend-auth.md=96c341a1d5492ff5 -->
 <!-- sync: backend-background-tasks.md=f44f5777655cd583 -->
-<!-- sync: backend-batch.md=69e360f96552e3c9 -->
+<!-- sync: backend-batch.md=65460044fa8ddfa4 -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-core-config.md=2df96e9e761e6fea -->
-<!-- sync: backend-domain.md=fe2388099b899e5d -->
+<!-- sync: backend-domain.md=bb0a564cf5b824d4 -->
 <!-- sync: backend-exceptions.md=63e9a9e48c73778d -->
 <!-- sync: backend-file-upload.md=417dc0174bf98a36 -->
 <!-- sync: backend-identity-tokens.md=1bbcce7b00ea655c -->
@@ -108,7 +108,7 @@ style: |
 <!-- sync: check-backend-audit-log.ts=556ba3b7e59fb9a4 -->
 <!-- sync: check-backend-auth.ts=33be64d56f12c2f8 -->
 <!-- sync: check-backend-background-tasks.ts=ce650499e3873dae -->
-<!-- sync: check-backend-batch.ts=ce7edb4046c4b54e -->
+<!-- sync: check-backend-batch.ts=9ef458c9ba4eab27 -->
 <!-- sync: check-backend-core-config.ts=80bf2b91f94b74c4 -->
 <!-- sync: check-backend-domain.ts=dfe291f2478ce1e0 -->
 <!-- sync: check-backend-exceptions.ts=3c31efcca50c31b1 -->
@@ -151,7 +151,7 @@ style: |
 <!-- sync: check-tooling.ts=dec90cb9a2b57d71 -->
 <!-- sync: check-verify.ts=000771942a476ef1 -->
 <!-- sync: lib/ast-rules.ts=7d8313da1927a4d5 -->
-<!-- sync: lib/backend-api-flow.ts=59bdad47e1b7e640 -->
+<!-- sync: lib/backend-api-flow.ts=446eef517652c795 -->
 <!-- sync: lib/backend-api-http.ts=232b35cd37c82bd4 -->
 <!-- sync: lib/backend-auth.ts=07075a93b13acc08 -->
 <!-- sync: lib/backend-domain-layers.ts=2ff2f5555721a967 -->

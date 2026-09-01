@@ -252,11 +252,25 @@ the way REST Client would and proves the standard at runtime:
 - **Chaining** — `{{name.response.body.*}}`, `@vars`, `{{$timestamp}}`,
   `{{$guid}}`, `{{$randomInt}}` are resolved per request, so a file that needs a
   hand-pasted id fails with `unresolved template`.
+- **Cookies** — the runner keeps a jar **per file**, as REST Client does: the
+  session `POST /auth/login` plants is what `POST /auth/refresh` consumes, and a
+  `Set-Cookie` that deletes (empty value, `Max-Age=0`) really removes it. Without
+  the jar `auth.http`'s refresh block answered 401 and the logout block after it
+  "passed" for the wrong reason — measured. The jar is never shared between
+  files: each one must still be runnable alone.
 - **Declared status** — each block's response status must equal the status its
   section title declares after the dash. A drifted contract fails here.
-- **State neutrality** — row counts (`public` tables, minus `alembic_version`)
-  are snapshotted before and after **each** file and across the suite. A leaked
-  or deleted row is reported per table (`user 0 → 1`).
+- **State neutrality** — row counts (`public` tables, minus `alembic_version` and
+  `refresh`) are snapshotted before and after **each** file and across the suite.
+  A leaked or deleted row is reported per table (`user 0 → 1`).
+
+  `refresh` is excluded because it holds no row a file authored: logging in is
+  the precondition of every authenticated block, the session row is the server's
+  answer to it, and no endpoint deletes one (logout revokes, keeping the row so
+  a replayed token stays distinguishable from an unknown one). Counting it made
+  nine files each report a leak for having authenticated. Expired rows are the
+  `purge_expired_refreshes` batch job's business (rule://backend-batch), not the
+  request files'.
 
 The runner is CLI-only, never a post hook: it writes to the database and calls
 external APIs, so it must be asked for. It needs the stack up (`make up`, or

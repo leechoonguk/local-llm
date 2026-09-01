@@ -183,7 +183,7 @@ from deferring a step's verification until the end.
 
 ## Model (`app/models/<name>.py`)
 
-**Standard pattern** — `models/batch.py` is the reference:
+**Standard pattern** — `models/user.py` is the reference:
 
 ```python
 import uuid
@@ -195,13 +195,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.models.base import AuditMixin, Base
 
 
-class Batch(Base, AuditMixin):
-    __tablename__ = "batch"
+class User(Base, AuditMixin):
+    __tablename__ = "user"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
-    name: Mapped[str] = mapped_column(String(120), index=True)
-    description: Mapped[str | None] = mapped_column(String(512), default=None)
+    username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
 ```
+
+`models/batch.py` is no longer the plain-CRUD exemplar: its row *is* a
+scheduled job (`code`, `cron`, `enabled` — rule://backend-batch), so a domain
+copying it would inherit a scheduler contract it does not have.
 
 Rules (all machine-checked by `check-backend-domain.ts`):
 

@@ -33,6 +33,7 @@ declare const process: {
 };
 declare function fetch(url: string, init?: unknown): Promise<{
   status: number;
+  headers: { getSetCookie(): string[] };
   text(): Promise<string>;
 }>;
 
@@ -56,7 +57,13 @@ const RESPONSE_REF = /^(\w+)\.response\.body\.(.+)$/;
 /**
  * One round trip for every table's exact count: query_to_xml runs the count
  * per discovered table, so a new table is included without editing this query.
- * `alembic_version` is schema bookkeeping, not test data.
+ * Two tables are excluded, for the same reason in different clothes: neither
+ * holds a row a request file authored. `alembic_version` is schema bookkeeping.
+ * `refresh` holds the server-issued session `POST /auth/login` mints, and every
+ * file must log in — measured: nine files each left exactly one row behind, and
+ * no published endpoint deletes one (logout revokes, keeping the row so a
+ * replayed token stays distinguishable from an unknown one). Counting it made
+ * "authenticated" indistinguishable from "leaked a domain row".
  */
 const ROW_COUNT_SQL = `
 SELECT table_name || '=' || (xpath(
@@ -67,7 +74,7 @@ SELECT table_name || '=' || (xpath(
   FROM information_schema.tables
  WHERE table_schema = 'public'
    AND table_type = 'BASE TABLE'
-   AND table_name <> 'alembic_version'
+   AND table_name NOT IN ('alembic_version', 'refresh')
  ORDER BY table_name
 `;
 
@@ -78,6 +85,11 @@ SELECT table_name || '=' || (xpath(
  * runner and the request files start testing two different servers.
  */
 const API_BASE = `${readDotenv("API_ORIGIN") ?? "http://localhost:8000"}/api/v1`;
+
+/** `/health` sits above the version prefix, so the probe needs the bare origin. */
+const API_ORIGIN = API_BASE.replace(/\/api\/v1$/, "");
+
+const PROBE_TIMEOUT_MS = 5_000;
 
 /**
  * The account every domain file authenticates as, seeded by migration 57 so it
@@ -92,6 +104,14 @@ const ACTOR_PASSWORD = "api-actor-secret";
 const REQUEST_TIMEOUT_MS = 60_000;
 const PSQL_TIMEOUT_MS = 30_000;
 const BODY_EXCERPT_CHARS = 160;
+
+/**
+ * One file's cookies, kept for the same reason REST Client keeps them: a session
+ * planted by `POST /auth/login` is what `POST /auth/refresh` consumes two blocks
+ * later. Without a jar that block answered 401 and the logout block that follows
+ * it "passed" for the wrong reason — measured on `api/auth.http`.
+ */
+type CookieJar = Map<string, string>;
 
 interface Block {
   number: number;
@@ -129,6 +149,15 @@ interface BlockResult {
 
 export async function runApiFlow(verbose = false): Promise<string[]> {
   if (!existsSync(apiDir)) return [`${apiDir} not found — no .http files to run`];
+  // Dormant, never red, when the stack is down: this gate runs inside
+  // `make verify`, and a laptop on a plane must still be able to prove the
+  // hermetic checks. The same shape as check-backend-migrations' unreachable
+  // database — a skip that says so, rather than a pass that lies.
+  const dormant = await dormantReason();
+  if (dormant !== null) {
+    console.log(`    PASS: api flow (dormant — ${dormant})`);
+    return [];
+  }
   const files = readdirSync(apiDir)
     .filter((file: string) => file.endsWith(".http"))
     .sort();
@@ -197,6 +226,30 @@ export async function runApiFlow(verbose = false): Promise<string[]> {
 }
 
 /**
+ * Why the suite cannot run here, or `null` when it can.
+ *
+ * Both halves are required and neither is this repository's code: the API
+ * answers the requests, and postgres answers the row counts that prove state
+ * neutrality. A missing half makes the run unprovable, not failed.
+ */
+async function dormantReason(): Promise<string | null> {
+  try {
+    await fetch(`${API_ORIGIN}/health`, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) });
+  } catch (error: unknown) {
+    return (
+      `the API at ${API_ORIGIN} is unreachable (${(error as Error).message}) — ` +
+      "start it with make up, or cd backend && make dev"
+    );
+  }
+  try {
+    query("SELECT 1");
+  } catch (error: unknown) {
+    return `${(error as Error).message}`;
+  }
+  return null;
+}
+
+/**
  * The seeded actor must be able to log in before the suite starts. Without this
  * the first authenticated block answers 401 and every later block fails with it,
  * which reads as "the .http files are broken" instead of "the database has no
@@ -208,6 +261,9 @@ export async function verifySeededActor(): Promise<string | null> {
     `${API_BASE}/auth/login`,
     { "Content-Type": "application/x-www-form-urlencoded" },
     `username=${ACTOR_USERNAME}&password=${ACTOR_PASSWORD}`,
+    // A throwaway jar: this probe proves the seed exists and shares its session
+    // with nobody, so the files still each log in for themselves.
+    new Map(),
   );
   if (login.status === 200) return null;
   return (
@@ -359,6 +415,9 @@ export async function runFile(
 ): Promise<{ executed: number; failures: string[]; blocks: BlockResult[] }> {
   const variables = new Map<string, string>();
   const responses = new Map<string, unknown>();
+  // Per file, never per suite: a file must be runnable on its own, so it may
+  // not inherit a session another file logged in for.
+  const jar: CookieJar = new Map();
   const failures: string[] = [];
   const blocks: BlockResult[] = [];
   let executed = 0;
@@ -396,7 +455,7 @@ export async function runFile(
       continue;
     }
 
-    const response = await send(step.method, url, headers, body);
+    const response = await send(step.method, url, headers, body, jar);
     executed += 1;
     if (step.expected === null) {
       failures.push(`${label}: section title declares no expected status (${step.title})`);
@@ -427,14 +486,20 @@ async function send(
   url: string,
   headers: Record<string, string>,
   body: string,
+  jar: CookieJar,
 ): Promise<{ status: number; payload: string }> {
   try {
+    const cookie = cookieHeader(jar);
     const response = await fetch(url, {
       method,
-      headers,
+      headers: cookie === "" || "Cookie" in headers ? headers : { ...headers, Cookie: cookie },
       body: body === "" ? undefined : body,
+      // Cookies are followed by hand, so redirects must not swallow a Set-Cookie
+      // the runner never sees.
+      redirect: "manual",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
+    storeCookies(jar, response.headers.getSetCookie());
     return { status: response.status, payload: await response.text() };
   } catch (error: unknown) {
     throw new Error(
@@ -485,6 +550,32 @@ function readDotenv(key: string): string | null {
     if (match !== null) return match[1];
   }
   return null;
+}
+
+/** Serializes the jar into one `Cookie` header, or `""` when it is empty. */
+function cookieHeader(jar: CookieJar): string {
+  return [...jar].map(([name, value]) => `${name}=${value}`).join("; ");
+}
+
+/**
+ * Applies one response's `Set-Cookie` headers to the jar.
+ *
+ * A deletion is a `Set-Cookie` too: logout answers with an empty value and
+ * `Max-Age=0`, and treating that as a normal assignment would keep sending a
+ * cookie the server just revoked — the block that proves logout worked would
+ * then fail for a reason that has nothing to do with logout.
+ */
+function storeCookies(jar: CookieJar, setCookies: string[]): void {
+  for (const header of setCookies) {
+    const [pair] = header.split(";");
+    const separator = pair.indexOf("=");
+    if (separator <= 0) continue;
+    const name = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim().replace(/^"|"$/g, "");
+    const deleted = value === "" || /(^|;)\s*max-age=0\s*(;|$)/i.test(header);
+    if (deleted) jar.delete(name);
+    else jar.set(name, value);
+  }
 }
 
 /** Walks a chained response body: `createUser.response.body.id` → payload.id. */

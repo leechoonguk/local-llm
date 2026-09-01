@@ -23,6 +23,13 @@ import { resolveProjectRoot } from "../lib/hook-project-root.ts";
  *   4. Return a meaningful count/status
  *   5. No business logic — all work goes through service layer methods
  *
+ * It also enforces that the *schedule* lives in the database, not in Python.
+ * The chain a job must complete — function → registry → seeded row → scheduler
+ * — is checked end to end, because every link that is missing fails silently:
+ * an unregistered function is dead code, an unseeded code runs in no
+ * environment, and a hand-written `add_job` in main.py is a schedule nobody can
+ * change without a deploy (the exact regression this contract removed).
+ *
  * This is a read-only check — it does NOT block tool calls.
  * Log issues for the user to address.
  */
@@ -113,31 +120,126 @@ function checkBackendBatchSync(): string[] {
     }
   }
 
-  // --- Scheduler registration: a job that cannot be identified cannot be replaced ---
-  // A reload without `id`/`replace_existing` stacks a second copy; without
-  // `max_instances=1` two runs delete the same rows; without `coalesce` +
-  // `misfire_grace_time` a restart across the scheduled minute skips the run
-  // entirely, silently.
+  issues.push(...checkDatabaseManagedSchedule(batchDir));
+
+  return issues;
+}
+
+/**
+ * The schedule is a table: every job is a registry entry and a seeded `batch`
+ * row, and `main.py` schedules nothing by name.
+ */
+function checkDatabaseManagedSchedule(batchDir: string): string[] {
+  const issues: string[] = [];
+  const schedulerPath = join(projectRoot, "backend", "app", "core", "scheduler.py");
+  if (!existsSync(schedulerPath)) {
+    return ["backend/app/core/scheduler.py not found — the schedule has no owner"];
+  }
+  const scheduler = readFileSync(schedulerPath, "utf-8");
+
+  // --- The registry: one place where a code becomes runnable Python ---
+  const registry = /BATCH_JOBS[^=]*=\s*MappingProxyType\(\s*\{([\s\S]*?)\}\s*\)/.exec(scheduler);
+  if (registry === null) {
+    return ["core/scheduler.py: no `BATCH_JOBS = MappingProxyType({...})` registry found"];
+  }
+  const registered = new Map<string, string>();
+  for (const entry of registry[1].matchAll(/"([a-z0-9_]+)"\s*:\s*(\w+)/g)) {
+    registered.set(entry[1], entry[2]);
+  }
+  if (registered.size === 0) {
+    issues.push("core/scheduler.py: BATCH_JOBS is empty — no code can be scheduled");
+  }
+
+  // --- Every job function is registered; every registered name exists ---
+  const defined = new Set<string>();
+  for (const file of readdirSync(batchDir)) {
+    if (!file.endsWith(".py") || file === "__init__.py") continue;
+    const content = readFileSync(join(batchDir, file), "utf-8");
+    for (const match of content.matchAll(/^async def (\w+)\(/gm)) defined.add(match[1]);
+  }
+  for (const name of defined) {
+    if (![...registered.values()].includes(name)) {
+      issues.push(
+        `app/batch: '${name}' is in no BATCH_JOBS entry — a job no code names is dead code`,
+      );
+    }
+  }
+  for (const [code, name] of registered) {
+    if (!defined.has(name) && !scheduler.includes(`import ${name}`)) {
+      issues.push(`core/scheduler.py: BATCH_JOBS['${code}'] names '${name}', which no batch job defines`);
+    }
+  }
+
+  // --- Every code is seeded: a job in no database runs in no environment ---
+  const seeded = seededBatchCodes();
+  for (const code of registered.keys()) {
+    if (!seeded.has(code)) {
+      issues.push(
+        `'${code}' is registered but no migration seeds a batch row for it — ` +
+          "a job that exists only in Python never runs",
+      );
+    }
+  }
+
+  // --- main.py schedules nothing by name ---
   const mainPath = join(projectRoot, "backend", "app", "main.py");
   if (existsSync(mainPath)) {
     const main = readFileSync(mainPath, "utf-8");
-    for (const block of main.split("add_job(").slice(1)) {
-      const call = block.slice(0, block.indexOf("\n        )"));
-      for (const [option, why] of [
-        ["id=", "a job with no id cannot be replaced or inspected"],
-        ["replace_existing=True", "a reload otherwise stacks a second copy of the job"],
-        ["max_instances=1", "two overlapping runs act on the same rows"],
-        ["coalesce=True", "a backlog otherwise fires once per missed interval"],
-        ["misfire_grace_time=", "a restart across the scheduled minute otherwise skips the run"],
-      ]) {
-        if (!call.includes(option)) {
-          issues.push(`main.py: scheduler add_job is missing \`${option}\` — ${why}`);
-        }
+    if (main.includes("add_job(")) {
+      issues.push(
+        "main.py: add_job() belongs to core/scheduler.py — a job scheduled in the " +
+          "lifespan cannot be rescheduled or stopped without a deploy",
+      );
+    }
+    if (!main.includes("list_enabled_batches")) {
+      issues.push(
+        "main.py: the lifespan must load the schedule from the database " +
+          "(BatchService.list_enabled_batches)",
+      );
+    }
+  }
+
+  // --- The scheduler's own add_job carries the overlap policy ---
+  // A reload without `id`/`replace_existing` stacks a second copy; without
+  // `max_instances=1` two runs act on the same rows; without `coalesce` +
+  // `misfire_grace_time` a restart across the scheduled minute skips the run
+  // entirely, silently.
+  for (const block of scheduler.split("add_job(").slice(1)) {
+    const end = block.indexOf("\n        )");
+    const call = end === -1 ? block : block.slice(0, end);
+    for (const [option, why] of [
+      ["id=", "a job with no id cannot be replaced or stopped"],
+      ["replace_existing=True", "a reload otherwise stacks a second copy of the job"],
+      ["max_instances=1", "two overlapping runs act on the same rows"],
+      ["coalesce=True", "a backlog otherwise fires once per missed interval"],
+      ["misfire_grace_time=", "a restart across the scheduled minute otherwise skips the run"],
+    ]) {
+      if (!call.includes(option)) {
+        issues.push(`core/scheduler.py: add_job is missing \`${option}\` — ${why}`);
       }
     }
   }
 
   return issues;
+}
+
+/**
+ * The job codes some migration writes into `batch`.
+ *
+ * Discovered from the revisions themselves — never a hardcoded list — so a new
+ * seed is found the moment it is written, and a deleted one stops counting.
+ */
+function seededBatchCodes(): Set<string> {
+  const codes = new Set<string>();
+  const versions = join(projectRoot, "backend", "alembic", "versions");
+  if (!existsSync(versions)) return codes;
+  for (const file of readdirSync(versions)) {
+    if (!file.endsWith(".py")) continue;
+    const content = readFileSync(join(versions, file), "utf-8");
+    if (!content.includes("bulk_insert") || !/table\(\s*\n?\s*"batch"/.test(content)) continue;
+    for (const literal of content.matchAll(/"([a-z0-9_]+)"/g)) codes.add(literal[1]);
+  }
+  return codes;
 }
 
 // Direct execution (make check-backend-batch): run the check and print results.
