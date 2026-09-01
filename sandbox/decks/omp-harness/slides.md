@@ -141,7 +141,7 @@ style: |
 <!-- sync: check-frontend-routing.ts=128561a7bde1f3f2 -->
 <!-- sync: check-frontend-screens.ts=f68354fbedf2cf5e -->
 <!-- sync: check-frontend-types.ts=c6b04081395c5d84 -->
-<!-- sync: check-makefiles.ts=a232a657107e6577 -->
+<!-- sync: check-makefiles.ts=03eec069e9e6e72f -->
 <!-- sync: check-omp-hooks.ts=959d6e2fdb461e17 -->
 <!-- sync: check-omp-rules.ts=ae4dab8106a0dfd3 -->
 <!-- sync: check-omp-skills.ts=67831f31a4b0b420 -->

@@ -44,6 +44,7 @@ interface Task {
   /** 기대 산출물 목록의 식별자. `reference/<ref>.manifest.json` 이 added/modified 를 담는다. */
   reference?: string;
   expect: number;
+  capS: number; // 과제별 기본 캡(초) — --timeout 이 있으면 그것이 전역 우선한다. 2026-09-01 캘리브레이션 실측 근거는 각 항목 주석
   prompt: (spec: string) => string;
 }
 
@@ -53,6 +54,7 @@ const TASKS: Record<string, Task> = {
     spec: "integration_spec.md",
     reference: "a1aebf3",   // 기대 산출물 목록(정답 사본은 reference/answers/, 트리에는 없다)
     expect: 6,
+    capS: 3600, // 실측 28.0m·43.6m 자체종료(n=2, 2026-09-01) — 60분이면 여유
     prompt: (spec) => `Add the 바코드연계제품정보 API (service C005, operation code \`search-barcode-linked-product\`) to this repository — it is not there yet.
 
 1. Read the skill first: .omp/skills/integration/SKILL.md. Follow it.
@@ -67,7 +69,8 @@ const TASKS: Record<string, Task> = {
   notice: {
     shape: "greenfield",
     spec: "notice_spec.md",
-    expect: 21, // 백엔드 15(2026-08-27 실측) + 프론트 신규 6(batch 도메인 실측: types/service/hooks/page/sections 2) — 첫 풀스택 셀에서 재보정
+    expect: 26, // 풀스택 실측 재보정(2026-09-01, n=1 잠정): 근접-초록 셀이 28파일(백엔드 14+배선 4+프론트 11) — 26 미만이면 미달로 본다
+    capS: 5400, // 실측: 60분 캡에서 잔여 FAIL 1 로 TIMEOUT(백엔드 ~34m + 프론트 ~15m + 종반 교정) — 90분으로
     prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository — backend AND the screen for it.
 
 1. Read the domain rule first: .omp/rules/backend-domain.md. Follow it.
@@ -594,7 +597,7 @@ async function main(): Promise<void> {
 
   if (has("--revert-only")) { revert(); console.log("reverted"); return; }
 
-  const timeoutS = Number.parseInt(arg("--timeout") ?? "2700", 10);
+  const timeoutS = Number.parseInt(arg("--timeout") ?? "2700", 10); // --timeout 미지정 시 과제별 capS 가 쓰인다
   const dryRun = has("--dry-run");
   const models = dryRun ? [""] : has("--matrix") ? DEFAULT_MODELS : (arg("--models") ?? arg("--model") ?? "").split(",").filter(Boolean);
   const tasks = (arg("--tasks") ?? arg("--task") ?? "integration,notice").split(",").filter(Boolean);
@@ -618,7 +621,7 @@ async function main(): Promise<void> {
     for (const task of tasks) {
       const at = new Date().toISOString();
       try {
-        rows.push({ at, ...(await one(model, task, { timeoutS, dryRun, restartOmlx: has("--restart-omlx") })) });
+        rows.push({ at, ...(await one(model, task, { timeoutS: arg("--timeout") ? timeoutS : TASKS[task].capS, dryRun, restartOmlx: has("--restart-omlx") })) });
       } catch (error: unknown) {
         console.error(`  !! ${model}/${task}: ${String(error)}`);
         revert();

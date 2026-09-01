@@ -47,6 +47,54 @@ const makefileRules: Array<{ ruleFile: string; makefilePath: string; label: stri
   { ruleFile: "root-makefile.md", makefilePath: "Makefile", label: "root" },
 ];
 
+
+/**
+ * 하네스 텍스트가 부르는 `make <target>` 은 실재해야 한다 (2026-09-01).
+ *
+ * 실측된 충돌 부류 "실행 불가능한 지시": 마감 게이트가 제거된 `make verify-fast` 를 지시했고,
+ * fas 의 문서가 제거된 `make continuity-report` 를 안내했다 — 둘 다 사람이 우연히 발견했다.
+ * 규칙·훅·확장·스킬의 make 참조를 세 Makefile 의 실타깃과 대조한다. bare 참조는 합집합으로
+ * 판정한다(문서 문맥상 하위 트리 타깃을 bare 로 부르는 것이 정상). "존재하지 않는다" 고
+ * 경고하는 문장 자신은 제외한다.
+ */
+const projectRoot = process.cwd();
+
+export function checkMakeTargetReferences(): string[] {
+  const issues: string[] = [];
+  const targetsOf = (rel: string): Set<string> => {
+    const path = join(projectRoot, rel);
+    if (!existsSync(path)) return new Set();
+    return new Set([...readFileSync(path, "utf-8").matchAll(/^([a-z][\w-]*):/gm)].map((m) => m[1]));
+  };
+  const sub: Record<string, Set<string>> = { backend: targetsOf("backend/Makefile"), frontend: targetsOf("frontend/Makefile") };
+  const union = new Set([...targetsOf("Makefile"), ...sub.backend, ...sub.frontend]);
+  const PLACEHOLDER = new Set(["check-", "check-x", "check-anything", "definitely-not-a-target", "target", "targets", "command", "commands", "runs", "every", "two", "the", "this", "sense", "sure", "name"]);
+  const roots = [".omp/rules", ".omp/hooks", ".omp/extensions", ".omp/skills"];
+  const files: string[] = [join(projectRoot, ".omp", "RULES.md"), join(projectRoot, ".omp", "AGENTS.md")];
+  const walk = (dir: string): void => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, e.name);
+      if (e.isDirectory()) walk(full);
+      else if (/\.(md|ts)$/.test(e.name)) files.push(full);
+    }
+  };
+  for (const r of roots) if (existsSync(join(projectRoot, r))) walk(join(projectRoot, r));
+  for (const file of files) {
+    if (!existsSync(file)) continue;
+    const text = readFileSync(file, "utf-8");
+    for (const line of text.split("\n")) {
+      if (/do not exist|없다|not-a-target|존재하지 않|제거|removed|지시했고|안내했다/.test(line)) continue; // 부재·제거를 말하는 문장 자신은 지시가 아니다
+      for (const m of line.matchAll(/\bmake\s+(?:-C\s+(backend|frontend)\s+)?([a-z][\w-]{2,})/g)) {
+        const t = m[2].toLowerCase();
+        if (PLACEHOLDER.has(t)) continue;
+        const ok = m[1] ? sub[m[1]].has(t) : union.has(t);
+        if (!ok) issues.push(`${file.replace(projectRoot + "/", "")}: \`make ${m[1] ? `-C ${m[1]} ` : ""}${t}\` 를 부르는데 그 타깃이 없다 — 실행 불가능한 지시다. 타깃을 만들거나 참조를 고쳐라`);
+      }
+    }
+  }
+  return issues;
+}
+
 export default function checkMakefiles(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-makefiles", event, () => {
     // Skip read-only tools — they cannot change Makefiles.
@@ -125,6 +173,7 @@ function checkMakefileConsistency(): string[] {
   // The decks Makefile has no rule doc of its own, but `make help` is still the
   // only index of how a deck is built.
   issues.push(...checkTargetHelp(join(cwd, "decks", "Makefile"), "decks"));
+  issues.push(...checkMakeTargetReferences());
 
   // Check: Makefile targets that reference .ts/.sh files must point to
   // existing files. A missing file means the target silently fails.
