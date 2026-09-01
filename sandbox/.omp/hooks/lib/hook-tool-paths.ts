@@ -30,6 +30,12 @@ export function writtenPaths(toolName: string, input: Record<string, unknown>): 
     const path = String(input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "");
     return path === "" ? [] : [path];
   }
+  // pi-hashline-edit-pro(2026-09-01): 플러그인 편집 툴은 전부 평문 input.path 를 싣는다.
+  // 이 분기가 없으면 replace/insert 편집이 모든 pre 가드(마이그레이션 불변·구조·additive)를 우회한다 — 실측.
+  if (toolName === "replace" || toolName === "insert" || toolName === "undo_last_change") {
+    const path = String(input.path ?? "");
+    return path === "" ? [] : [path];
+  }
   if (toolName !== "edit") return [];
 
   // edit 는 경로를 두 곳에 실을 수 있다: `input.path`(있을 수도, 태그가 붙을 수도) 와 패치

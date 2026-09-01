@@ -8,6 +8,7 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { checkDomainApiHttp } from "../lib/backend-api-http.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Backend-Api-Http Post Hook
@@ -21,7 +22,7 @@ import { printRuleHint } from "../lib/hook-rule-hint.ts";
  */
 
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 

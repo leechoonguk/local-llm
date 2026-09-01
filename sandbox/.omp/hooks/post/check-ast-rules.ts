@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Ast-Rules Post Hook
@@ -46,7 +47,7 @@ const testsRoot = join(ompDir, "ast-grep", "tests");
 const sgConfig = join(ompDir, "sgconfig.yml");
 
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 const AST_GREP_CANDIDATES = [

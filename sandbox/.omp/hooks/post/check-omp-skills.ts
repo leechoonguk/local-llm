@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 declare const process: {
   argv: string[];
@@ -29,7 +30,7 @@ const CATALOG_HEADER = "| Skill | Trigger | Verification | Lifecycle (project me
 
 /** Read-only tools never change skills or their catalog. */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 

@@ -15,6 +15,7 @@ import {
 import { existsSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-Domain Post Hook
@@ -37,7 +38,7 @@ import { join } from "node:path";
  * This is a read-only check — it does NOT block tool calls.
  */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 /** Every CRUD verb a resource service must expose, in the order it is read. */

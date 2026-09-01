@@ -1,7 +1,7 @@
 ---
 description: Backend router wiring tokens — inline FastAPI parameter constructors, injected while the edit is being written
 condition: "\\b(Depends|Query|Path|Body|Header)\\("
-scope: "tool:edit(backend/app/routers/*.py), tool:write(backend/app/routers/*.py)"
+scope: "tool:edit(backend/app/routers/*.py), tool:replace(backend/app/routers/*.py), tool:insert(backend/app/routers/*.py), tool:write(backend/app/routers/*.py)"
 interruptMode: always
 alwaysApply: false
 ---

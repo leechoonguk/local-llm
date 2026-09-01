@@ -1,7 +1,7 @@
 ---
 description: Backend app forbidden tokens — HTTPException and direct env reads, injected while the edit is being written
 condition: "HTTPException\\(|import HTTPException|os\\.environ\\[|os\\.environ\\.get\\(|os\\.getenv\\("
-scope: "tool:edit(backend/app/**/*.py), tool:write(backend/app/**/*.py)"
+scope: "tool:edit(backend/app/**/*.py), tool:replace(backend/app/**/*.py), tool:insert(backend/app/**/*.py), tool:write(backend/app/**/*.py)"
 interruptMode: always
 alwaysApply: false
 ---

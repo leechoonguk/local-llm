@@ -17,6 +17,7 @@ import { touchesPath } from "../lib/hook-scope.ts";
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-API-Layer Post Hook
@@ -37,7 +38,7 @@ import { join } from "node:path";
  * This is a read-only check — it does NOT block tool calls.
  */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 /** Only the client may build a transport or call the platform directly. */

@@ -70,6 +70,15 @@ check("M6 경로를 어디서도 못 읽으면 fail-open — 훅은 도구 호�
   !blocked(call("edit", { input: 'PUT 1.:\nrevision = "x"' })));
 check("M7 리비전 파일을 손으로 만드는 write 는 BLOCK(번호는 migrate-gen 이 매긴다)",
   blocked(call("write", { path: "backend/alembic/versions/0009_hand_made.py" })));
+// --- pi-hashline-edit-pro 편집 툴(2026-09-01): 평문 input.path 만 싣는다 — 우회 실측 후 고정 ---
+check("M7a 플러그인 replace 로 푸시된 리비전 편집은 BLOCK",
+  blocked(call("replace", { path: PUSHED, remove_from: "AB12", remove_to: "AB12", replacement_lines: 'revision = "0007b"' })));
+check("M7b 플러그인 insert 도 동일하게 BLOCK",
+  blocked(call("insert", { path: PUSHED, anchor: "AB12", lines: "x = 1" })));
+check("M7c 플러그인 undo_last_change 도 리비전 파일이면 BLOCK",
+  blocked(call("undo_last_change", { path: PUSHED })));
+check("M7d 아직 안 올린 리비전은 replace 로 편집 가능",
+  !blocked(call("replace", { path: LOCAL, remove_from: "AB12", remove_to: "AB12", replacement_lines: 'revision = "0008b"' })));
 
 // --- 채널: 파일을 옮기고 지우는 것은 셸 동사만이 아니다 ---
 check("M8 셸 mv 는 여전히 BLOCK(기존 동사 회귀 없음)",

@@ -16,13 +16,14 @@ import { runAstRules } from "../lib/ast-rules.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 const cwd = process.cwd();
 const projectRoot = existsSync(join(cwd, "backend", "app")) ? cwd : join(cwd, "..");
 const appDir = join(projectRoot, "backend", "app");
 
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 

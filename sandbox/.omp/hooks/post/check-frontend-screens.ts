@@ -23,6 +23,7 @@ import {
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Frontend-Screens Post Hook
@@ -44,7 +45,7 @@ import { join } from "node:path";
  * This is a read-only check — it does NOT block tool calls.
  */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 /** The one component allowed to render MUI's grid. */

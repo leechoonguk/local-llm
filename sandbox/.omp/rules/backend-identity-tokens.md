@@ -1,7 +1,7 @@
 ---
 description: Backend identity tokens — CurrentUserDep injected below the router layer, injected while the edit is being written
 condition: "current_user: CurrentUserDep"
-scope: "tool:edit(backend/app/services/*.py), tool:write(backend/app/services/*.py), tool:edit(backend/app/repositories/*.py), tool:write(backend/app/repositories/*.py), tool:edit(backend/app/batch/*.py), tool:write(backend/app/batch/*.py)"
+scope: "tool:edit(backend/app/services/*.py), tool:replace(backend/app/services/*.py), tool:insert(backend/app/services/*.py), tool:write(backend/app/services/*.py), tool:edit(backend/app/repositories/*.py), tool:replace(backend/app/repositories/*.py), tool:insert(backend/app/repositories/*.py), tool:write(backend/app/repositories/*.py), tool:edit(backend/app/batch/*.py), tool:replace(backend/app/batch/*.py), tool:insert(backend/app/batch/*.py), tool:write(backend/app/batch/*.py)"
 interruptMode: always
 alwaysApply: false
 ---

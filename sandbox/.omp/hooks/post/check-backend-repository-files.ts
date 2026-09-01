@@ -4,6 +4,7 @@ import { guarded } from "../lib/hook-visibility.ts";
 import { checkRepositoryFilesSync } from "../lib/backend-repository-files.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 /**
  * Check-Backend-Repository-Files Post Hook
@@ -14,7 +15,7 @@ import { touchesPath } from "../lib/hook-scope.ts";
  * This is a read-only check — it does NOT block tool calls.
  */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 export default function checkBackendRepositoryFiles(pi: ExtensionAPI): void {

@@ -95,7 +95,7 @@ replacement, the enforcing hook, and `rule://<full-rule>` for the rest.
 | Frontmatter | Required | Why |
 |---|---|---|
 | `condition` | yes | Regex, **quoted string** (a YAML list registers at runtime but reads as a rulebook rule to `check-omp-rules`, so the two disagree) |
-| `scope` | yes | The default watches assistant prose and every tool argument — a code-token trigger would fire on *writing about* the token. Code triggers use `tool:edit(<glob>), tool:write(<glob>)`; a workflow trigger states `text, tool` on purpose |
+| `scope` | yes | The default watches assistant prose and every tool argument — a code-token trigger would fire on *writing about* the token. Code triggers cover every file-writing tool with the same glob — `tool:edit(<glob>), tool:write(<glob>), tool:replace(<glob>), tool:insert(<glob>)` (the last two are the pi-hashline-edit-pro edit tools; a scope naming only `edit` goes dead when a plugin swaps the toolset); a workflow trigger states `text, tool` on purpose |
 | `interruptMode` | yes | Otherwise the machine-global default decides whether an edit is aborted |
 | `globs` | no | Redundant once `scope` carries path globs, and fatal for bash-triggered rules (see the globs trap above) |
 

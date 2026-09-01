@@ -21,6 +21,7 @@ import { listDomainLayerFiles } from "../lib/backend-domain-structure.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 const cwd = process.cwd();
 // Adjust cwd to project root if running from backend/
@@ -32,7 +33,7 @@ const appDir = join(projectRoot, "backend", "app");
  * context. Only run after tools that can modify the workspace.
  */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 

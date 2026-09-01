@@ -10,6 +10,7 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint, ruleForHook } from "../lib/hook-rule-hint.ts";
 import { checkHookDomainLiterals } from "../lib/hook-domain-literals.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 declare const process: {
   argv: string[];
@@ -56,7 +57,7 @@ const syntaxCache = new Map<string, string>();
  * context. Only run after tools that can modify the workspace.
  */
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "bash", "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 /**

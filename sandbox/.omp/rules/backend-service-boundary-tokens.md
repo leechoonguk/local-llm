@@ -1,7 +1,7 @@
 ---
 description: Backend service-boundary tokens — transactions, raw streaming, and bare tasks outside the service layer, injected while the edit is being written
 condition: "async with [\\w.]*session\\.begin\\(|return StreamingResponse\\(|asyncio\\.create_task\\(|\\bhttpx2\\b"
-scope: "tool:edit(backend/app/routers/*.py), tool:write(backend/app/routers/*.py), tool:edit(backend/app/repositories/*.py), tool:write(backend/app/repositories/*.py), tool:edit(backend/app/batch/*.py), tool:write(backend/app/batch/*.py)"
+scope: "tool:edit(backend/app/routers/*.py), tool:replace(backend/app/routers/*.py), tool:insert(backend/app/routers/*.py), tool:write(backend/app/routers/*.py), tool:edit(backend/app/repositories/*.py), tool:replace(backend/app/repositories/*.py), tool:insert(backend/app/repositories/*.py), tool:write(backend/app/repositories/*.py), tool:edit(backend/app/batch/*.py), tool:replace(backend/app/batch/*.py), tool:insert(backend/app/batch/*.py), tool:write(backend/app/batch/*.py)"
 interruptMode: always
 alwaysApply: false
 ---

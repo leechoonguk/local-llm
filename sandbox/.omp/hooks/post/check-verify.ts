@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
+import { FILE_EDIT_TOOLS } from "../lib/hook-mutating-tools.ts";
 
 declare const process: {
   argv: string[];
@@ -51,7 +52,7 @@ const DIAGNOSTIC_LINE = /FAILED|ERROR|error:|Error:|error TS|Coverage failure|as
 const MAX_DIAGNOSTIC_LINES = 3;
 
 const MUTATING_TOOLS = new Set([
-  "write", "edit", "eval", "ast_edit", "lsp", "browser", "hub", "task",
+  ...FILE_EDIT_TOOLS, "eval", "ast_edit", "lsp", "browser", "hub", "task",
 ]);
 
 export default function checkVerify(pi: ExtensionAPI): void {
