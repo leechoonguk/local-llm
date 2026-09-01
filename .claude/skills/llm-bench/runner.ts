@@ -153,7 +153,9 @@ function assertNoLiveCell(): void {
   // 실측 사고(2026-09-02): 셀이 도는 동안 dry-run 을 돌리면 revert() 가 셀의 산출물을
   // 쓸어간다 — 그린필드 산출물은 전부 untracked 라 assertSandboxClean 이 통과한다.
   // 셀 프로세스가 살아 있으면 어떤 모드든 거부한다.
-  const probe = spawnSync("pgrep", ["-f", "omp -p "], { encoding: "utf-8" });
+  // 앵커 필수(2026-09-02 실측): 비앵커 패턴은 "omp -p" 문자열을 담은 발진 래퍼 셸까지
+  // 잡아 레시피 캠페인 3연발진을 전부 거부했다. 실제 셀은 argv 가 omp 로 시작한다.
+  const probe = spawnSync("pgrep", ["-f", "^omp -p "], { encoding: "utf-8" });
   if (probe.status === 0 && probe.stdout.trim() !== "") {
     console.error("refusing to run: a bench cell (omp -p) is already running — wait for it or kill it first.");
     process.exit(2);
