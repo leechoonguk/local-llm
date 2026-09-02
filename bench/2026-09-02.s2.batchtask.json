@@ -54,5 +54,62 @@
   "piped_gates": 23,
   "first_green_s": 4907,
   "no_work": false
+ },
+ {
+  "at": "2026-09-02T08:26:08.562Z",
+  "model": "omlx/Qwen3.6-35B-A3B-5bit",
+  "task": "batch",
+  "shape": "greenfield",
+  "wall_s": 1638,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Qwen3.5-4B-4bit",
+    "Qwen3.6-35B-A3B-5bit"
+   ],
+   "coder": "Qwen3.6-35B-A3B-5bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 6,
+  "expected": 5,
+  "files": [
+   "M sandbox/backend/app/core/scheduler.py",
+   " M sandbox/backend/app/services/user.py",
+   " M sandbox/backend/tests/services/test_user.py",
+   "?? sandbox/backend/alembic/versions/81_seed_purge_stale_users_batch_job.py",
+   "?? sandbox/backend/app/batch/stale_users.py",
+   "?? sandbox/backend/tests/batch/test_stale_users.py"
+  ],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-09-02T08-26-56-775Z_01a0613a-7787-741c-9014-041d0a8f2f66.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 10,
+  "tools": {
+   "read": 56,
+   "glob": 6,
+   "write": 10,
+   "bash": 51
+  },
+  "gate_runs": 6,
+  "first_full_gate_s": 1219,
+  "advisory_skips": 0,
+  "piped_gates": 4,
+  "first_green_s": 1390,
+  "no_work": false
  }
 ]
