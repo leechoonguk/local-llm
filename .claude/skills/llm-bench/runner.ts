@@ -77,8 +77,9 @@ const TASKS: Record<string, Task> = {
    defines is the deliverable.
 2. Read ${spec} — that is the requirement; the policy and the seed row values are fixed there.
 3. Model your work on the existing sibling job \`purge_expired_refreshes\`:
-   backend/app/batch/refreshes.py, its BATCH_JOBS registry entry in app/core/scheduler.py,
-   the seed migration that inserts its batch row, and backend/tests/batch/test_refreshes.py.
+   backend/app/batch/purge_expired_refreshes.py, its BATCH_JOBS registry entry in
+   app/core/scheduler.py, the seed migration that inserts its batch_schedule row, and
+   backend/tests/batch/test_purge_expired_refreshes.py.
 4. The repository layer already has what the job needs (\`UserRepository.find_stale\` is
    implemented and tested) — expose it through the service layer the way the sibling's
    service does, and compose services in the job. Do not touch raw sessions in the job.
@@ -98,9 +99,12 @@ const TASKS: Record<string, Task> = {
    Build order (each step verifies its own layer; the exemplar for each artifact is
    chosen by the domain's properties, as that rule and rule://backend-api-http define).
 2. Read ${spec} — that is the requirement.
-3. Model your work on the existing sibling domain \`batch\`: backend/app/models/batch.py,
-   backend/app/schemas/batch.py, backend/app/repositories/batch.py, backend/app/services/batch.py,
-   backend/app/routers/batch.py, backend/tests/{api,repositories,services}/test_batch.py, api/batch.http.
+3. Model your work on the existing sibling \`batch\` **schedule** sub-domain:
+   backend/app/models/batch/schedule.py, backend/app/schemas/batch/schedule.py,
+   backend/app/repositories/batch/schedule.py, backend/app/services/batch/schedule.py,
+   backend/app/routers/batch.py, backend/tests/api/test_batch.py,
+   backend/tests/{repositories,services}/batch/test_schedule.py, api/batch.http.
+   Notice is a FLAT domain — single files (models/notice.py 등), not a package.
 4. Reuse the existing authentication dependency and the existing pagination convention.
    Do not add a new auth mechanism and do not seed a new account.
 5. Backend deliverables: the five domain layers, the dependency wiring and router registration,
@@ -116,7 +120,9 @@ const TASKS: Record<string, Task> = {
    exist — before you start the frontend — fixing everything it reports first, and once at
    the end. A single verification at the finish leaves no time to act on what it finds.
 8. Finish by making the final \`make verify\` pass.`,
-    // 과제 텍스트 v1.2(2026-09-02): 중간 풀게이트 1회 명시 — 최적 레시피(창 131072)의 전량
+    // 과제 텍스트 v1.3(2026-09-03): batch 가 패키지(schedule/run/step/checkpoint)로 재구조화돼
+    // 예시 경로를 schedule 서브도메인으로 갱신 + notice 는 평면 도메인임을 명시(과제 정답 아님,
+    // 트리 사실). v1.2(2026-09-02): 중간 풀게이트 1회 명시 — 최적 레시피(창 131072)의 전량
     // 산출 셀이 첫 풀게이트 87분(교정 0분)으로 34빨강 TO(bench/2026-09-02.s2.finalcombo.md).
     // 옛 초록 셀의 실측 리듬(60분 게이트→30분 교정)을 문구로 옮긴 것. 과제 정답 힌트 아님.
     // v1.1(2026-08-28 라운드 3): seed_api_actor 기대는 게이트 계약이라 스펙에

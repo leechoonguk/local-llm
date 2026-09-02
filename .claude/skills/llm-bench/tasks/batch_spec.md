@@ -1,7 +1,7 @@
 # Requirement — 휴면 계정 정리 배치 잡 (`purge_stale_users`)
 
 이 저장소의 배치 체계는 "함수 하나 + 행 하나"다: 실행 코드는 `app.core.scheduler.BATCH_JOBS`
-레지스트리에, 스케줄은 `batch` 테이블의 행에 산다. 이 요구는 그 체계에 잡 하나를 추가한다.
+레지스트리에, 스케줄은 `batch_schedule` 테이블의 행에 산다. 이 요구는 그 체계에 잡 하나를 추가한다.
 
 ## Policy (fixed — do not invent)
 
