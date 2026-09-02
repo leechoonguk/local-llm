@@ -112,8 +112,14 @@ const TASKS: Record<string, Task> = {
    and wire it where batch is wired (App route, endpoints.ts, queryKeys.ts, routes/paths.ts,
    dashboard navigation, BOTH locales). The published routes need a browser caller —
    the frontend contract check fails otherwise.
-7. Finish by running \`make verify\` and make it pass.`,
-    // 과제 텍스트 v1.1(2026-08-28 라운드 3): seed_api_actor 기대는 게이트 계약이라 스펙에
+7. Run \`make verify\` from the sandbox root TWICE: once as soon as the backend deliverables
+   exist — before you start the frontend — fixing everything it reports first, and once at
+   the end. A single verification at the finish leaves no time to act on what it finds.
+8. Finish by making the final \`make verify\` pass.`,
+    // 과제 텍스트 v1.2(2026-09-02): 중간 풀게이트 1회 명시 — 최적 레시피(창 131072)의 전량
+    // 산출 셀이 첫 풀게이트 87분(교정 0분)으로 34빨강 TO(bench/2026-09-02.s2.finalcombo.md).
+    // 옛 초록 셀의 실측 리듬(60분 게이트→30분 교정)을 문구로 옮긴 것. 과제 정답 힌트 아님.
+    // v1.1(2026-08-28 라운드 3): seed_api_actor 기대는 게이트 계약이라 스펙에
     // 명시(게이트 관점 "spec completeness" 판정, 실측 7.8m/2.5m 소모 — 숨은 게이트였다).
   },
 };
