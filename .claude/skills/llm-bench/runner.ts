@@ -91,7 +91,7 @@ const TASKS: Record<string, Task> = {
     shape: "greenfield",
     spec: "notice_spec.md",
     expect: 26, // 풀스택 실측 재보정(2026-09-01, n=1 잠정): 근접-초록 셀이 28파일(백엔드 14+배선 4+프론트 11) — 26 미만이면 미달로 본다
-    capS: 5400, // 실측: 60분 캡에서 잔여 FAIL 1 로 TIMEOUT(백엔드 ~34m + 프론트 ~15m + 종반 교정) — 90분으로
+    capS: 6000, // 실측 재보정(2026-09-03): 확정 구성에서 90분 캡 TO 가 2연속 '한 줄짜리 잔여 빨강'(conftest import·커버리지 1줄)이었다 — 능력이 아니라 시간 부족. +10분
     prompt: (spec) => `Add a \`notice\` (공지사항) CRUD domain to this repository — backend AND the screen for it.
 
 1. Read the domain rule first: .omp/rules/backend-domain.md — follow it, including its
@@ -408,6 +408,20 @@ function sessionMetrics(path: string | null): Record<string, unknown> {
  * FAIL 행이 baseline 에 이미 있던 도메인(모델 파일이 있던 이름)이나 `remove_*` 를 가리키면 회귀,
  * 새로 만드는 도메인이면 미완성. 관측된 두 FAIL 모양에 대한 휴리스틱이다.
  */
+/**
+ * 리비전 번호-무관 존재 확인(2026-09-03). 매니페스트는 작성 시점 트리의 다음 번호로
+ * 마이그레이션 파일명을 고정하는데(78/79), 트리가 자라면 피험자의 `migrate-gen` 은
+ * 다른 번호(81/82)를 매긴다 — validate5 라운드 1 에서 전 산출물 실재인데 4/6 으로
+ * 계수된 실측 버그. alembic versions 경로에 한해 `NN_` 접두를 벗기고 비교한다.
+ */
+function existsRevisionAgnostic(manifestPath: string): boolean {
+  const m = /^backend\/alembic\/versions\/\d+_(.+)$/.exec(manifestPath);
+  if (m === null) return false;
+  const dir = join(SANDBOX, "backend", "alembic", "versions");
+  if (!existsSync(dir)) return false;
+  return readdirSync(dir).some((f: string) => /^\d+_/.test(f) && f.replace(/^\d+_/, "") === m[1]);
+}
+
 function classifyFailures(out: string, models: Set<string>): { regressions: string[]; incomplete: string[] } {
   const lines = (out.match(/^\s*FAIL:.*$/gm) ?? []).map((l) => l.trim());
   const regressions: string[] = [];
@@ -441,7 +455,7 @@ function grade(task: Task, models: Set<string>, snapshot: string): Record<string
     : null;
   const artifacts = manifest === null
     ? files.length
-    : manifest.added.filter((f) => existsSync(join(SANDBOX, f))).length
+    : manifest.added.filter((f) => existsSync(join(SANDBOX, f)) || existsRevisionAgnostic(f)).length
       + manifest.modified.filter((f) => {
         const abs = join(SANDBOX, f);
         const nowText = existsSync(abs) ? readFileSync(abs, "utf-8") : "";
