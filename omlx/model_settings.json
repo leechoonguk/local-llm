@@ -2,7 +2,7 @@
  "version": 1,
  "models": {
   "Qwen3.6-35B-A3B-5bit": {
-   "max_context_window": 90112,
+   "max_context_window": 131072,
    "max_tokens": 8192,
    "temperature": 0.6,
    "top_p": 0.95,
@@ -69,6 +69,9 @@
    "is_hidden": true
   },
   "Qwen3.8-27B-DFlash2": {
+   "is_hidden": true
+  },
+  "Qwen3.8-27B-MTP-4bit": {
    "is_hidden": true
   }
  }
