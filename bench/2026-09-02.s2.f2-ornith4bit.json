@@ -1,0 +1,50 @@
+[
+ {
+  "at": "2026-09-02T05:35:25.449Z",
+  "model": "omlx/Ornith-1.5-35B-A3B-MLX-4bit",
+  "task": "notice",
+  "shape": "greenfield",
+  "wall_s": 2810,
+  "timed_out": false,
+  "bundle": null,
+  "attempt": 1,
+  "residency": {
+   "server": "omlx",
+   "loaded_models": [
+    "Ornith-1.5-35B-A3B-MLX-4bit"
+   ],
+   "coder": "Ornith-1.5-35B-A3B-MLX-4bit",
+   "aux": "Qwen3.5-4B-4bit",
+   "ok": true
+  },
+  "artifacts": 0,
+  "expected": 26,
+  "files": [],
+  "gate_exit": 0,
+  "gate_failures": 0,
+  "regressions": 0,
+  "regression_detail": [],
+  "incomplete_failures": 0,
+  "asserts_removed": 0,
+  "omp_touched": 0,
+  "reference_names_reused": [],
+  "session": "/Users/uk/.omp/agent/sessions/-Workspace-local-llm-sandbox/2026-09-02T05-36-14-943Z_01a0609e-305f-7096-b3df-16f5ac7b54ef.jsonl",
+  "turns": null,
+  "toolCalls": null,
+  "loops": null,
+  "compactions": null,
+  "peak": null,
+  "writes": 0,
+  "tools": {
+   "read": 173,
+   "glob": 20,
+   "bash": 1
+  },
+  "gate_runs": 0,
+  "first_full_gate_s": null,
+  "advisory_skips": 0,
+  "piped_gates": 0,
+  "first_green_s": null,
+  "no_work": true
+ }
+]
