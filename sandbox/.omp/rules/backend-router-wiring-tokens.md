@@ -6,7 +6,7 @@ interruptMode: always
 alwaysApply: false
 ---
 
-<!-- fires-on backend/app/routers/*.py: service: BatchService = Depends(get_batch_service) -->
+<!-- fires-on backend/app/routers/*.py: service: UserService = Depends(get_user_service) -->
 
 # Backend Router Wiring Tokens
 

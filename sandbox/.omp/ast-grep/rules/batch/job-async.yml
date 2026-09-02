@@ -1,13 +1,23 @@
 id: batch-job-async
 language: python
-# A sync job blocks the scheduler thread, so one slow query delays every other
-# job. `expect`-free negative form: any `def` that is not `async def` and not a
-# dunder is the violation.
+# A sync function that touches the database blocks the scheduler's loop, so one
+# slow query delays every other job in the process.
+#
+# Scoped by **what it touches**, the same boundary `domain/service-method-async`
+# carries and for the same measured reason: the earlier form matched every `def`
+# in the folder, so a pure helper had to be `async` to sit beside the job it
+# serves — `await` on an integer comparison, or the helper pushed out of the
+# file that is the only caller. The scheduled job itself is not this rule's to
+# catch: it is a module's single public function, which `check-backend-batch`
+# resolves by name and requires to be `async def`.
 rule:
   kind: function_definition
   regex: "^def \\w+\\("
+  any:
+    - inside:
+        kind: class_definition
+        stopBy: end
+    - regex: "\\bsession\\b|_repository\\b|\\bclient\\b|\\bengine\\b"
   not:
-    any:
-      - regex: "^async def \\w+\\("
-      - regex: "^def __init__\\("
-message: "batch job function must be async def"
+    regex: "^def __\\w+__\\("
+message: "must be async: a batch function touching session/repository/client/engine (a pure helper may be sync)"

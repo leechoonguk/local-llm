@@ -19,7 +19,7 @@ alwaysApply: false
    (`svc.session.begin()`): reaching the transaction through a service handle is
    the same violation.
 2. **Within services, only in `create`/`update`/`delete` methods** — never in
-   read methods (`get`/`list`/`find_stale`) (checked by
+   read methods (`get`/`list`/`find_*`) (checked by
    `domain/service-transaction-write-only.yml`)
 3. **`async with self.session.begin():`** — auto commit/rollback, never manual
    `session.commit()`/`session.rollback()` in services

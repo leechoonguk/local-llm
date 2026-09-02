@@ -1,9 +1,21 @@
 id: batch-job-async
 valid:
+  # The job itself, which always opens a session.
   - |
     async def cleanup_batches() -> int:
-        return 0
-invalid:
+        async with AsyncSession(engine) as session:
+            return 0
+  # A pure helper: no I/O to await, so `async` would buy nothing and every call
+  # site would carry an `await` that suspends for an integer comparison.
   - |
-    def cleanup_batches() -> int:
+    def _feed_ends_before(total: int, cursor: int) -> bool:
+        return total < cursor - 1
+invalid:
+  # Sync while holding the session — this is the blocking one.
+  - |
+    def cleanup_batches(session: AsyncSession) -> int:
         return 0
+  # Sync against the engine, one line from the same defect.
+  - |
+    def _open(engine) -> None:
+        return None

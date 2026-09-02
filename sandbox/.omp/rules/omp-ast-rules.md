@@ -80,6 +80,35 @@ language`).
 - `check-omp-hooks.ts` verifies: every rule YAML is referenced by exactly one
   hook, every `runAstRules` user references ≥1 rule dir
 
+## Scope Equals The Claim
+
+A rule asserts one property. What it *matches* must be that property and
+nothing else — an accidental second condition rides along invisibly, and the
+day it binds, the rule decides something nobody chose. Four measured cases from
+this repository, all the same defect:
+
+| Rule | Claim | What the pattern also demanded | What it decided |
+|---|---|---|---|
+| `repository-method-uuid-param` | the id parameter is `UUID` | the signature fits on one line (`\(self, ` with a literal space) | a table's name, chosen to keep the line under 100 columns |
+| `service-transaction-write-only` | a transaction opens only in a write method | the method name starts with a letter (no `_`) | a private helper had to stay public |
+| `service-method-async` | nothing sync may touch the session | *where* the function sat, not what it touched: first every `def` in the layer, then only methods | pure helpers were pushed out of `services/` into `schemas/`; then a sync module function could hold a session beside them |
+| `check-code-layout` member order | class members run config → fields → … | docstring prose (`derived: …` read as a field) | a sentence had to be reworded to satisfy a layout rule |
+
+Each was found by a human noticing a decision that made no sense, never by a
+gate. The counter-measures are cheap and belong in the pattern:
+
+- **Anchor on structure, not on whitespace.** `\s*` between tokens, and
+  `inside: { kind: class_definition, stopBy: end }` when the claim is about
+  methods. A formatter must never be able to turn a rule red.
+- **Say which construct.** A regex over `function_definition` matches methods
+  and module functions alike; if the claim names one, the rule must too.
+- **Prose is not code.** A scanner that reads a file line by line owes string
+  and comment state the same tracking it gives brackets.
+- **Prove both sides.** The case file carries a `valid:` snippet that differs
+  from the `invalid:` one *only* in the asserted property — a wrapped
+  signature, a private write helper, a module-level function. That is what
+  makes the extra condition visible before it ships.
+
 ## Ownership: One Invariant, One Owner
 
 An AST rule and a TS regex asserting the same thing drift apart the moment one
@@ -160,7 +189,7 @@ The filename describes **what the rule checks**, without repeating the scope:
 
 | Pattern | Example | Meaning |
 |---|---|---|
-| `<subject>-<property>` | `service-method-async.yml` | service methods must be async |
+| `<subject>-<property>` | `service-method-async.yml` | nothing sync touches the session |
 | | `repository-method-uuid-param.yml` | repository methods take UUID params |
 | | `job-async.yml` | batch jobs must be async |
 | | `service-constructor.yml` | batch must construct Service(session) |
@@ -250,8 +279,12 @@ group.
    param). The trailing `$$$ARGS` requires a comma after the last literal
    param. When you need "first param is UUID regardless of arity", use regex:
    ```yaml
-   regex: "^async def (get|update|delete)\\(self, \\w+: UUID"
+   regex: "^async def (get|update|delete)\\(\\s*self,\\s*\\w+: UUID"
    ```
+   The `\\s*` are not decoration: a formatter wraps a long signature, and a
+   regex written against one line then fails a **typing** rule for a
+   **formatting** reason. Measured here — it decided a table's name before the
+   rule was fixed. A rule matches the construct, never its line width.
 3. **Rust regex has no lookahead** — `(?!__init__)` fails to parse. Use
    `not: any: [regex A, regex B]` instead.
 4. **`constraints` lives next to `rule:`** — putting it inside `rule:` throws

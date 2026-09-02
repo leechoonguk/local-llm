@@ -37,7 +37,7 @@ backend/tests/
 │   ├── test_<domain>.py     # one per CRUD domain — 10 standard cases
 │   └── test_auth.py         # auth standard (login, /auth/me, 401 paths)
 ├── batch/                   # batch job tests
-│   └── test_<module>.py     # mirrors app/batch/<module>.py (e.g. test_batches.py)
+│   └── test_<job_code>.py   # mirrors app/batch/<job_code>.py (e.g. test_sync_barcode_ledger.py)
 ├── repositories/            # repository unit tests — one file per source module
 │   └── test_batch.py  test_user.py
 ├── services/                # service unit tests — one file per source module
@@ -101,7 +101,8 @@ tests are governed by `backend-integration-configuration.md` and validated by
 
 ## Batch Job Test Standard (`tests/batch/test_<module>.py`)
 
-- One file per source module: `app/batch/batches.py` → `tests/batch/test_batches.py`
+- One file per source module: `app/batch/purge_expired_refreshes.py` →
+  `tests/batch/test_purge_expired_refreshes.py` (the job code names all three)
 - Swap `app.batch.<name>.engine` for an in-memory engine (fixture)
 - Seed rows, backdate `created_at` via `__table__.update()`
 - Assert the job's count/status return
@@ -109,7 +110,7 @@ tests are governed by `backend-integration-configuration.md` and validated by
 
 ## Repository Test Standard (`tests/repositories/test_<module>.py`)
 
-One file per source module in `app/repositories/` — CRUD + `find_stale` +
+One file per source module in `app/repositories/` — CRUD +
 domain-specific lookups (`get_by_username`/`get_by_email` for user). Uses the
 shared `engine`/`factory` fixtures from conftest.
 
@@ -122,7 +123,7 @@ ConflictError on duplicates, AuthenticationError on bad credentials).
 
 | Service | Methods to cover |
 |---|---|
-| `BatchService` | get, list, find_stale, create, update, delete |
+| `BatchScheduleService` | get, list, create, update, delete |
 | `UserService` | get, get_by_username, authenticate, list, create, update, delete |
 
 Each method is tested for:
@@ -135,7 +136,11 @@ Each request step runs in its **own session** (mirroring the router's
 write's `session.begin()` would collide on the same session.
 
 Machine-checked by `check-backend-tests.ts` (check 8 — every service module
-has a test file and every method is referenced there).
+has a test file and every **public** method is referenced there). A `_`-prefixed
+helper is exempt: it is not the service's surface, its contract belongs to the
+public method that calls it, and the 100% coverage gate already proves its lines
+run. Requiring its name in a test would pin the implementation detail the prefix
+exists to hide.
 
 ## Core Test Standard (`tests/core/`)
 
@@ -182,7 +187,7 @@ Deriving the names from the model means a new field cannot reintroduce the leak.
 - Use `# pragma: no cover` on logic — only on `__main__` entry points
 - Test with a dependency override instead of the real `get_session()`
 - Skip the 404/401 error paths — they are part of the contract
-- Leave `find_stale`/`get_by_username` untested because "HTTP doesn't call them"
+- Leave `find_expired`/`get_by_username` untested because "HTTP doesn't call them"
 - Assert on settings defaults without the autouse env-isolation fixture — the
   process environment decides the result, not the code
 - Add a router endpoint without a test hitting that path — `check-backend-tests`
@@ -230,7 +235,7 @@ The hook detects missing tests structurally, beyond the coverage gate:
 | 10 standard API cases | an api test file missing create/list/get/update/delete (+404, +422, +401) |
 | Status assertions | an api test file with no `status_code == 201/401/404/422` assertion — the standard cases are matched by name, so a case whose assertion is gutted (401 quietly becoming 200) would otherwise still count |
 | Router endpoint → test path | an `@router.<method>` with no matching path in the api test |
-| Batch job → test | an `async def` in `app/batch/*.py` not referenced by `tests/batch/test_<module>.py` |
+| Batch job → test | a **public** `async def` in `app/batch/*.py` not referenced by `tests/batch/test_<module>.py` (a `_` helper is covered through the job that calls it) |
 | Repository module → test | a module in `app/repositories/*.py` with no `tests/repositories/test_<module>.py` |
 | Service module → test | a module in `app/services/*.py` with no `tests/services/test_<module>.py` |
 | Service method → test | a public method in `app/services/*.py` not referenced by its `tests/services/test_<module>.py` |

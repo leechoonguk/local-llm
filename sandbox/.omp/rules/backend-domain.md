@@ -43,7 +43,7 @@ backend/app/
 | `dependencies/` | `core.py`, `auth.py`, `query.py`, `services.py`, `integrations.py` | DI wiring only — `Annotated[T, Depends(factory)]` aliases and their factories. No business logic. |
 | `models/` | `base.py` + one file per table | `base.py` holds `Base` + `AuditMixin`; a table per file, named after the table, in `models/<domain>/` once a domain owns several (`backend-model-files.md`). |
 | `schemas/` | one file per domain, or `schemas/<domain>/` | Pydantic classes only — `Request`/`Response`/`Internal` suffixes, `to_read()`/`to_read_list()` helpers. |
-| `repositories/` | one file per table | Async CRUD — `get`/`list`/`find_stale`/`create`/`update`/`delete` + `__init__`; `repositories/<domain>/` once a domain owns several (`backend-repository-files.md`). |
+| `repositories/` | one file per table | Async CRUD — `get`/`list`/`create`/`update`/`delete` + `__init__`; `repositories/<domain>/` once a domain owns several (`backend-repository-files.md`). |
 | `services/` | one file per domain, or `services/<domain>/` | Thin adapter — `session.begin()` transactions, `NotFoundError`, domain-prefixed collaborators. |
 | `routers/` | one file per domain | REST endpoints only — no business logic, no inline `Depends()`. |
 | `batch/` | one file per job | Scheduled jobs — engine/session via services, never raw session usage. |
@@ -132,7 +132,7 @@ Each domain creates 5 files (one per layer) and wires 1 dependency file + main.p
 
 - `models/<name>.py` — SQLAlchemy model with `AuditMixin` (`Base, AuditMixin`)
 - `schemas/<name>.py` — 6 Pydantic classes: `XBase`, `XCreateRequest`, `XCreateInternal`, `XReadResponse`, `XUpdateRequest`, `XUpdateInternal`
-- `repositories/<name>.py` — async CRUD repository with 7 methods: `get`, `list`, `find_stale`, `create`, `update`, `delete`, `__init__`
+- `repositories/<name>.py` — async CRUD repository with 6 methods: `get`, `list`, `create`, `update`, `delete`, `__init__`
 - `services/<name>.py` — thin service adapter with session-based `__init__`, `session.begin()` for transactions, raises `NotFoundError`
 - `routers/<name>.py` — 5 REST endpoints: POST `/`, GET `/`, GET `/{id}`, the update endpoint on `/{id}` (verb follows the update schema — rule://backend-api-http), DELETE `/{id}`
 
@@ -179,7 +179,8 @@ from deferring a step's verification until the end.
   no hyphens/underscores/capitals. The model filename is the single source of
   truth: schemas/repositories/services/routers must use the same `<name>.py`
   (machine-checked by `check-backend-domain.ts`)
-- Class names capitalized: `Batch`, `User`, `Todo`, `BatchService`
+- Class names capitalized: `User`, `Todo`, `UserService`; a folder domain carries
+  the leaf too (`BatchSchedule`, `BatchScheduleService`)
 
 ## Model (`app/models/<name>.py`)
 
@@ -202,7 +203,7 @@ class User(Base, AuditMixin):
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True)
 ```
 
-`models/batch.py` is no longer the plain-CRUD exemplar: its row *is* a
+`models/batch/schedule.py` is no longer the plain-CRUD exemplar: its row *is* a
 scheduled job (`code`, `cron`, `enabled` — rule://backend-batch), so a domain
 copying it would inherit a scheduler contract it does not have.
 
@@ -236,6 +237,27 @@ All schemas: `extra="forbid"`.
 Read schemas: `from_attributes=True`.
 Helper functions: `to_read()` and `to_read_list()` using `model_validate`.
 
+**Those two are the layer's whole public function surface** (machine-checked by
+`check-backend-domain.ts`). A schema module exports Pydantic classes; anything
+else public in `schemas/` is another layer's logic parked where it happened to
+compile. Measured on the barcode ledger: a mapper building a request object out
+of an external API record, and a timestamp normaliser the service needed, both
+landed here and passed every gate. Where each belonged:
+
+| The helper | Where it goes |
+|---|---|
+| builds an instance of a schema class | a classmethod on that class (`BarcodeCreateRequest.from_record`) |
+| serves exactly one caller's comparison, parsing, or formatting | that caller |
+| supports the classes in this module only | a module-private `_name` |
+
+The pressure that puts them here is mechanical, not careless:
+`domain/service-method-async.yml` used to forbid a sync `def` anywhere in
+`services/`, so `schemas/` was the nearest file where a plain function compiled.
+That over-reach is fixed — the rule now asks what a function *touches* — but the
+surface rule stands on its own: a schema module exports classes. Renaming a
+helper `_helper` and importing it anyway is closed from the other side —
+rule://backend-naming forbids importing an underscore name across modules.
+
 **Convention rules:**
 - `Request` suffix = HTTP request body (`XCreateRequest`, `XUpdateRequest`)
 - `Response` suffix = HTTP response (`XReadResponse`, `TokenResponse`)
@@ -255,16 +277,25 @@ Helper functions: `to_read()` and `to_read_list()` using `model_validate`.
 
 ## Repository (`app/repositories/<name>.py`)
 
-7 methods, all `async`:
+6 methods, all `async`, plus the domain's own finders:
 
 | Method | Signature | Returns |
 |---|---|---|
 | `get` | `get(<name>_id: UUID)` | `<Name> \| None` |
 | `list` | `list(offset, limit)` | `list[<Name>]` |
-| `find_stale` | `find_stale(older_than: datetime)` | `list[<Name>]` |
 | `create` | `create(data: <Name>CreateInternal)` | `<Name>` |
 | `update` | `update(<name>_id, data: <Name>UpdateInternal)` | `<Name> \| None` |
 | `delete` | `delete(<name>_id: UUID)` | `bool` |
+
+**Retention finders are per-domain, or absent.** `find_stale(created_at < X)`
+was the template and is now banned by name (`check-backend-domain`): measured,
+fourteen definitions and zero business callers — and the blanket semantic is a
+purge bug for any table with a real retention story. A row is stale by the
+column that means it: a token by its own expiry (`find_expired`/`expires_at`),
+a run by when it ended (`find_finished_before`/`finished_at`). A user would be
+stale by last activity, never by signup date — purging on `created_at` deletes
+active rows. A master table gets no finder at all; the method exists the day a
+caller does.
 
 All use `AsyncSession`. All use `model_dump()` for serialization.
 Import `UUID` from `uuid` in every repository.
@@ -284,7 +315,7 @@ class NameService:
         self.name_repository = NameRepository(session)
         # Multiple repositories/services use domain prefixes:
         #   self.user_repository = UserRepository(session)
-        #   self.batch_service = BatchService(session)
+        #   self.batch_schedule_service = BatchScheduleService(session)
 
     async def get_name(self, name_id: UUID) -> Name:
         o = await self.name_repository.get(name_id)
@@ -346,9 +377,9 @@ core.SessionDep → <Name>ServiceDep → Router
 
 ```python
 # dependencies/services.py
-def get_batch_service(session: SessionDep) -> BatchService:
-    return BatchService(session)
-BatchServiceDep = Annotated[BatchService, Depends(get_batch_service)]
+def get_user_service(session: SessionDep) -> UserService:
+    return UserService(session)
+UserServiceDep = Annotated[UserService, Depends(get_user_service)]
 ```
 
 - `Annotated[T, Depends(factory)]` — never `Depends()` inline
@@ -400,7 +431,7 @@ string matching cannot express:
 
 | Rule dir | Checks |
 |---|---|
-| `domain/` | service methods async, repository UUID params, transaction write-only |
+| `domain/` | async where the session is touched (methods, and module functions naming session/repository/client), repository UUID params, transaction write-only |
 | `router/` | write-auth, auth-all, inline-depends, response-model |
 | `model/` | id-standard, field-mapped-pattern |
 | `service/` | http-exception, repository-param |
@@ -456,6 +487,8 @@ Reads therefore eager-load what they return: `select(...).options(selectinload(.
 - Business logic in repository
 - `from_session` factory method (services accept session directly)
 - Inline `Depends()` in router (use `Annotated` DI)
+- A public function in `schemas/` other than `to_read`/`to_read_list` — put a
+  constructor on the class, a caller detail in the caller
 - `extra="allow"` on schemas
 - Missing `from_attributes=True` on Read schemas
 - Missing `extra="forbid"` on any schema

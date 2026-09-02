@@ -11,6 +11,8 @@ import { resolveProjectRoot } from "./hook-project-root.ts";
  *   - model filename format (<name>.py, lowercase alphanumeric)
  *   - data chain existence (model → schema → repository → service; router optional)
  *   - file contents per layer (model/schema/repository/service/router/DI/main/env)
+ *   - the schema layer's public surface (Pydantic classes + to_read/to_read_list)
+ *   - no generic `find_stale` finder (retention is per-domain, by its own column)
  *
  * Pure validation — no ast-grep, no side effects. Called by the
  * check-backend-domain orchestrator.
@@ -19,12 +21,93 @@ import { resolveProjectRoot } from "./hook-project-root.ts";
 const projectRoot = resolveProjectRoot();
 
 /**
+ * The only module-level functions a schema module may expose.
+ *
+ * Not a style list: these two are the layer's documented surface
+ * (backend-domain.md), and every other public function in `schemas/` is logic
+ * that belongs to whoever calls it.
+ */
+const SCHEMA_PUBLIC_FUNCTIONS = new Set(["to_read", "to_read_list"]);
+
+/**
+ * A schema module exposes its Pydantic classes and nothing else but
+ * `to_read`/`to_read_list`.
+ *
+ * Measured on this repository: a ledger domain grew two public functions in
+ * `schemas/` — one building a request object out of an external API record,
+ * one normalising a timestamp a driver had handed back naive. Both were
+ * imported by the service, both passed every gate, and neither belonged to the
+ * schema layer: the first is a constructor of the class it returns, the second
+ * is a comparison detail of the caller. The reason they landed there is
+ * mechanical, not careless — `domain/service-method-async.yml` forbids a sync
+ * `def` anywhere in `services/`, so `schemas/` is the nearest place a helper
+ * compiles, and nothing was watching it.
+ *
+ * The fix a violation names is therefore concrete: put a constructor on the
+ * class (`<Class>.from_record`), and keep a caller's detail in the caller.
+ */
+export function checkSchemaSurface(base: string): string[] {
+  const issues: string[] = [];
+  const schemaDir = join(base, "schemas");
+  if (!existsSync(schemaDir)) return issues;
+
+  for (const file of listModelFiles(schemaDir)) {
+    const source = readFileSync(join(schemaDir, file), "utf-8");
+    for (const declaration of source.matchAll(/^(?:async )?def (\w+)\(/gm)) {
+      const name = declaration[1];
+      if (name.startsWith("_") || SCHEMA_PUBLIC_FUNCTIONS.has(name)) continue;
+      issues.push(
+        `schemas/${file}: \`${name}()\` is a public function in the schema layer — ` +
+          "its surface is the Pydantic classes plus to_read/to_read_list. Put a " +
+          "constructor on the class it builds (`<Class>.from_record`), keep a " +
+          "caller's detail in the caller, or make it module-private (`_name`)",
+      );
+    }
+  }
+  return issues;
+}
+
+/**
  * Under asyncio there is no safe lazy default: a relationship touched outside a
  * loaded query raises `MissingGreenlet` from deep inside greenlet plumbing, at
  * whichever endpoint happens to touch it first. `lazy="raise_on_sql"` moves that
  * failure to the access itself with a sentence a reader can act on, and makes
  * the eager-load contract enforceable by the runtime instead of by review.
  */
+/**
+ * `find_stale` is banned by name, in every repository and service.
+ *
+ * It used to be the template: every repository had to define it and had to
+ * filter `created_at < older_than`. Measured across the tree the day it was
+ * removed: fourteen definitions, zero business callers — pure scaffolding —
+ * and the one blanket semantic was wrong for every table that has a real
+ * retention story. A user is stale by last activity, a token by its own
+ * expiry (`find_expired`/`expires_at`), a run by when it finished
+ * (`find_finished_before`/`finished_at`). Purging any of them by creation
+ * date deletes active rows.
+ *
+ * So a retention finder is named for its semantic and its column, and exists
+ * only where something calls it. A master table gets none.
+ */
+export function checkNoGenericStaleFinder(base: string): string[] {
+  const issues: string[] = [];
+  for (const layer of ["repositories", "services"]) {
+    const layerDir = join(base, layer);
+    if (!existsSync(layerDir)) continue;
+    for (const file of listModelFiles(layerDir)) {
+      const source = readFileSync(join(layerDir, file), "utf-8");
+      const line = source.split("\n").findIndex((text: string) => text.includes("def find_stale("));
+      if (line === -1) continue;
+      issues.push(
+        `${layer}/${file}:${line + 1}: \`find_stale\` is the retired blanket finder — name the ` +
+          "semantic and its column (find_expired/expires_at, find_finished_before/finished_at), " +
+          "and only where a caller exists; a created_at purge deletes active rows",
+      );
+    }
+  }
+  return issues;
+}
+
 export function checkRelationshipLoading(base: string): string[] {
   const issues: string[] = [];
   const modelsDir = join(base, "models");
@@ -444,7 +527,7 @@ export function checkDomainStructure(): string[] {
     const repoPath = join(repoDir, `${name}.py`);
     if (isSingleRepoDomain && existsSync(repoPath)) {
       const repoContent = readFileSync(repoPath, "utf-8");
-      const methods = ["async def get", "async def list", "async def find_stale", "async def create", "async def update", "async def delete", "def __init__"];
+      const methods = ["async def get", "async def list", "async def create", "async def update", "async def delete", "def __init__"];
       for (const method of methods) {
         if (!repoContent.includes(method)) {
           issues.push(`${name}: repository missing method "${method.replace("async def ", "").replace("def ", "")}"`);
@@ -452,9 +535,6 @@ export function checkDomainStructure(): string[] {
       }
       if (!repoContent.includes(`${name}_id: UUID`)) {
         issues.push(`${name}: repository id params must be typed UUID (${name}_id: UUID)`);
-      }
-      if (!repoContent.includes("created_at < older_than")) {
-        issues.push(`${name}: repository find_stale must filter by created_at < older_than`);
       }
     }
 
@@ -542,6 +622,13 @@ export function checkDomainStructure(): string[] {
     // whose service layer is a folder has one service per file, so it needs one
     // factory and one Annotated alias per file - not one named after the domain,
     // which no longer exists as a class once the service is split.
+    //
+    // Required **only where a router exists**, because an `Annotated[X,
+    // Depends(...)]` alias has exactly one consumer: an endpoint signature.
+    // Demanded of a router-less domain it produced guaranteed dead code -
+    // measured: `barcode` and `batch_checkpoint` are reached only by a batch
+    // job, which constructs `Service(session)` itself (rule://backend-batch),
+    // and their two aliases sat unused while this rule insisted on them.
     const depsServicesPath = join(base, "dependencies", "services.py");
     if (existsSync(depsServicesPath)) {
       const depsContent = readFileSync(depsServicesPath, "utf-8");
@@ -554,7 +641,18 @@ export function checkDomainStructure(): string[] {
             return { factory: `get_${name}_${leaf}_service`, cls: `${cls}${leafCls}Service` };
           })
         : [{ factory: `get_${name}_service`, cls: `${cls}Service` }];
+      const routerContent = hasRouter ? readFileSync(routerPath, "utf-8") : "";
       for (const part of parts) {
+        // Required of the services an endpoint injects, not of every service
+        // that exists. An `Annotated[X, Depends(...)]` alias has exactly one
+        // consumer — an endpoint signature — so demanding one for a service no
+        // router mentions produces guaranteed dead code, and did: `barcode`
+        // (no router at all) and `batch_checkpoint` (a leaf of a domain whose
+        // router publishes the other three) each carried an alias nothing
+        // injected, kept alive by this rule. `check-backend-contract` owns the
+        // other direction, so the pair reads: declare exactly the aliases your
+        // endpoints use.
+        if (!routerContent.includes(part.cls)) continue;
         if (!depsContent.includes(part.factory)) {
           issues.push(`${name}: missing ${part.factory} in dependencies/services.py`);
         }

@@ -61,6 +61,7 @@ post hook after every edit.
 | Rule (`.omp/rules/`) | Pre Hook | Post Hook |
 |---|---|---|
 | `backend-domain.md` | `strict-backend-app-structure.ts` | `check-backend-domain.ts` |
+| `backend-contract.md` | — | `check-backend-contract.ts` |
 | `backend-auth.md` | — | `check-backend-auth.ts` |
 | `backend-exceptions.md` | — | `check-backend-exceptions.ts` |
 | `backend-api-http.md` | — | `check-backend-api-http.ts` |
@@ -91,6 +92,7 @@ post hook after every edit.
 | `backend-code-conventions.md` | — | `check-verify.ts` (runs the configured toolchain — lint/typecheck/test) |
 | `backend-makefile.md` | `strict-command-routing.ts` | `check-makefiles.ts` |
 | `root-makefile.md` | `strict-command-routing.ts` | `check-makefiles.ts` |
+| `root-git-workflow.md` | `strict-no-vcs-publish.ts` | — |
 | `frontend-makefile.md` | `strict-command-routing.ts` | `check-makefiles.ts` |
 | `frontend-code-conventions.md` | — | `check-frontend-code.ts` |
 | `frontend-domain.md` | — | `check-frontend-domain.ts` |
@@ -110,9 +112,6 @@ post hook after every edit.
 | `omp-hooks.md` | — | `check-omp-hooks.ts` |
 | `omp-skills.md` | — | `check-omp-skills.ts` |
 | `decks-sync.md` | — | `check-decks-sync.ts` |
-| `root-git-workflow.md` | `strict-no-vcs-publish.ts` | — |
-| +-- strict-no-vcs-publish.ts      # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
-| `RULES.md` (sticky) | `strict-no-vcs-publish.ts` | — |
 | `RULES.md` (sticky) | `strict-no-subagents.ts` | — |
 | `RULES.md` (sticky) | `strict-additive-writes.ts` | — |
 | `backend-app-forbidden-tokens.md` (TTSR trigger) | — | `check-backend-exceptions.ts` + `check-environment.ts` |
@@ -152,6 +151,22 @@ Every trigger is built the same way, and `check-omp-rules` proves it:
    scope-prefixed: `backend-`/`frontend-`)
 5. Register the Makefile target + add the mapping table row
 6. Run `make verify` — the split must not change behavior (all checks still pass)
+
+## Scope Equals The Claim
+
+A check must fire on exactly what it asserts. The failure is silent in both
+directions: a check that reaches further decides something nobody chose (a
+member-order scanner that read docstring prose as a field forced a sentence to
+be reworded), and a check that reaches less passes while applying to nothing (a
+"module-private functions are \`_\`-prefixed" scan anchored at column zero never
+looked inside a class, so a method serving one line of its own class sat in the
+public surface of every caller).
+
+Both were found by a human, not by a gate. When writing a check, state the
+construct it is about and make the pattern say so — track string state when
+reading source line by line, and scope by structure rather than by indentation
+or line width. `omp-ast-rules.md` carries the same standard for AST rules, with
+the four cases measured here.
 
 ## Measure The Domain, Never Name It
 
@@ -193,6 +208,7 @@ file moves.
    is read from the hook's own filename, so there is no list to maintain.
 2. **`// domain-literal: <reason>`** on the line, or the line above. The reason
    is required and must be a sentence, because some collisions are real —
+   `hook-publish-consent.ts` compares a transcript *message role* named `user`,
    which is not the `user` domain. An annotation on a line that classifies
    nothing fails as stale, so exemptions cannot pile up unread.
 
@@ -260,11 +276,12 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
 | +-- strict-backend-migrations.ts    # Backend: blocks edits only to upstream migration files
 | +-- strict-no-subagents.ts        # Cross-cutting: blocks task (subagent) creation
 | +-- strict-additive-writes.ts # Cross-cutting: blocks an edit only when a registration/import entry would survive nowhere in the file (dedupe and same-patch moves pass; tests/ is exempt — a lost import there fails loudly at collection)
-| +-- strict-no-vcs-publish.ts # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
+| +-- strict-no-vcs-publish.ts      # Cross-cutting: denies git commit/push — VCS belongs to the user (RULES.md)
 | +-- strict-backend-app-structure.ts # Backend: blocks writes outside the documented backend/ structure (new dirs under app/, stray app-root files, non-standard backend/ dirs)
 | +-- strict-tooling.ts            # Cross-cutting: blocks writes of Python/shell tooling and root script dirs outside .omp/hooks/ (write only — an existing file is fixed forward)
 +-- post/
   +-- check-backend-domain.ts      # Read-only: validates 5-layer CRUD domain pattern
+  +-- check-backend-contract.ts    # Read-only: validates backend surface is reachable from an entry point
   +-- check-backend-migrations.ts  # Read-only: validates ORM ↔ DB sync and migration scope
   +-- check-backend-table-design.ts # Read-only: validates table design invariants (1NF, keys, constraints)
   +-- check-backend-model-files.ts # Read-only: validates one table / one class / one file
@@ -449,7 +466,7 @@ drifted out of it.
 
 |Hook File|Validates|Checks|
 |---|---|---|
-|`check-backend-domain.ts`|5-layer CRUD pattern across `backend/app/`|Model files ↔ schemas/repositories/services/routers pairs; model `Base`/`AuditMixin`/`id`/`name`/`description`; 6 Pydantic classes + per-class `extra="forbid"` + Read `from_attributes` + Read `version: int`; service never assigns `updated_at`; 7 repository methods; service `session.begin()` + `NotFoundError`; 5 REST endpoints; `Annotated[T, Depends(factory)]` DI; router in `main.py`; model in `alembic/env.py`|
+|`check-backend-domain.ts`|5-layer CRUD pattern across `backend/app/`|Model files ↔ schemas/repositories/services/routers pairs; model `Base`/`AuditMixin`/`id`/`name`/`description`; 6 Pydantic classes + per-class `extra="forbid"` + Read `from_attributes` + Read `version: int`; the schema layer exports classes only (no public function but `to_read`/`to_read_list` — measured: a record mapper and a timestamp normaliser parked in `schemas/` because a sync `def` is banned in `services/`); service never assigns `updated_at`; 6 repository methods (`find_stale` is banned by name — measured: fourteen definitions, zero business callers, and a blanket `created_at` purge deletes active rows; retention finders are per-domain: `find_expired`/`expires_at`, `find_finished_before`/`finished_at`); service `session.begin()` + `NotFoundError`; 5 REST endpoints; `Annotated[T, Depends(factory)]` DI; router in `main.py`; model in `alembic/env.py`|
 |`check-backend-table-design.ts`|Table design invariants in `backend/app/models/` (mapped classes **and** column-bearing mixins)|`__tablename__` present/snake/singular; primary key; `AuditMixin` inherited plus its own columns + `version_id_col`; atomicity — no numbered repeating groups (1NF); Booleans NOT NULL; `DateTime(timezone=True)`; foreign keys `_id` + `ondelete=` + `index=True`; explicit `String(n)` lengths; short type/status/mode strings carry an `IN (...)` check constraint|
 |`check-backend-model-files.ts`|Model files in `backend/app/models/`|One `__tablename__` per file, the file named after its table, one mapped class per file — measured: four tables in one file forced a filename exception into three separate readers|
 |`check-backend-repository-files.ts`|Repository files in `backend/app/repositories/`|A file's own `select(Model)` targets only the table its name declares; child-table column projections and aggregate-root child construction are exempt|
@@ -458,10 +475,10 @@ drifted out of it.
 |`check-backend-api-http.ts`|`api/*.http` structure, runnable sequencing, endpoint + external API coverage|File ↔ router both ways and location (`api/`, not `backend/api/`); structure (`### <Name> API` title, `### 전제:`, `@base`, named login block before the first token use, sections numbered 1..n with the status declared after a dash); Bearer on non-public requests (a `— 401` block omits it on purpose); one request block per `@router.<method>`; no literal UUID in a request line; CRUD sequencing (create → list → get → update → [409] → delete → [404]) with the id chained from the named create block and a dynamic create body when the model declares uniqueness; **state neutrality** — balanced `— 201` creates vs `— 200` deletes per collection, the actor contract — `auth.http` alone creates/deletes the account it logs in as, every domain file logs in as the seeded actor (`@actorUsername`/`@actorPassword`, `make db-init` named in `### 전제:`; the row comes from `57_seed_api_actor_user.py`), and seeded rows never deleted; a success-path (`— 200`) execute block per seeded integration operation; **runtime proof** — `lib/backend-api-flow.ts` and the `check-api-flow` target must exist and be wired to each other|
 |`check-backend-router-params.ts`|Router parameter standard in `backend/app/routers/`|Four parameter kinds (path / `*Request` body named `data` / `*Dep` dependency / `*Query` alias) and nothing else; route template ↔ signature both ways; `*_id` path params typed `UUID` with no default; one body on writes only, none on GET/DELETE (form dependency is the documented exception); root `GET /` list reads paginated through `OffsetQuery`/`LimitQuery` (parent-scoped sub-collections exempt but must be path-scoped); `LimitQuery` declares `ge=`+`le=` and `ITEMS_PER_USER` ≤ the cap; signature order path → body → dependencies → query; routers declare no local `Annotated` alias|
 |`check-backend-auth.ts`|Auth + domain exception patterns|`router/` AST rules (all endpoints authenticated, write-auth, inline `Depends`, response model), `service/` AST rules (no `HTTPException` in services), `conventions/` current-user-router-only, exception handler registration|
-|`check-backend-naming.ts`|Naming + encapsulation in `backend/app/`|File/variable naming AST rules; module-private functions prefixed `_`; repository access forbidden outside its owning service|
+|`check-backend-naming.ts`|Naming + encapsulation in `backend/app/`|File/variable naming AST rules; module-private functions prefixed `_`, class-private methods prefixed `_` in the five encapsulated layers (the module check is anchored at column zero and never looked inside a class), and a `_` name never imported by another module (otherwise the prefix is a rename away from meaningless); repository access forbidden outside its owning service|
 |`check-backend-transaction.ts`|`session.begin()` placement|`transaction/service-only.yml` — bare, `self.`, and aliased (`svc.session.begin()`) forms forbidden outside services (incl. `app/batch/`); `domain/` write-only transaction rules|
 |`check-backend-migrations.ts`|ORM ↔ DB sync and migration scope|`alembic check` autogenerate diff (ORM drift and DB drift); skipped silently when the database is unreachable|
-|`check-backend-batch.ts`|Batch job conventions in `backend/app/batch/`|`engine` used directly; `Service(session)` constructor; `service.repository` access (never raw session); meaningful count/status return; `async def`|
+|`check-backend-batch.ts`|Batch job conventions in `backend/app/batch/`|module named after its single public job (`app/batch/<job_code>.py`) and `BATCH_JOBS` keyed by that same name; `engine` used directly; `Service(session)` constructor; `service.repository` access (never raw session); meaningful count/status return; `async def`; the schedule chain (registry → seeded `batch`/`batch_schedule` row → scheduler options); the lifespan loads the schedule **and sweeps orphaned runs** (`update_interrupted_runs` — main.py is outside coverage, so a deleted sweep call fails nowhere else)|
 |`check-backend-tests.ts`|Backend test standard in `backend/tests/`|Every CRUD model has `test_<name>.py`; each covers 10 standard API cases and asserts status 201/401/404/422; auth standard in `test_auth.py`; conftest swaps `async_session_factory` (real `get_session()`, no override)|
 |`check-backend-app-setup.ts`|App setup in `main.py`|`GET /health` (DB ping, 503); `FastAPI(title=...)`; routers under `/api/v1`|
 |`check-backend-core-config.ts`|Core config in `app/core/`|`@field_validator` decorator in settings; `pool_size`/`max_overflow`/`pool_timeout` in `core/database.py`; `code`/`request_id` in error schema|
@@ -477,10 +494,11 @@ drifted out of it.
 |`check-backend-integration.ts`|External API integration|`IntegrationClient` base + `httpx2.AsyncClient` + timeouts + retries + integration exceptions; `httpx2` confined to the client and its wiring|
 |`check-backend-integration-configuration.ts`|Database-managed outbound integration configuration|Four tables (provider, named `integration_secret`, operation, unified `integration_field`), DB resolution, request JSON Schema, request sources, secrets resolved through the field's `secret_id` FK and never echoed, mapping as the only response contract (`response_root` absent → one record, at a page → every element; no `response_mode` column) with a page-mapping loop in the client, no `response_schema`/sparse value columns, external API contract tests (`test_integration_external_api.py`), spec fidelity (every seeded field carries `description`), and JSON/XML `response_format` decoding|
 |`check-environment.ts`|Env contract (root docker-compose + backend)|Required vars (`ENV`, `DATABASE_URL`, `ADMIN_EMAIL`, `ITEMS_PER_USER`, `APP_NAME`) in `backend/.env`/`.env.example`; matching `settings.py` fields; `.env` ↔ `.env.example` key + section + per-variable comment pair sync (root + backend, bidirectional); root ↔ backend shared var value sync + common-key comment parity + root⊇backend key invariant (backend-only key → container silently uses default); **compose wiring** — the backend maps root `.env` through `env_file` and declares no `environment:` block (a per-key list dropped `SECRET_KEY` and crash-looped the container), every other service's values are `${VAR}` references root `.env` defines, container-local bindings (`0.0.0.0`) excepted; shared var order + comments; AST rules (no `os.environ`/`os.getenv`, no hardcoded connection strings/ports)|
+|`check-backend-contract.ts`|Reachability of `backend/app/` surface from an entry point|A `*ServiceDep` alias injected by no endpoint (an `Annotated[X, Depends(...)]` has exactly one consumer, so one without a router is dead by construction — measured: `barcode` and `batch_checkpoint` each carried one, mandated by `backend-domain`); a public service/repository method beyond the CRUD template with no caller in `app/` (tests are not callers — a method covered only by its own test is what this check exists to find); properties matched as `.name`, never `.name(`|
 |`check-frontend-code.ts`|Frontend code conventions in `frontend/src/` (recursive)|Entry files (`main.tsx`, `App.tsx`, `styles.css`); no class components and no `React.FC`; `@/` alias (no relative import); no hardcoded port; file named after its default-exported component; every imported package declared in `frontend/package.json`|
 |`check-frontend-domain.ts`|Frontend 6-layer domain pattern in `frontend/src/`|Domains discovered from `lib/api/services/*.service.ts` (`auth` exempt as a session, not a resource); per domain — `types/<domain>.ts`, `<DOMAIN>_ENDPOINTS`, `<domain>Keys`, five service functions, five query hooks, `<Domain>List.tsx` + `<Domain>FormDialog.tsx`, `<Domain>Page.tsx`; a section directory with no service is an orphan|
 |`check-frontend-api-layer.ts`|Transport + cache contract in `frontend/src/lib/api/`|`ast-grep/rules/frontend-api/` (no second `axios.create`); `fetch` and the axios import confined to `lib/api/client.ts`; no backend path literal outside `endpoints.ts` (route registry and the client's 401 list exempt); a service never caches and always imports the shared client; per query hook — key from the factory, `staleTime` from `QUERY_STALE_TIME`, `placeholderData` on every `use*List`; every `useCreate/useUpdate/useDelete` invalidates; sections and pages never import a service|
-|`check-frontend-screens.ts`|Per-screen-type templates in `frontend/src/sections/`|`ast-grep/rules/frontend-screen/` (no raw `DataGrid`); list screens carry `useDataGridState` + `usePagedRows` + `ServerDataGrid` + `useCrudDialog`, an `isError` branch and an `emptyTitle`; form dialogs use `useForm` + a resolver + `FormProvider` + `methods.reset` and hold no field state in `useState`; a `detail/` tab imports no query hook; any `mutateAsync` is paired with `toast.error`; pages routed under `DashboardLayout` render `PageHeader` and fetch nothing|
+|`check-frontend-screens.ts`|Per-screen-type templates in `frontend/src/sections/`|`ast-grep/rules/frontend-screen/` (no raw `DataGrid`); list screens carry `useDataGridState` + `ServerDataGrid` + `useCrudDialog`, an `isError` branch and an `emptyTitle`; form dialogs use `useForm` + a resolver + `FormProvider` + `methods.reset` and hold no field state in `useState`; a `detail/` tab imports no query hook; any `mutateAsync` is paired with `toast.error`; pages routed under `DashboardLayout` render `PageHeader` and fetch nothing|
 |`check-frontend-routing.ts`|Routing contract in `frontend/src/`|`PATHS` ↔ `App.tsx` ↔ `NAV_ITEMS`, all pairs both ways (`root` and `auth.login` are the documented non-navigation leaves); no literal `to=`/`navigate()`/`path=` outside the registry; `AuthGuard` in `DashboardLayout` and `GuestGuard` in `AuthLayout`, and no guard inside a page|
 |`check-frontend-design.ts`|Design system in `frontend/src/`|Ported design modules present and applied by the theme (`palette`, `typography`, `shadows`, `customShadows`, `componentOverrides`); no colour literal outside `theme/palette.ts`; no spelled `boxShadow` (`'none'` excepted) or `fontSize`/`fontWeight` literal outside `theme/`; no raw icon id at an `icon=` prop (the registry `components/iconify/icons.ts` owns ids and asset paths); no layout metric (nav width, header height/mobile) retyped outside `config.ts`; `Chip` never used as a status badge (`Label` is); a `*DetailDialog` body is `background.neutral` and every `detail/*Tab` renders a `DetailSection`; `styles.css` stays a reset — it once clamped the document to 40rem and squeezed the shell into a strip|
 |`check-frontend-components.ts`|Component boundaries in `frontend/src/`|No sibling section repeats another's tag sequence, no two exports are the same component, no `*Edit*`/`*Create*` twin file — measured: the run panel drew the failure result beside the success result|
@@ -750,6 +768,7 @@ negative check to `check-omp-hooks.ts` before relying on it.
 Post hooks surface drift **immediately** after an edit; `make verify` (or individual `make check-*` targets) runs the identical checks **on demand** for a clean pre-commit signal. The CLI targets execute the hook files directly:
 
 - `make check-backend-domain` → `node .omp/hooks/post/check-backend-domain.ts`
+- `make check-backend-contract` → `node .omp/hooks/post/check-backend-contract.ts`
 - `make check-backend-table-design` → `node .omp/hooks/post/check-backend-table-design.ts`
 - `make check-backend-model-files` → `node .omp/hooks/post/check-backend-model-files.ts`
 - `make check-backend-repository-files` → `node .omp/hooks/post/check-backend-repository-files.ts`

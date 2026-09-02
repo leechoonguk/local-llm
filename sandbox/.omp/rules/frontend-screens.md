@@ -32,12 +32,13 @@ plus `ast-grep/rules/frontend-screen/`.
 
 ## List Screen
 
-Five hooks, in this order, and nothing else holds state:
+Four hooks, in this order, and nothing else holds state:
 
 ```tsx
 const grid = useDataGridState()
 const query = use<Domain>List(grid.params)
-const { rows, paginationMeta } = usePagedRows(query.data, grid.paginationModel.pageSize)
+const rows = query.data?.items ?? []
+const rowCount = query.data?.total ?? 0
 const dialog = useCrudDialog<Domain>()
 const toast = useToast()
 ```

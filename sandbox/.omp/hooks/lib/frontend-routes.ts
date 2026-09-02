@@ -44,7 +44,16 @@ const ENDPOINT_BLOCK = /export const (\w+_ENDPOINTS) = \{([\s\S]*?)\n\} as const
 
 const ENDPOINT_ENTRY = /^ {2}(\w+):\s*(?:\([^)]*\)\s*=>\s*)?[`'"]([^`'"]+)[`'"]/gm;
 
-const SERVICE_CALL = /api\.(get|post|put|patch|delete)<[^>]*>\(\s*(\w+_ENDPOINTS\.\w+)/g;
+/**
+ * A transport call and the endpoint constant it addresses.
+ *
+ * The type argument allows one level of nesting: list calls read `Page<Batch>`,
+ * and `<[^>]*>` stops at the inner `>` — measured, it matched nothing after the
+ * envelope landed and every list route was reported as having no caller while
+ * the callers sat in the file being read.
+ */
+const SERVICE_CALL =
+  /api\.(get|post|put|patch|delete)<[^<>]*(?:<[^<>]*>)?[^<>]*>\(\s*(\w+_ENDPOINTS\.\w+)/g;
 
 /** `-> IntegrationReadResponse:` at the end of a handler signature. */
 const RETURN_ANNOTATION = /->\s*([^:]+):\s*$/m;

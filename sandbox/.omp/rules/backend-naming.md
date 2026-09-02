@@ -21,9 +21,9 @@ prefixed with its domain (checked by `naming/var-name.yml`):
 
 | Context | Pattern | Example |
 |---|---|---|
-| Router param | `<domain>_service: XxxServiceDep` | `batch_service: BatchServiceDep` |
-| Local var (batch/services) | `<domain>_service = XxxService(session)` | `batch_service = BatchService(session)` |
-| Batch repository access | `<domain>_service.<domain>_repository.<method>()` | `batch_service.batch_repository.find_stale(...)` |
+| Router param | `<domain>_service: XxxServiceDep` | `user_service: UserServiceDep` |
+| Local var (batch/services) | `<domain>_service = XxxService(session)` | `user_service = UserService(session)` |
+| Batch repository access | `<domain>_service.<domain>_repository.<method>()` | `refresh_service.refresh_repository.find_expired(...)` |
 
 Never a bare `service`.
 
@@ -34,7 +34,7 @@ Every internal collaborator is prefixed with its domain
 
 | Member | Pattern | Example |
 |---|---|---|
-| Own repository | `self.<name>_repository` | `self.batch_repository = BatchRepository(session)` |
+| Own repository | `self.<name>_repository` | `self.user_repository = UserRepository(session)` |
 | Other repository | `self.<other>_repository` | `self.user_repository = UserRepository(session)` |
 | Other service | `self.<other>_service` | `self.user_service = UserService(session)` |
 
@@ -55,6 +55,34 @@ Module-level functions never referenced by another module must be prefixed with
 `naming/inner-function-underscore.yml`, enforced by `check-backend-naming.ts`.
 FastAPI routes (`@router.`/`@app.` decorators), DI factories wired via
 `Depends(NAME)`, and imported names are exempt.
+
+**And a `_` name is never imported by another module.** The underscore is a
+claim about who may call, and Python enforces none of it: without this half,
+the rule above is one rename away from meaningless — a helper that does not
+belong in a layer passes by being called `_helper` and imported anyway.
+Machine-checked by `check-backend-naming.ts`; the fix is to move the logic to
+the caller, not to widen the name.
+
+## Class-Private Methods
+
+A method that its own class calls on `self` and **no other module in `app/`
+names** is an internal step: prefix it `_`. Measured on the call-log helper in
+`services/integration/operation.py` — it served one line of its own class while
+sitting in the public surface of every caller, and no gate saw it, because the
+module-private check above is anchored at column zero and never looked inside a
+class.
+
+Every module under `backend/app/`, with no layer carved out. The check began
+with `core/` exempt for exactly one row — a scheduler state query nothing but
+its own class called — and an exemption held for one file is a rule that stops
+meaning what it says; that method is `_is_running` now. Frontend code needs no
+counterpart: it has one class in 196 modules, and the same idea is enforced
+there per **export** (`check-frontend-contract` fails a service function no hook
+calls, a hook no screen renders). Tests are not counted as callers — a method only its own class and its
+own test touch is still an internal step, and the test can name it with the
+underscore.
+
+Machine-checked by `check-backend-naming.ts`.
 
 ## Inner Functions
 
@@ -113,6 +141,8 @@ class Batch(Base, AuditMixin):
 - Repository access outside the owning service
 - Module-private functions without `_` prefix
 - Inner functions without `_` prefix
+- Importing a `_` name from another module
+- A method only its own class calls left without a `_` prefix
 - Non-lowercase/non-alphanumeric file names
 - A module without section dividers, or a first section other than `Imports`
 - A section name outside the canonical set, or sections out of canonical order

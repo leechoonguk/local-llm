@@ -4,14 +4,14 @@ globs:
       - backend/app/models/integration/*.py
       - backend/app/schemas/integration/*.py
       - backend/app/repositories/integration/*.py
-      - backend/app/services/integration.py
+      - backend/app/services/integration/*.py
       - backend/app/routers/integration.py
       - backend/app/core/integration.py
       - backend/app/core/settings.py
       - backend/alembic/versions/*_integration_*.py
       - backend/tests/api/test_integration.py
       - backend/tests/core/test_integration.py
-      - backend/tests/services/test_integration.py
+      - backend/tests/services/integration/*.py
 alwaysApply: false
 ---
 
@@ -126,7 +126,7 @@ Enforcement is split by what each side can see, and both sides check the seed:
 - **repository** — `check-backend-api-http` reads the newest operation seed: paging
   inputs with no `response_root`, or a root that pins an index, fail there before any
   database is involved;
-- **write time** — `IntegrationService._validate_response_root` refuses the same two
+- **write time** — `IntegrationProviderService._validate_response_root` refuses the same two
   shapes through the API, so the configuration the app serves is one the app can
   create;
 - **request file** — a 200 block per canonical paging key (the window moves, and its
@@ -176,7 +176,7 @@ The previous five-table shape failed in four ways this design fixes:
 
 The four tables have two writers: alembic seeds, and `POST/PUT /integration/`. A
 migration reaches them through the DB `CHECK` alone — it never meets the Pydantic
-literals or `IntegrationService`'s validation. So the same invariant is written three
+literals or `IntegrationProviderService`'s validation. So the same invariant is written three
 times, and a capability added to two of them leaves the third refusing rows the
 database already serves.
 

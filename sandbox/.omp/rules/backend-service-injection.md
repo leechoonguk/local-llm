@@ -13,7 +13,7 @@ alwaysApply: false
 **A service composes repositories. It never composes another service.**
 
 ```python
-class IntegrationService:
+class IntegrationProviderService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.provider_repository = IntegrationProviderRepository(session)

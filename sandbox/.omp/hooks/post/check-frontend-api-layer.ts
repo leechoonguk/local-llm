@@ -30,8 +30,8 @@ import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
  *   2. no URL literal outside lib/api/endpoints.ts
  *   3. services are transport only — no useQuery/useMutation in a service
  *   4. every query takes its key from a `*Keys` factory, never an array literal
- *   5. every list hook declares `placeholderData` — `usePagedRows` derives
- *      `hasNextPage` from the previous page, so losing it resets the grid
+ *   5. every list hook declares `placeholderData` — the grid reads its rows and
+ *      its total from `data`, so losing it blanks the footer mid-fetch
  *   6. every CRUD mutation invalidates its list key
  *   7. screens go through hooks — sections/ and pages/ never import a service
  *
@@ -181,8 +181,8 @@ function checkQueryHooks(): string[] {
         }
         if (/List\b/.test(hookName) && !/placeholderData:/.test(body)) {
           issues.push(
-            `${file.label}: ${hookName} declares no placeholderData — usePagedRows ` +
-              "needs the previous page to keep paginationMeta stable",
+            `${file.label}: ${hookName} declares no placeholderData — the grid reads ` +
+              "its rows and its total from data, which goes undefined during a fetch",
           );
         }
       }

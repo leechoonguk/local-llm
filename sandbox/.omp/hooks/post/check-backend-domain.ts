@@ -5,7 +5,7 @@ import { existsSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { runAstRules } from "../lib/ast-rules.ts";
-import { aggregateDomains, belongsToAggregateDomain, checkDomainStructure, checkRelationshipLoading } from "../lib/backend-domain-structure.ts";
+import { aggregateDomains, belongsToAggregateDomain, checkDomainStructure, checkNoGenericStaleFinder, checkRelationshipLoading, checkSchemaSurface } from "../lib/backend-domain-structure.ts";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
@@ -19,6 +19,7 @@ import { resolveProjectRoot } from "../lib/hook-project-root.ts";
  *
  *   - AST rules: model/ (id-standard, field-mapped-pattern)
  *   - lib: checkDomainStructure (5-layer existence + contents)
+ *   - lib: checkSchemaSurface (the schema layer exports classes, not helpers)
  *
  * ORM ↔ DB sync lives in check-backend-migrations.ts (backend-migrations.md).
  * Auth/api-http/naming/transaction checks live in their own hooks.
@@ -88,6 +89,8 @@ function checkBackendDomainSync(): string[] {
   }
 
   issues.push(...checkRelationshipLoading(base));
+  issues.push(...checkSchemaSurface(base));
+  issues.push(...checkNoGenericStaleFinder(base));
 
   // lib — 5-layer structure.
   issues.push(...checkDomainStructure());

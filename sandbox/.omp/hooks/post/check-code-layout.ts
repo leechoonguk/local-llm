@@ -572,7 +572,8 @@ function splitPythonClasses(source: string): ClassBlock[] {
 }
 
 /**
- * Top-level members of a Python class body, ignoring anything inside brackets.
+ * Top-level members of a Python class body, ignoring anything inside brackets
+ * or inside a docstring.
  *
  * A decorated property is **one** member. Counting the `@property` line and its
  * `def` separately made the two order rules mutually unsatisfiable for any class
@@ -581,12 +582,24 @@ function splitPythonClasses(source: string): ClassBlock[] {
  * `__init__` the decorator ranked as a property behind a method, so "property
  * declared after method" fired. Measured on `IntegrationClient`, the first class
  * in this codebase to have both.
+ *
+ * Docstrings are prose, and prose is not a member. Bracket depth was tracked
+ * from the start but string state was not, so a docstring line opening with
+ * `word:` — `derived: counting the ledger is wrong` — was read as a field
+ * declaration and the class's real `__tablename__` below it was reported as
+ * "config declared after field". Measured; the workaround at the time was to
+ * reword the sentence.
  */
 function pythonMembers(body: string): ClassMember[] {
   const members: ClassMember[] = [];
   let depth = 0;
+  let inDocstring = false;
   let pendingProperty = false;
   body.split("\n").forEach((line, index) => {
+    const fences = (line.match(/"""|'''/g) ?? []).length;
+    const closesHere = inDocstring && fences % 2 === 1;
+    if (fences % 2 === 1) inDocstring = !inDocstring;
+    if (inDocstring || closesHere) return;
     if (depth === 0 && /^ {4}\S/.test(line)) {
       const config = PY_CONFIG.exec(line);
       const method = PY_METHOD.exec(line);

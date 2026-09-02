@@ -47,7 +47,7 @@ frontend/src/
   lib/api/                  client, endpoints, queryKeys, queryDefaults,
                             services/, hooks/
   auth/                     AuthContext, guards
-  hooks/                    useDataGridState, usePagedRows, useCrudDialog, useToast
+  hooks/                    useDataGridState, useServerTablePage, useCrudDialog, useToast
   components/               presentational building blocks, one directory each
   layouts/                  dashboard shell + auth shell
   sections/<domain>/        screens

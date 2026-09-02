@@ -10,6 +10,7 @@ import { resolveProjectRoot } from "./hook-project-root.ts";
  *
  * Validates:
  *   - module-level functions never referenced by another module are `_`-prefixed
+ *   - a `_`-prefixed name is never imported by another module
  *   - every CRUD model is imported in tests/conftest.py
  *
  * Pure validation — no ast-grep, no side effects. Called by the
@@ -23,9 +24,52 @@ export function checkDomainNaming(): string[] {
   const base = join(projectRoot, "backend", "app");
 
   issues.push(...checkModulePrivateFunctions(base));
+  issues.push(...checkPrivateMethods(base));
+  issues.push(...checkPrivateImports(base));
   issues.push(...checkConftestModelImports(base));
   issues.push(...checkSectionDividers(base));
 
+  return issues;
+}
+
+/**
+ * A method the class calls on itself and nothing else calls is private.
+ *
+ * The sibling check below reads module-level functions only — its regex is
+ * anchored at column zero — so a helper that lives inside a class was invisible
+ * to it. Measured: `IntegrationOperationService.create_call_log` was reachable
+ * from every caller in the process while serving exactly one line of its own
+ * class, and no gate said a word.
+ *
+ * A method is PUBLIC (no `_` required) when any other module in `app/` names
+ * it. Tests deliberately do not count: a method only its own class and its own
+ * test touch is an internal step, and the test can name it with the underscore.
+ *
+ * Every module under `app/`, with no layer carved out. The one exemption this
+ * check started with (`core/`) existed for a single row — a scheduler state
+ * query nothing but its own class called — and an exemption kept for one file
+ * is a rule that stops meaning what it says.
+ */
+function checkPrivateMethods(base: string): string[] {
+  const issues: string[] = [];
+  const sources = new Map<string, string>();
+  for (const path of listAppPython(base)) sources.set(path, readFileSync(path, "utf-8"));
+
+  for (const [path, source] of sources) {
+    for (const declaration of source.matchAll(/^    (?:async )?def (\w+)\(/gm)) {
+      const name = declaration[1];
+      if (name.startsWith("_")) continue;
+      if (!new RegExp(`self\\.${name}\\(`).test(source)) continue;
+      const namedElsewhere = [...sources].some(
+        ([other, text]) => other !== path && new RegExp(`\\b${name}\\b`).test(text),
+      );
+      if (namedElsewhere) continue;
+      issues.push(
+        `${path.slice(base.length + 1)}: \`${name}\` is called only by its own class — ` +
+          "prefix it `_` so the class's public surface is what callers actually use",
+      );
+    }
+  }
   return issues;
 }
 
@@ -113,6 +157,37 @@ function checkSectionDividers(base: string): string[] {
             CANONICAL_ORDER.join(" → "),
         );
         break;
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * A `_`-prefixed name belongs to the module that declares it.
+ *
+ * Without this, the sibling check below is one rename away from meaningless: a
+ * helper that does not belong in a layer passes every gate by being called
+ * `_helper` and imported anyway. Python enforces nothing here — the underscore
+ * is a claim about who may call, and this is what makes the claim true.
+ */
+function checkPrivateImports(base: string): string[] {
+  const issues: string[] = [];
+  for (const path of listAppPython(base)) {
+    const source = readFileSync(path, "utf-8");
+    for (const statement of source.matchAll(
+      /^from\s+(app[\w.]*)\s+import\s+(?:\(([^)]*)\)|([^\n]*))/gm,
+    )) {
+      const module = statement[1];
+      const imported = statement[2] ?? statement[3] ?? "";
+      for (const name of imported.split(",")) {
+        const symbol = name.trim().split(/\s+/)[0];
+        if (!symbol.startsWith("_")) continue;
+        issues.push(
+          `${path.slice(base.length + 1)}: imports \`${symbol}\` from ${module} — ` +
+            "an underscore name is private to its own module; export it under a " +
+            "public name, or move the logic to the caller",
+        );
       }
     }
   }

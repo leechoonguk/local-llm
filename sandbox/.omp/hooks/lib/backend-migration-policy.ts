@@ -783,6 +783,14 @@ const TABLE_PATTERNS = [
   /\btable\(\s*["']([^"']+)["']/g,
 ];
 
+/**
+ * A rename is one table wearing two names, so it counts once — under the name
+ * the revision leaves behind. Nothing in TABLE_PATTERNS matched
+ * `op.rename_table`, so a rename revision read as touching **no** table and
+ * failed the one-table rule for having done nothing.
+ */
+const RENAME_PATTERN = /op\.rename_table\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/g;
+
 /** The metadata block alembic generates, in the order it generates it. */
 const METADATA_FIELDS = ["revision", "down_revision", "branch_labels", "depends_on"];
 
@@ -1026,6 +1034,12 @@ function extractTables(content: string): Set<string> {
     for (const match of content.matchAll(pattern)) {
       tables.add(match[1]);
     }
+  }
+  // Only the upgrade's target: the downgrade renames back, and counting both
+  // directions would report one renamed table as two.
+  const upgrade = content.split("def downgrade")[0];
+  for (const match of upgrade.matchAll(RENAME_PATTERN)) {
+    tables.add(match[2]);
   }
   return tables;
 }

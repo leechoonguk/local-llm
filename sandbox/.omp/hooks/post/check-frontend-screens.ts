@@ -32,9 +32,9 @@ import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
  * Each screen type has one shape, and the shape is what makes a new screen
  * reviewable against the last one:
  *
- *   list (`<Domain>List.tsx`)       useDataGridState + usePagedRows +
- *                                   ServerDataGrid + useCrudDialog, an error
- *                                   branch and an empty sentence
+ *   list (`<Domain>List.tsx`)       useDataGridState + ServerDataGrid +
+ *                                   useCrudDialog, an error branch and an empty
+ *                                   sentence
  *   form (`<Domain>FormDialog.tsx`) useForm + a resolver + FormProvider, values
  *                                   reset on open, no useState field state
  *   detail (a `detail/` subdirectory) pure presenters — a tab fetches nothing
@@ -48,13 +48,15 @@ import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 /** The one component allowed to render MUI's grid. */
 const GRID_OWNER = "frontend/src/components/data-grid/ServerDataGrid.tsx";
 
-/** Hooks a list screen cannot be assembled without. */
-const LIST_REQUIRED = [
-  "useDataGridState",
-  "usePagedRows",
-  "ServerDataGrid",
-  "useCrudDialog",
-];
+/**
+ * Hooks a list screen cannot be assembled without.
+ *
+ * `usePagedRows` was here while the API answered a bare array: the screen had to
+ * derive rows and a next-page flag from a peeked extra row. List endpoints now
+ * answer `Page<T>`, so the screen reads `items` and `total` straight from the
+ * response and the derivation it named has nothing left to do.
+ */
+const LIST_REQUIRED = ["useDataGridState", "ServerDataGrid", "useCrudDialog"];
 
 export default function checkFrontendScreens(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-frontend-screens", event, () => {

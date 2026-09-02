@@ -212,29 +212,64 @@ function checkOmpRulesSync(): string[] {
     }
   }
 
-  // Check 6: ghost <Name>Service references. 룰이 예시로 든 서비스는 실제 도메인이어야 한다 —
-  // 실측: backend-testing.md 가 ItemService/TodoService/TaskService(존재하지 않는 도메인)를
-  // 표준 표에 실어 모델을 유령 구조로 안내했다. 플레이스홀더(Name/X)와 실재 도메인만 허용.
-  const modelsDir = join(cwd, "backend", "app", "models");
-  const domainAllow = new Set<string>(["name", "x", "xxx", "user", "integration", "example", "sample", "demo", "foo"]);
-  try {
-    for (const f of readdirSync(modelsDir)) {
-      if (f.endsWith(".py") && f !== "__init__.py") domainAllow.add(f.slice(0, -3).toLowerCase());
+  // Check 6: ghost class references. 룰이 예시로 든 Service/Repository/ServiceDep 는
+  // 실제로 정의된 클래스여야 한다 — 실측 두 번: backend-testing.md 가
+  // ItemService/TodoService/TaskService(존재하지 않는 도메인)를 표준 표에 실었고, 폴더 분리
+  // 뒤에는 IntegrationService(더 이상 없는 클래스)가 도메인 어간 허용목록('integration')
+  // 덕에 통과했다. 어간 추정 대신 backend/app 의 정의를 직접 읽는다 — 존재 여부의 출처는
+  // 하나다. 플레이스홀더(Name/X/Xxx/Example/Sample/Demo/Foo)만 예외.
+  const appDir = join(cwd, "backend", "app");
+  const definedClasses = new Set<string>();
+  const walkDefs = (dir: string): void => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      if (entry.name === "__pycache__") continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walkDefs(full); continue; }
+      if (!entry.name.endsWith(".py")) continue;
+      const text = readFileSync(full, "utf-8");
+      for (const def of text.matchAll(/^class (\w+)|^(\w+ServiceDep) =/gm)) {
+        definedClasses.add(def[1] ?? def[2]);
+      }
     }
-  } catch { /* models 디렉터리 없음 — 스킵 */ }
+  };
+  walkDefs(appDir);
+  const placeholder = /^(?:Name|X\b|Xxx|Example|Sample|Demo|Foo)/;
   for (const file of ruleFiles) {
     if (!file.startsWith("backend-")) continue;
     const content = readFileSync(join(rulesDir, file), "utf-8");
     const seen = new Set<string>();
-    for (const mm of content.matchAll(/\b([A-Z][A-Za-z0-9]*)Service\b/g)) {
-      const base = mm[1].toLowerCase();
-      if (domainAllow.has(base) || seen.has(base)) continue;
-      seen.add(base);
+    for (const mm of content.matchAll(/\b([A-Z][A-Za-z0-9]*(?:Repository|ServiceDep|Service))\b/g)) {
+      const token = mm[1];
+      if (definedClasses.has(token) || placeholder.test(token) || seen.has(token)) continue;
+      seen.add(token);
       issues.push(
-        `${file}: ghost reference \`${mm[1]}Service\` — no backend/app/models/${base}.py; ` +
-          "examples must use real domains or the Name/X placeholder",
+        `${file}: ghost reference \`${token}\` — no such class is defined under backend/app; ` +
+          "examples must use real classes or the Name/X placeholder",
       );
     }
+  }
+
+  // Check 6b: 코드 펜스 안의 정규화 연속 중복. 실측: backend-repository-files.md 의 예시
+  // 트리에서 rename 편집이 `user.py` 줄을 두 번 남겼는데, 내부 공백이 한 칸 달라 문자
+  // 그대로의 중복 탐지는 지나쳤다. 공백을 접어 비교하면 그 한 줄짜리 실수가 보인다.
+  for (const file of ruleFiles) {
+    const lines = readFileSync(join(rulesDir, file), "utf-8").split("\n");
+    let inFence = false;
+    let previous = "";
+    lines.forEach((line: string, index: number) => {
+      if (line.trim().startsWith("```")) { inFence = !inFence; previous = ""; return; }
+      if (!inFence) return;
+      const normalized = line.split(/\s+/).filter(Boolean).join(" ");
+      if (normalized.length > 8 && normalized === previous) {
+        issues.push(
+          `${file}:${index + 1}: duplicated line inside a code fence — ` +
+            "an example that repeats a row documents a structure that does not exist",
+        );
+      }
+      previous = normalized;
+    });
   }
 
   // Check 7: reference-snippet drift. When a rule declares "`<path>` is the reference"

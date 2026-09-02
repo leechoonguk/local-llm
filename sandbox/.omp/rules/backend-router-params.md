@@ -22,7 +22,7 @@ half is an AST rule (`ast-grep/rules/router/inline-depends.yml`).
 |---|---|---|
 | **Path** | declared in the route template, no default | `batch_id: UUID` |
 | **Body** | one `*Request` schema named `data`, writes only | `data: BatchCreateRequest` |
-| **Dependency** | `Annotated` alias ending in `Dep`, from `app/dependencies/` | `batch_service: BatchServiceDep`, `current_user: CurrentUserDep` |
+| **Dependency** | `Annotated` alias ending in `Dep`, from `app/dependencies/` | `user_service: UserServiceDep`, `current_user: CurrentUserDep` |
 | **Query** | `Annotated` alias ending in `Query`, from `app/dependencies/query.py` | `offset: OffsetQuery = 0` |
 
 A parameter that fits none of the four is a bare primitive: no bound, no
@@ -76,7 +76,12 @@ so every endpoint reads the same.
   limit: LimitQuery = settings.items_per_user,
   ```
 
-- **Every read that returns `list[...]` is paginated — no exceptions.** A
+- **A collection read answers `Page[...]`, never a bare `list[...]`.** The
+  envelope carries `items` and `total` (`app/schemas/page.py`), so a client can
+  say "1–10 of 240" on the first page instead of learning the number on the
+  last. An array can only be probed — ask for one row more than fits and infer
+  "there is another page" — which is not a count.
+- **Every collection read is paginated — no exceptions.** A
   sub-collection (`GET /{integration_id}/secrets`) is a collection: "the foreign
   key keeps it small" is an assumption about data, not a bound in the code, and
   it stops being true in production. Symmetry is the point: a caller pages the
@@ -104,7 +109,8 @@ so every endpoint reads the same.
 - Accept `dict`, `Any`, or a bare `int`/`str` query parameter instead of an alias
 - Take two body parameters, or name the body anything but `data`
 - Put a body on `GET`/`DELETE`
-- Ship any `list[...]` endpoint without `offset`/`limit`, sub-collection included
+- Ship any `Page[...]` endpoint without `offset`/`limit`, sub-collection included
+- Return a bare `list[...]` from a read — the total is part of the answer
 - Default `limit` to a literal instead of `settings.items_per_user`
 - Accept `offset`/`limit` in a router and not pass them to the query
 - Raise `ITEMS_PER_USER` above the `LimitQuery` cap

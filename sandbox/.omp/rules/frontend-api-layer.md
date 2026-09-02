@@ -52,18 +52,20 @@ export const userService = {
 | Paging | a `use*List` hook declares `placeholderData: (previous) => previous` |
 | Invalidation | `useCreate*` / `useUpdate*` / `useDelete*` invalidate the list key |
 
-`placeholderData` is load-bearing, not a nicety: `usePagedRows` derives
-`hasNextPage` from the page it holds, and MUI resets the page to zero when
-`paginationMeta` goes back to `undefined`. Losing the placeholder makes paging
-jump to the first page mid-fetch.
+`placeholderData` is load-bearing, not a nicety: without it `data` is
+`undefined` during a fetch, so the grid loses its rows and its `rowCount` on
+every page change and the footer blinks between "1–10 of 240" and nothing.
 
 ## Pagination Reality
 
-The backend paginates with `offset`/`limit` and returns a **bare array** — no
-envelope, no total, no sort parameter (`app/dependencies/query.py`). So:
+The backend paginates with `offset`/`limit` and answers `Page<T>` — `items` plus
+the collection's `total` (`app/schemas/page.py`), and no sort parameter
+(`app/dependencies/query.py`). So:
 
-- `useDataGridState` requests `pageSize + 1` rows and the extra row is the only
-  evidence of a next page
+- `useDataGridState` requests exactly `pageSize` rows and `rowCount` is the
+  total the response carried. It used to ask for `pageSize + 1` and infer a next
+  page from the extra row, which can say *more* but never *how many*: the footer
+  read `1–10` until the last page.
 - there is no search box and no server sort, because there is no parameter to
   send. A control the API cannot honour is a lie in the UI.
 

@@ -17,12 +17,18 @@ its filename names.
 
 ```
 repositories/
-  user.py                UserRepository  → table user
-  batch.py               BatchRepository → table batch
-  integration/           # three repositories → a folder
+  user.py                UserRepository → table user
+  barcode.py             BarcodeRepository → table barcode
+  batch/                 # four repositories → a folder
+    schedule.py          BatchScheduleRepository   → batch_schedule
+    checkpoint.py        BatchCheckpointRepository → batch_checkpoint
+    run.py               BatchRunRepository        → batch_run
+    step.py              BatchStepRepository       → batch_step
+  integration/
     provider.py          IntegrationProviderRepository  → integration_provider
     secret.py            IntegrationSecretRepository    → integration_secret
     operation.py         IntegrationOperationRepository → integration_operation
+    call.py              IntegrationCallRepository      → integration_call
 ```
 
 Inside the folder the file drops the domain prefix, and the checker reads the

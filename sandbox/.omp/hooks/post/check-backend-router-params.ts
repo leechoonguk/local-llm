@@ -200,10 +200,17 @@ function checkBody(label: string, endpoint: Endpoint): string[] {
 }
 
 /**
- * Every `list[...]` read is paginated the same way — no sub-collection
+ * Every collection read is paginated the same way — no sub-collection
  * exemption. "The foreign key keeps it small" is an assumption about data, not a
  * bound in the code. The defaults are fixed too: one page size for the whole
  * API, taken from settings so an environment can change it.
+ *
+ * A collection read is `Page[...]`, and a bare `list[...]` is one that forgot
+ * its total. Both are matched, for opposite reasons: `Page[...]` so the rule
+ * still reaches the endpoints after the envelope landed — keying on `list[`
+ * alone left this whole check dormant the moment the six routers changed shape,
+ * passing green over endpoints it no longer read — and `list[...]` so a new
+ * endpoint cannot quietly go back to an array nobody can page.
  */
 function checkQuery(label: string, endpoint: Endpoint, source: string): string[] {
   const issues: string[] = [];
@@ -217,13 +224,22 @@ function checkQuery(label: string, endpoint: Endpoint, source: string): string[]
     );
   }
 
-  if (endpoint.method !== "get" || !endpoint.returns.trim().startsWith("list[")) return issues;
+  const returns = endpoint.returns.trim();
+  const collection = returns.startsWith("Page[") || returns.startsWith("list[");
+  if (endpoint.method !== "get" || !collection) return issues;
+
+  if (returns.startsWith("list[")) {
+    issues.push(
+      `${label}: returns ${returns} — a collection read answers Page[...] so the client is ` +
+        "told the total; an array can only say whether one more row exists",
+    );
+  }
 
   for (const [name, alias, expected] of PAGINATION) {
     const parameter = endpoint.parameters.find((candidate) => candidate.name === name);
     if (parameter === undefined) {
       issues.push(
-        `${label}: list read without ${name} — every endpoint returning list[...] is paginated ` +
+        `${label}: list read without ${name} — every endpoint returning Page[...] is paginated ` +
           `(${name}: ${alias} = ${expected}), sub-collections included`,
       );
       continue;

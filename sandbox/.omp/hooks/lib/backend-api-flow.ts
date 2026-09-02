@@ -57,13 +57,18 @@ const RESPONSE_REF = /^(\w+)\.response\.body\.(.+)$/;
 /**
  * One round trip for every table's exact count: query_to_xml runs the count
  * per discovered table, so a new table is included without editing this query.
- * Two tables are excluded, for the same reason in different clothes: neither
- * holds a row a request file authored. `alembic_version` is schema bookkeeping.
- * `refresh` holds the server-issued session `POST /auth/login` mints, and every
- * file must log in — measured: nine files each left exactly one row behind, and
- * no published endpoint deletes one (logout revokes, keeping the row so a
- * replayed token stays distinguishable from an unknown one). Counting it made
- * "authenticated" indistinguishable from "leaked a domain row".
+ * Excluded tables share one property: none holds a row a request file
+ * authored. `alembic_version` is schema bookkeeping. `refresh` holds the
+ * server-issued session `POST /auth/login` mints, and every file must log in —
+ * measured: nine files each left exactly one row behind, and no published
+ * endpoint deletes one (logout revokes, keeping the row so a replayed token
+ * stays distinguishable from an unknown one). Counting it made "authenticated"
+ * indistinguishable from "leaked a domain row". `integration_call`,
+ * `batch_run` and `batch_step` are the observability ledger: every external
+ * execute and every batch run records itself as a side effect, the rows are
+ * append-only by design, and no endpoint deletes one — retention is the
+ * `purge_old_batch_runs` job's, not a request file's. Measured: the six
+ * integration files left 110 call rows, batch.http's run block one run row.
  */
 const ROW_COUNT_SQL = `
 SELECT table_name || '=' || (xpath(
@@ -74,7 +79,8 @@ SELECT table_name || '=' || (xpath(
   FROM information_schema.tables
  WHERE table_schema = 'public'
    AND table_type = 'BASE TABLE'
-   AND table_name NOT IN ('alembic_version', 'refresh')
+   AND table_name NOT IN ('alembic_version', 'refresh',
+                          'integration_call', 'batch_run', 'batch_step')
  ORDER BY table_name
 `;
 

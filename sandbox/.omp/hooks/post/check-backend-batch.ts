@@ -114,15 +114,86 @@ function checkBackendBatchSync(): string[] {
       issues.push(`${f}: must return a meaningful count/status (e.g. return deleted)`);
     }
 
-    // 5. Must be an async function (batch jobs are async def)
-    if (!/async def /.test(content)) {
-      issues.push(`${f}: batch job must be an async def function`);
-    }
+    // 5. The job itself is async — checked on the declaration, not on the file.
+    // `content.includes("async def")` passed a sync job the moment the module
+    // held one async helper, which is the shape a job file always has.
+    issues.push(...checkJobFileName(f, moduleJobs(content)));
   }
 
   issues.push(...checkDatabaseManagedSchedule(batchDir));
 
   return issues;
+}
+
+/**
+ * One job, one module, named after it: `app/batch/<job_code>.py`.
+ *
+ * The identity is a chain of equal names — module = function = `BATCH_JOBS` key
+ * = the `batch_schedule.code` a seeded row carries. That is what makes the log
+ * navigable in one step: a row that failed at 04:00 says `purge_old_batch_runs`,
+ * and the file is `app/batch/purge_old_batch_runs.py`, its test
+ * `tests/batch/test_purge_old_batch_runs.py`.
+ *
+ * The convention is the same one `check-backend-model-files` and
+ * `check-backend-repository-files` already enforce — a file is named after the
+ * one thing it owns — and `app/batch/` was the layer that had no rule.
+ * Measured before it: the job purging batch runs lived in `runs.py`, one letter
+ * from `models/batch/run.py`, so the file name said which *domain* the job read
+ * rather than which job it was; three job files, three different naming ideas
+ * (a plural domain, a plural table, a plural noun).
+ *
+ * A module with two public jobs is rejected rather than renamed: two jobs
+ * cannot both be the file's name, and splitting them is the only outcome that
+ * keeps the chain readable in either direction.
+ */
+function checkJobFileName(file: string, jobs: JobDeclaration[]): string[] {
+  const moduleName = file.replace(/\.py$/, "");
+  if (jobs.length === 0) {
+    return [
+      `app/batch/${file}: defines no job — a module here is one scheduled function, and a ` +
+        "file that schedules nothing belongs beside the code that calls it",
+    ];
+  }
+  if (jobs.length > 1) {
+    const names = jobs.map((job) => job.name).join(", ");
+    return [
+      `app/batch/${file}: defines ${jobs.length} jobs (${names}) — one job per ` +
+        "module, because the module is named after the job it holds",
+    ];
+  }
+  const [job] = jobs;
+  if (job.name !== moduleName) {
+    return [
+      `app/batch/${file}: defines '${job.name}' — the module is named after its job, so this ` +
+        `file is app/batch/${job.name}.py (and its test tests/batch/test_${job.name}.py)`,
+    ];
+  }
+  if (!job.isAsync) {
+    return [
+      `app/batch/${file}: '${job.name}' is sync — the scheduler awaits the job, and a sync ` +
+        "one blocks the loop every other job shares",
+    ];
+  }
+  return [];
+}
+
+interface JobDeclaration {
+  name: string;
+  isAsync: boolean;
+}
+
+/**
+ * The module-level functions a `batch_schedule` row could name.
+ *
+ * `_` helpers are excluded: they cannot be scheduled, and requiring a registry
+ * entry for one would push every helper out of the job file.
+ */
+function moduleJobs(content: string): JobDeclaration[] {
+  const jobs: JobDeclaration[] = [];
+  for (const match of content.matchAll(/^(async )?def (\w+)\(/gm)) {
+    if (!match[2].startsWith("_")) jobs.push({ name: match[2], isAsync: match[1] !== undefined });
+  }
+  return jobs;
 }
 
 /**
@@ -155,7 +226,10 @@ function checkDatabaseManagedSchedule(batchDir: string): string[] {
   for (const file of readdirSync(batchDir)) {
     if (!file.endsWith(".py") || file === "__init__.py") continue;
     const content = readFileSync(join(batchDir, file), "utf-8");
-    for (const match of content.matchAll(/^async def (\w+)\(/gm)) defined.add(match[1]);
+    // A `_` helper is not a job: it cannot be scheduled, and demanding a
+    // registry entry for it would push every module-level helper out of the
+    // job file. The registry names what a `batch_schedule` row can call.
+    for (const job of moduleJobs(content)) defined.add(job.name);
   }
   for (const name of defined) {
     if (![...registered.values()].includes(name)) {
@@ -167,6 +241,13 @@ function checkDatabaseManagedSchedule(batchDir: string): string[] {
   for (const [code, name] of registered) {
     if (!defined.has(name) && !scheduler.includes(`import ${name}`)) {
       issues.push(`core/scheduler.py: BATCH_JOBS['${code}'] names '${name}', which no batch job defines`);
+    }
+    if (name !== code) {
+      issues.push(
+        `core/scheduler.py: BATCH_JOBS['${code}'] names '${name}' — the code a row carries is ` +
+          "the function's own name, so a schedule in the database resolves to Python by " +
+          "reading it, not by consulting this table",
+      );
     }
   }
 
@@ -195,6 +276,16 @@ function checkDatabaseManagedSchedule(batchDir: string): string[] {
       issues.push(
         "main.py: the lifespan must load the schedule from the database " +
           "(BatchService.list_enabled_batches)",
+      );
+    }
+    // The sweep has no other caller: a killed process leaves its run RUNNING,
+    // and only the next startup can say INTERRUPTED. main.py is excluded from
+    // coverage, so deleting this call would pass every other gate silently.
+    if (!main.includes("update_interrupted_runs")) {
+      issues.push(
+        "main.py: the lifespan must sweep orphaned runs " +
+          "(BatchRunService.update_interrupted_runs) — a killed process cannot " +
+          "close its own row, and nothing else survives it",
       );
     }
   }
@@ -236,7 +327,12 @@ function seededBatchCodes(): Set<string> {
   for (const file of readdirSync(versions)) {
     if (!file.endsWith(".py")) continue;
     const content = readFileSync(join(versions, file), "utf-8");
-    if (!content.includes("bulk_insert") || !/table\(\s*\n?\s*"batch"/.test(content)) continue;
+    // Both names: revisions 80 and 82 seeded `batch`, and the table is
+    // `batch_schedule` since revision 84. A reader that knew only the new name
+    // would lose every historical seed; one that knew only the old name would
+    // call the next job unseeded.
+    if (!content.includes("bulk_insert")) continue;
+    if (!/table\(\s*\n?\s*"batch(?:_schedule)?"/.test(content)) continue;
     for (const literal of content.matchAll(/"([a-z0-9_]+)"/g)) codes.add(literal[1]);
   }
   return codes;
