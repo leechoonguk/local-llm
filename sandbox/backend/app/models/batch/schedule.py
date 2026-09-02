@@ -15,7 +15,8 @@ from app.models.base import AuditMixin, Base
 # Classes
 # ============================================================
 
-class Batch(Base, AuditMixin):
+
+class BatchSchedule(Base, AuditMixin):
     """One scheduled batch job: which code runs, when, and whether it runs at all.
 
     The row owns the schedule; the repository's Python owns the work. `code`
@@ -34,7 +35,7 @@ class Batch(Base, AuditMixin):
     deactivated row can still be run by hand.
     """
 
-    __tablename__ = "batch"
+    __tablename__ = "batch_schedule"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     code: Mapped[str] = mapped_column(String(64), index=True)

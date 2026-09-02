@@ -31,6 +31,38 @@ export function useBatch(id: string | null) {
   })
 }
 
+/**
+ * One schedule's executions, newest first.
+ *
+ * REALTIME rather than STANDARD: the rows are written by the scheduler outside
+ * HTTP, so no mutation here can invalidate them — a stale answer would show
+ * last night's failure as still running with no way to refresh it.
+ */
+export function useBatchRunList(batchId: string | null, params: OffsetLimitParams) {
+  return useQuery({
+    queryKey: batchKeys.list({ scope: 'runs', batchId, ...params }),
+    queryFn: () => batchService.runs(batchId ?? '', params),
+    staleTime: QUERY_STALE_TIME.REALTIME,
+    placeholderData: (previous) => previous,
+    enabled: batchId !== null,
+  })
+}
+
+/** One run's units, in the order they happened — same freshness reasoning. */
+export function useBatchRunStepList(
+  batchId: string | null,
+  runId: string | null,
+  params: OffsetLimitParams,
+) {
+  return useQuery({
+    queryKey: batchKeys.list({ scope: 'steps', batchId, runId, ...params }),
+    queryFn: () => batchService.runSteps(batchId ?? '', runId ?? '', params),
+    staleTime: QUERY_STALE_TIME.REALTIME,
+    placeholderData: (previous) => previous,
+    enabled: batchId !== null && runId !== null,
+  })
+}
+
 export function useCreateBatch() {
   const queryClient = useQueryClient()
   return useMutation({

@@ -111,3 +111,32 @@ async def test_user_service_not_found(factory) -> None:
     async with factory() as session:
         with pytest.raises(NotFoundError):
             await UserService(session).delete_user(MISSING_UUID)
+
+
+@pytest.mark.asyncio
+async def test_count_users_ignores_the_window(factory) -> None:
+    """The total is the collection's size, not the page's.
+
+    A count that inherited `offset`/`limit` would agree with `list_users` on
+    every page that happens to hold everything, and disagree exactly when the
+    footer needs it — so the assertion pages deliberately.
+    """
+    async with factory() as session:
+        service = UserService(session)
+        for index in range(3):
+            await service.create_user(
+                UserCreateRequest(
+                    username=f"counted-{index}",
+                    email=f"counted-{index}@example.com",
+                    password="secret-pass",
+                ),
+                "tester",
+            )
+
+    async with factory() as session:
+        service = UserService(session)
+        page = await service.list_users(offset=1, limit=1)
+        total = await service.count_users()
+
+    assert len(page) == 1
+    assert total == 3

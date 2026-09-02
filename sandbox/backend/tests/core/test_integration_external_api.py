@@ -284,7 +284,6 @@ def _item_report_client(handler: object, **updates: object) -> IntegrationClient
     )
 
 
-
 CLASSIFICATION_RECORD = {
     "LV": "1",
     "PRDLST_CD": "A0000000000000",
@@ -329,7 +328,6 @@ RAW_MATERIAL_RECORD = {
     "USE_YN": "N",
     "LAST_UPDT_DTM": "2016-01-11 21:00:00.0",
 }
-
 
 
 def _revision(migration_path: Path) -> int:
@@ -430,48 +428,68 @@ def test_mfds_seed_migration_persists_executable_configuration() -> None:
             Base.metadata.create_all(connection)
             _replay_newest_integration_seeds(connection)
 
-            seeded = connection.execute(
-                sa.text(
-                    "SELECT p.code AS provider_code, o.code AS operation_code, "
-                    "o.response_root, "
-                    "(SELECT count(*) FROM integration_secret WHERE provider_id = p.id) "
-                    "AS secret_count, "
-                    "(SELECT count(*) FROM integration_field "
-                    "WHERE operation_id = o.id AND direction = 'REQUEST') AS request_field_count, "
-                    "(SELECT count(*) FROM integration_field "
-                    "WHERE operation_id = o.id AND direction = 'RESPONSE') AS response_field_count "
-                    "FROM integration_provider AS p "
-                    "JOIN integration_operation AS o ON o.provider_id = p.id "
-                    "WHERE p.code = 'data-go-kr' "
-                    "AND o.code = 'search-food-nutrition'"
+            seeded = (
+                connection.execute(
+                    sa.text(
+                        "SELECT p.code AS provider_code, o.code AS operation_code, "
+                        "o.response_root, "
+                        "(SELECT count(*) FROM integration_secret WHERE provider_id = p.id) "
+                        "AS secret_count, "
+                        "(SELECT count(*) FROM integration_field "
+                        "WHERE operation_id = o.id AND direction = 'REQUEST') "
+                        "AS request_field_count, "
+                        "(SELECT count(*) FROM integration_field "
+                        "WHERE operation_id = o.id AND direction = 'RESPONSE') "
+                        "AS response_field_count "
+                        "FROM integration_provider AS p "
+                        "JOIN integration_operation AS o ON o.provider_id = p.id "
+                        "WHERE p.code = 'data-go-kr' "
+                        "AND o.code = 'search-food-nutrition'"
+                    )
                 )
-            ).mappings().one()
-            secret = connection.execute(
-                sa.text(
-                    "SELECT s.name, s.value, s.enabled FROM integration_secret AS s "
-                    "JOIN integration_provider AS p ON p.id = s.provider_id "
-                    "WHERE p.code = 'data-go-kr' AND s.name = 'service-key'"
+                .mappings()
+                .one()
+            )
+            secret = (
+                connection.execute(
+                    sa.text(
+                        "SELECT s.name, s.value, s.enabled FROM integration_secret AS s "
+                        "JOIN integration_provider AS p ON p.id = s.provider_id "
+                        "WHERE p.code = 'data-go-kr' AND s.name = 'service-key'"
+                    )
                 )
-            ).mappings().one()
-            request_fields = connection.execute(
-                sa.text(
-                    "SELECT key, value_source, required, description, "
-                    "secret_id IS NULL AS no_secret "
-                    "FROM integration_field "
-                    "WHERE direction = 'REQUEST' AND operation_id = "
-                    "(SELECT id FROM integration_operation WHERE code = 'search-food-nutrition') "
-                    "ORDER BY ordinal"
+                .mappings()
+                .one()
+            )
+            request_fields = (
+                connection.execute(
+                    sa.text(
+                        "SELECT key, value_source, required, description, "
+                        "secret_id IS NULL AS no_secret "
+                        "FROM integration_field "
+                        "WHERE direction = 'REQUEST' AND operation_id = "
+                        "(SELECT id FROM integration_operation "
+                        "WHERE code = 'search-food-nutrition') "
+                        "ORDER BY ordinal"
+                    )
                 )
-            ).mappings().all()
-            response_fields = connection.execute(
-                sa.text(
-                    "SELECT key, wire_path, value_type, required, description "
-                    "FROM integration_field "
-                    "WHERE direction = 'RESPONSE' AND operation_id = "
-                    "(SELECT id FROM integration_operation WHERE code = 'search-food-nutrition') "
-                    "ORDER BY ordinal"
+                .mappings()
+                .all()
+            )
+            response_fields = (
+                connection.execute(
+                    sa.text(
+                        "SELECT key, wire_path, value_type, required, description "
+                        "FROM integration_field "
+                        "WHERE direction = 'RESPONSE' AND operation_id = "
+                        "(SELECT id FROM integration_operation "
+                        "WHERE code = 'search-food-nutrition') "
+                        "ORDER BY ordinal"
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
 
         assert dict(seeded) == {
             # Revision 74: one identity across all three columns - the portal
@@ -710,6 +728,7 @@ def test_envelope_verdict_rules(
     label = IntegrationClient._expected_label(field)
     assert label == ("any value" if match_mode == "PRESENT" else ", ".join(expected_values or []))
 
+
 def _client_from_seeds(code: str, fixture: dict[str, object]) -> IntegrationClient:
     """The operation as the migrations seed it, wired to a recorded response.
 
@@ -855,17 +874,23 @@ def test_paging_standard_holds_for_every_operation() -> None:
         with engine.begin() as connection:
             Base.metadata.create_all(connection)
             _replay_newest_integration_seeds(connection)
-            operations = connection.execute(
-                sa.text(
-                    "SELECT id, code, response_root FROM integration_operation"
+            operations = (
+                connection.execute(
+                    sa.text("SELECT id, code, response_root FROM integration_operation")
                 )
-            ).mappings().all()
-            fields = connection.execute(
-                sa.text(
-                    "SELECT operation_id, key, value_source, required, value "
-                    "FROM integration_field WHERE direction = 'REQUEST'"
+                .mappings()
+                .all()
+            )
+            fields = (
+                connection.execute(
+                    sa.text(
+                        "SELECT operation_id, key, value_source, required, value "
+                        "FROM integration_field WHERE direction = 'REQUEST'"
+                    )
                 )
-            ).mappings().all()
+                .mappings()
+                .all()
+            )
     finally:
         engine.dispose()
 
@@ -946,27 +971,46 @@ def _seeded_create_requests(connection: sa.Connection) -> list[IntegrationCreate
     thing the API has to be able to express, and a reader of the seed files would be
     one more copy of the same invariant.
     """
-    providers = connection.execute(
-        sa.text("SELECT id, code, display_name, base_url, enabled FROM integration_provider")
-    ).mappings().all()
-    secrets = connection.execute(
-        sa.text("SELECT id, provider_id, name, value, description, enabled FROM integration_secret")
-    ).mappings().all()
-    operations = connection.execute(
-        sa.text(
-            "SELECT id, provider_id, code, method, path_template, request_media_type, "
-            "response_format, response_root, connect_timeout_ms, read_timeout_ms, max_retries, "
-            "retry_base_ms, retry_max_ms, idempotent, request_schema, enabled "
-            "FROM integration_operation"
+    providers = (
+        connection.execute(
+            sa.text("SELECT id, code, display_name, base_url, enabled FROM integration_provider")
         )
-    ).mappings().all()
-    fields = connection.execute(
-        sa.text(
-            "SELECT operation_id, direction, location, key, wire_path, value_source, value, "
-            "secret_id, value_type, format, required, description, sensitive, ordinal, enabled, "
-            "match_mode, expected_values FROM integration_field ORDER BY ordinal"
+        .mappings()
+        .all()
+    )
+    secrets = (
+        connection.execute(
+            sa.text(
+                "SELECT id, provider_id, name, value, description, enabled FROM integration_secret"
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
+    operations = (
+        connection.execute(
+            sa.text(
+                "SELECT id, provider_id, code, method, path_template, request_media_type, "
+                "response_format, response_root, connect_timeout_ms, read_timeout_ms, max_retries, "
+                "retry_base_ms, retry_max_ms, idempotent, request_schema, enabled "
+                "FROM integration_operation"
+            )
+        )
+        .mappings()
+        .all()
+    )
+    fields = (
+        connection.execute(
+            sa.text(
+                "SELECT operation_id, direction, location, key, wire_path, value_source, value, "
+                "secret_id, value_type, format, required, description, sensitive, "
+                "ordinal, enabled, "
+                "match_mode, expected_values FROM integration_field ORDER BY ordinal"
+            )
+        )
+        .mappings()
+        .all()
+    )
     secret_name_of = {secret["id"]: secret["name"] for secret in secrets}
     requests: list[IntegrationCreateRequest] = []
     for provider in providers:

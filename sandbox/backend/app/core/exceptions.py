@@ -26,6 +26,7 @@ CONFIGURATION_INVALID_CODE = "integration_configuration_invalid"
 # Classes
 # ============================================================
 
+
 class NotFoundError(Exception):
     """Raised when a resource is not found.
 
@@ -105,6 +106,13 @@ class IntegrationError(Exception):
     operator needs to debug a provider — what the provider replied — was thrown
     away by our own error handler. A timeout and an unreachable host leave both
     None: there is no response to show.
+
+    `envelope_key`/`envelope_value` carry the *reason* in the provider's own
+    vocabulary when the refusal came from an envelope field: which declared
+    field disagreed, and what it said. A caller that must tell one refusal from
+    another — a paging job asking whether "no more data" is a failure or the end
+    of the feed — otherwise has to parse `detail`, and a sentence is not an
+    interface. Both are None when the call never reached an envelope check.
     """
 
     def __init__(
@@ -115,6 +123,8 @@ class IntegrationError(Exception):
         *,
         status_code: int | None = None,
         body: str | None = None,
+        envelope_key: str | None = None,
+        envelope_value: str | None = None,
     ) -> None:
         super().__init__(detail)
         self.provider = provider
@@ -122,6 +132,8 @@ class IntegrationError(Exception):
         self.detail = detail
         self.status_code = status_code
         self.body = body
+        self.envelope_key = envelope_key
+        self.envelope_value = envelope_value
 
 
 class IntegrationTimeoutError(IntegrationError):
@@ -154,6 +166,7 @@ class IntegrationRateLimitError(IntegrationError):
 # ============================================================
 # Functions
 # ============================================================
+
 
 def _request_id(request: Request) -> str:
     return getattr(request.state, REQUEST_ID_KEY, request.headers.get("X-Request-ID", "unknown"))

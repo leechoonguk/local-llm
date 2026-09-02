@@ -16,7 +16,7 @@
 # `InvalidRequestError: failed to locate a name ('IntegrationCall')` on its
 # first query, which is every request.
 from app.models.base import AuditMixin, Base  # noqa: F401 — declarative base
-from app.models.batch import Batch  # noqa: F401 — register model on metadata
+from app.models.batch.schedule import BatchSchedule  # noqa: F401 — register model on metadata
 from app.models.integration.call import IntegrationCall  # noqa: F401 — register model
 from app.models.integration.field import IntegrationField  # noqa: F401 — register model
 from app.models.integration.operation import (  # noqa: F401 — register model

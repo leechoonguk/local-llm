@@ -159,3 +159,32 @@ Content-Type: application/json
        "range_end": 3
     }
 }
+
+### 13. range_end — 200 (창의 상한: 한 번에 1000건 — 배치가 쓰는 크기)
+# 실측(2026-09-02): 1..1000 / 1001..2000 모두 INFO-000 에 1000행.
+#     → 1..1001 도 통과한다 — provider 검증이 건수가 아니라 (end - start) 를 1000과 비교한다.
+#       그 한 행은 취하지 않는다: 벤더가 off-by-one 을 고치는 순간 모든 페이지가 502가 된다.
+#     → 응답 1000행 = 275KB / 1.9s 로 operation 의 read_timeout_ms=15000 안이다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-item-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 1,
+       "range_end": 1000
+    }
+}
+
+### 14. 외부 API 실행 — 502 (창이 상한을 넘었다 — ERROR-336)
+# 데이터요청은 한번에 최대 1000건을 넘을 수 없습니다 — 봉투 코드가 INFO-000|INFO-200 이 아니므로 거부된다
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-item-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 1,
+       "range_end": 1002
+    }
+}

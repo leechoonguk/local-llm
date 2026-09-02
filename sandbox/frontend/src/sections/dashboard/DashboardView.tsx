@@ -5,20 +5,23 @@
  * dashboard loading" state: every card reports its own loading, its own failure
  * and its own number.
  *
- * The counts are honest about what this API can answer. No endpoint returns a
- * total, so a card shows "the first page and whether more exist" (`12+`) rather
- * than inventing a total by paging the whole collection.
+ * Each card reads `total` from the list endpoint's `Page<T>` and asks for the
+ * smallest page the API allows, because it wants the number and not the rows.
+ * Before the envelope there was no total to read: the card fetched 100 whole
+ * rows per widget and displayed `data.length`, which stopped being the count as
+ * soon as a collection outgrew one page — three cards, 300 rows, to render
+ * three integers that were wrong past 100.
  */
 
 import { Grid } from '@mui/material'
 import { useTranslation } from 'react-i18next'
 import StatCard from '@/components/card/StatCard'
-import { MAX_PAGE_SIZE } from '@/config'
 import { useBatchList } from '@/lib/api/hooks/useBatch'
 import { useIntegrationList } from '@/lib/api/hooks/useIntegration'
 import { useUserList } from '@/lib/api/hooks/useUser'
 
-const COUNT_PARAMS = { offset: 0, limit: MAX_PAGE_SIZE }
+/** One row: `limit` is bounded at 1 by the API, and the count is not in the rows. */
+const COUNT_PARAMS = { offset: 0, limit: 1 }
 
 export default function DashboardView() {
   const { t } = useTranslation('dashboard')
@@ -32,7 +35,7 @@ export default function DashboardView() {
       <Grid size={{ xs: 12, sm: 4 }}>
         <StatCard
           title={t('widgets.users')}
-          value={users.data?.length}
+          value={users.data?.total}
           name="people"
           color="primary"
           loading={users.isLoading}
@@ -42,7 +45,7 @@ export default function DashboardView() {
       <Grid size={{ xs: 12, sm: 4 }}>
         <StatCard
           title={t('widgets.batches')}
-          value={batches.data?.length}
+          value={batches.data?.total}
           name="layers"
           color="info"
           loading={batches.isLoading}
@@ -52,7 +55,7 @@ export default function DashboardView() {
       <Grid size={{ xs: 12, sm: 4 }}>
         <StatCard
           title={t('widgets.integrations')}
-          value={integrations.data?.length}
+          value={integrations.data?.total}
           name="link"
           color="warning"
           loading={integrations.isLoading}

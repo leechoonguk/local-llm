@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # Classes
 # ============================================================
 
+
 class IntegrationSecretCreateRequest(BaseModel):
     """A named provider credential. The value is write-only."""
 

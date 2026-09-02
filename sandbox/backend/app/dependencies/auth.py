@@ -46,6 +46,7 @@ OAuth2FormDep = Annotated[OAuth2PasswordRequestForm, Depends()]
 # Functions
 # ============================================================
 
+
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     session: SessionDep,

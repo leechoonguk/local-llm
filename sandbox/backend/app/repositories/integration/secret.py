@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.integration.field import IntegrationField
@@ -21,6 +21,7 @@ from app.schemas.integration.secret import (
 # ============================================================
 # Classes
 # ============================================================
+
 
 class IntegrationSecretRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -45,6 +46,15 @@ class IntegrationSecretRepository:
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def count_secrets(self, provider_id: UUID) -> int:
+        """How many rows the unwindowed `list_secrets` would return."""
+        result = await self.session.execute(
+            select(func.count())
+            .select_from(IntegrationSecret)
+            .where(IntegrationSecret.provider_id == provider_id)
+        )
+        return result.scalar_one()
 
     async def count_secret_references(self, secret_id: UUID) -> int:
         """A column projection, not IntegrationField's CRUD in the wrong file.

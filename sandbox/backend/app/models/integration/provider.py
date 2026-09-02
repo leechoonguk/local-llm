@@ -35,6 +35,7 @@ PROVIDER_FK = "integration_provider.id"
 # Classes
 # ============================================================
 
+
 class Integration(Base, AuditMixin):
     __tablename__ = "integration_provider"
     __table_args__ = (UniqueConstraint("code", name="uq_integration_provider_code"),)
@@ -45,10 +46,14 @@ class Integration(Base, AuditMixin):
     base_url: Mapped[str] = mapped_column(String(2048))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     operations: Mapped[list[IntegrationOperation]] = relationship(
-        back_populates="provider", cascade=CHILD_CASCADE, passive_deletes=True,
+        back_populates="provider",
+        cascade=CHILD_CASCADE,
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     secrets: Mapped[list[IntegrationSecret]] = relationship(
-        back_populates="provider", cascade=CHILD_CASCADE, passive_deletes=True,
+        back_populates="provider",
+        cascade=CHILD_CASCADE,
+        passive_deletes=True,
         lazy="raise_on_sql",
     )

@@ -33,6 +33,7 @@ EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 # Classes
 # ============================================================
 
+
 class UserBase(BaseModel):
     """Field names shared by every direction - deliberately without rules.
 
@@ -109,6 +110,7 @@ class UserUpdateInternal(BaseModel):
 # ============================================================
 # Functions
 # ============================================================
+
 
 def to_read(user: User) -> UserReadResponse:
     return UserReadResponse.model_validate(user)

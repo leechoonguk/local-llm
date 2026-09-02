@@ -34,7 +34,6 @@ import {
   useIntegrationList,
   useUpdateIntegration,
 } from '@/lib/api/hooks/useIntegration'
-import { usePagedRows } from '@/hooks/usePagedRows'
 import { useToast } from '@/hooks/useToast'
 import { toApiError } from '@/lib/api/errors'
 import { serverErrorMessage } from '@/lib/api/formErrors'
@@ -51,11 +50,8 @@ export default function IntegrationList() {
 
   const grid = useDataGridState()
   const query = useIntegrationList(grid.params)
-  const { rows, rowCount, paginationMeta } = usePagedRows(
-    query.data,
-    grid.paginationModel.page,
-    grid.paginationModel.pageSize,
-  )
+  const rows = query.data?.items ?? []
+  const rowCount = query.data?.total ?? 0
   const dialog = useCrudDialog<Integration>()
   const deleteMutation = useDeleteIntegration()
   const updateMutation = useUpdateIntegration()
@@ -251,7 +247,6 @@ export default function IntegrationList() {
           loading={query.isLoading}
           paginationModel={grid.paginationModel}
           onPaginationModelChange={grid.setPaginationModel}
-          paginationMeta={paginationMeta}
           density={grid.density}
           columnVisibilityModel={grid.columnVisibilityModel}
           onColumnVisibilityModelChange={grid.setColumnVisibilityModel}

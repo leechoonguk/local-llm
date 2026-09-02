@@ -23,6 +23,7 @@ logger = structlog.get_logger(__name__)
 # Classes
 # ============================================================
 
+
 class RedisCache:
     """JSON cache backed by Redis with explicit TTLs and namespace invalidation."""
 
@@ -67,6 +68,7 @@ class RedisCache:
 # ============================================================
 # Functions
 # ============================================================
+
 
 def scoped_cache_key(namespace: str, subject_id: str, suffix: str) -> str:
     """Build a versioned cache key isolated to one authenticated subject."""

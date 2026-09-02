@@ -23,10 +23,11 @@ from app.core.cache import RedisCache
 from app.core.database import engine
 from app.core.exceptions import setup_exception_handler
 from app.core.logging import configure_logging
-from app.core.scheduler import BatchScheduler
+from app.core.scheduler import SCHEDULER_ACTOR, BatchScheduler
 from app.core.settings import settings
 from app.routers import auth, batch, health, integration, user
-from app.services.batch import BatchService
+from app.services.batch.run import BatchRunService
+from app.services.batch.schedule import BatchScheduleService
 
 
 # ============================================================
@@ -43,6 +44,7 @@ logger = structlog.get_logger(__name__)
 # ============================================================
 # Middleware
 # ============================================================
+
 
 class SecurityHeaders(BaseHTTPMiddleware):
     async def dispatch(
@@ -101,6 +103,7 @@ class CsrfProtection(BaseHTTPMiddleware):
 # Lifespan
 # ============================================================
 
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
     scheduler: BatchScheduler | None = None
@@ -140,9 +143,17 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None]:
         # so a restart converges on whatever the table says — including the rows
         # another process disabled while this one was down.
         scheduler = BatchScheduler()
+        # Anything still RUNNING belongs to a process that is gone: this one has
+        # started no job yet. Nothing else can close those rows, so a killed run
+        # would claim to be running for as long as the table lives.
         async with AsyncSession(engine) as session:
-            batch_service = BatchService(session)
-            for job in await batch_service.list_enabled_batches():
+            batch_run_service = BatchRunService(session)
+            interrupted = await batch_run_service.update_interrupted_runs(SCHEDULER_ACTOR)
+        if interrupted:
+            logger.warning("batch_runs_interrupted", count=interrupted)
+        async with AsyncSession(engine) as session:
+            batch_schedule_service = BatchScheduleService(session)
+            for job in await batch_schedule_service.list_enabled_batches():
                 scheduler.sync(job.id, job.code, job.cron, enabled=job.enabled)
         scheduler.start()
     app.state.scheduler = scheduler

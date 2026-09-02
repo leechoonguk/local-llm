@@ -8,7 +8,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.core.scheduler import BATCH_JOBS, validated_cron
-from app.models.batch import Batch
+from app.models.batch.schedule import BatchSchedule
 
 
 # ============================================================
@@ -29,6 +29,7 @@ CRON_MAX_LENGTH = 120
 # ============================================================
 # Classes
 # ============================================================
+
 
 class BatchBase(BaseModel):
     """Field names shared by every direction - deliberately without rules.
@@ -151,9 +152,10 @@ class BatchRunResponse(BaseModel):
 # Functions
 # ============================================================
 
-def to_read(batch: Batch) -> BatchReadResponse:
+
+def to_read(batch: BatchSchedule) -> BatchReadResponse:
     return BatchReadResponse.model_validate(batch)
 
 
-def to_read_list(batches: list[Batch]) -> list[BatchReadResponse]:
+def to_read_list(batches: list[BatchSchedule]) -> list[BatchReadResponse]:
     return [BatchReadResponse.model_validate(i) for i in batches]

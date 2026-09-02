@@ -155,8 +155,9 @@ def test_integration_configuration_crud(client: TestClient, auth_headers: dict[s
     listed = client.get("/api/v1/integration/", headers=auth_headers)
     assert listed.status_code == 200
     listed_body = listed.json()
-    assert [row["code"] for row in listed_body] == ["freshplate"]
-    assert "value" not in listed_body[0]["secrets"][0]
+    assert [row["code"] for row in listed_body["items"]] == ["freshplate"]
+    assert listed_body["total"] == 1
+    assert "value" not in listed_body["items"][0]["secrets"][0]
 
     fetched = client.get(f"/api/v1/integration/{integration_id}", headers=auth_headers)
     assert fetched.status_code == 200
@@ -385,14 +386,19 @@ def test_integration_secret_endpoints(client: TestClient, auth_headers: dict[str
 
     listed = client.get(f"/api/v1/integration/{integration_id}/secrets", headers=auth_headers)
     assert listed.status_code == 200
-    assert [secret["name"] for secret in listed.json()] == ["partner-api-key", "reporting-key"]
+    body = listed.json()
+    assert [secret["name"] for secret in body["items"]] == ["partner-api-key", "reporting-key"]
+    assert body["total"] == 2
 
     # Pagination reaches the query: the sub-collection pages like every other list.
     paged = client.get(
         f"/api/v1/integration/{integration_id}/secrets?offset=1&limit=1", headers=auth_headers
     )
     assert paged.status_code == 200
-    assert [secret["name"] for secret in paged.json()] == ["reporting-key"]
+    page = paged.json()
+    assert [secret["name"] for secret in page["items"]] == ["reporting-key"]
+    # The window moved; the total did not — that is what makes it a total.
+    assert page["total"] == 2
     assert (
         client.get(
             f"/api/v1/integration/{integration_id}/secrets?limit=0", headers=auth_headers
@@ -449,9 +455,7 @@ def test_integration_secret_endpoints_reject_unknown_targets(
         == 404
     )
     assert (
-        client.get(
-            f"/api/v1/integration/{missing}/secrets", headers=auth_headers
-        ).status_code
+        client.get(f"/api/v1/integration/{missing}/secrets", headers=auth_headers).status_code
         == 404
     )
     assert (
@@ -540,6 +544,7 @@ def _as_operation_request(operation: dict[str, object]) -> dict[str, object]:
         ]
     return request
 
+
 def test_driver_constraint_violation_is_a_conflict(
     client: TestClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -555,8 +560,6 @@ def test_driver_constraint_violation_is_a_conflict(
         raise IntegrityError("INSERT", {}, Exception("duplicate key"))
 
     monkeypatch.setattr(IntegrationProviderRepository, "create", raise_integrity)
-    response = client.post(
-        "/api/v1/integration/", json=integration_payload(), headers=auth_headers
-    )
+    response = client.post("/api/v1/integration/", json=integration_payload(), headers=auth_headers)
     assert response.status_code == 409
     assert response.json()["code"] == "conflict"

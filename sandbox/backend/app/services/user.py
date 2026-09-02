@@ -23,6 +23,7 @@ from app.schemas.user import (
 # Classes
 # ============================================================
 
+
 class UserService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -57,6 +58,10 @@ class UserService:
 
     async def list_users(self, offset: int = 0, limit: int = 100) -> list[User]:
         return await self.user_repository.list(offset, limit)
+
+    async def count_users(self) -> int:
+        """The collection's size, for the page the caller just read."""
+        return await self.user_repository.count()
 
     async def create_user(self, data: UserCreateRequest, created_by: str) -> User:
         internal = UserCreateInternal(

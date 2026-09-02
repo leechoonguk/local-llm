@@ -18,6 +18,7 @@ from app.services.refresh import RefreshService
 # Functions
 # ============================================================
 
+
 async def purge_expired_refreshes(days: int = 30) -> int:
     """Delete refresh tokens that expired more than the given number of days ago.
 

@@ -55,8 +55,12 @@ def test_list_users(client: TestClient, auth_headers: dict[str, str]) -> None:
     """The collection read requires a token and shows rows other calls created."""
     response = client.get("/api/v1/user/", headers=auth_headers)
     assert response.status_code == 200
-    usernames = [u["username"] for u in response.json()]
+    body = response.json()
+    usernames = [u["username"] for u in body["items"]]
     assert "tester" in usernames  # created by the auth_headers fixture
+    # The total is the collection's size, not the page's: a client that shows
+    # "1-10 of N" reads it on page one, before it has seen the last row.
+    assert body["total"] == len(body["items"])
 
 
 def test_get_user(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -200,6 +204,7 @@ def test_list_users_reads_a_row_the_write_rules_would_now_reject(
 
     response = client.get("/api/v1/user/", headers=auth_headers)
     assert response.status_code == 200
+
 
 def test_user_unauthorized_401(client: TestClient) -> None:
     """No token → 401 (all endpoints require auth)."""

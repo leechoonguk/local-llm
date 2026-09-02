@@ -36,6 +36,7 @@ SECRET_FK = "integration_secret.id"
 # Classes
 # ============================================================
 
+
 class IntegrationSecret(Base, AuditMixin):
     """A named credential owned by one provider.
 

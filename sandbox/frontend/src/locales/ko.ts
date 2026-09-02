@@ -21,6 +21,8 @@ export const ko = {
       reset: '필터 초기화',
       density: '행 높이 변경',
       retry: '다시 시도',
+      expand: '펼치기',
+      collapse: '접기',
     },
     messages: {
       no_data: '데이터가 없습니다',
@@ -164,11 +166,43 @@ export const ko = {
     actions: {
       run: '즉시 실행',
       stop: '실행 중지',
+      history: '실행 이력',
     },
     messages: {
       delete_confirm: '{{name}} 스케줄을 삭제합니다.',
       run_started: '실행을 시작했습니다',
       run_stopped: '실행을 중지했습니다',
+    },
+    runs: {
+      title: '{{name}} 실행 이력',
+      empty: '기록된 실행이 없습니다',
+      steps_title: '실행 단위',
+      steps_empty: '기록된 단위가 없습니다 — 수동 CLI 실행은 단위를 남기지 않습니다',
+      table: {
+        status: '상태',
+        trigger: '실행자',
+        started_at: '시작',
+        duration: '소요',
+        result: '결과',
+        error: '오류',
+      },
+      steps_table: {
+        sequence: '순번',
+        window: '창',
+        received: '수신',
+        written: '기록',
+      },
+      status: {
+        RUNNING: '실행 중',
+        SUCCEEDED: '성공',
+        FAILED: '실패',
+        STOPPED: '중지됨',
+        INTERRUPTED: '유실됨',
+      },
+      trigger: {
+        CRON: '스케줄',
+        MANUAL: '수동',
+      },
     },
   },
   integration: {

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 # Classes
 # ============================================================
 
+
 class SessionRequest(BaseModel):
     """The body of `/auth/refresh` and `/auth/logout`: deliberately empty.
 

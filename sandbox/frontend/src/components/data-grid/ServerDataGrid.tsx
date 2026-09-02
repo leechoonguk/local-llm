@@ -2,9 +2,9 @@
  * The one grid every list screen renders.
  *
  * It fixes what server pagination against this backend means: `paginationMode`
- * is always `server`, the row count is exact only once the peek came back short,
- * and the next-page decision comes from `paginationMeta` (MUI X pagination
- * docs). A screen that renders `<DataGrid>` directly re-decides all three, so
+ * is always `server` and `rowCount` is the total the endpoint returned
+ * (`Page<T>`), so the footer reads "1–10 of 240" on the first page. A screen
+ * that renders `<DataGrid>` directly re-decides both, so
  * `check-frontend-screens` forbids it outside this file.
  *
  * Appearance and locale live here too — a neutral header strip, dividers under
@@ -23,7 +23,6 @@ import { DataGrid } from '@mui/x-data-grid'
 import type {
   GridColDef,
   GridDensity,
-  GridPaginationMeta,
   GridRenderCellParams,
   GridPaginationModel,
   GridRowModesModel,
@@ -98,7 +97,6 @@ interface ServerDataGridProps<R extends GridValidRowModel> {
   localeText: Record<string, unknown>
   paginationModel: GridPaginationModel
   onPaginationModelChange: (model: GridPaginationModel) => void
-  paginationMeta: GridPaginationMeta | undefined
   density: GridDensity
   columnVisibilityModel: Record<string, boolean>
   onColumnVisibilityModelChange: (model: Record<string, boolean>) => void
@@ -123,7 +121,6 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
   localeText,
   paginationModel,
   onPaginationModelChange,
-  paginationMeta,
   density,
   columnVisibilityModel,
   onColumnVisibilityModelChange,
@@ -176,7 +173,6 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
       loading={loading}
       paginationMode="server"
       rowCount={rowCount}
-      paginationMeta={paginationMeta}
       paginationModel={paginationModel}
       onPaginationModelChange={onPaginationModelChange}
       pageSizeOptions={PAGE_SIZE_OPTIONS}

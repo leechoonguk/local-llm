@@ -6,8 +6,16 @@ from uuid import uuid4
 
 import httpx2
 import pytest
+from sqlalchemy import select
 
-from app.core.exceptions import ConflictError, IntegrationConfigurationError, NotFoundError
+from app.core.exceptions import (
+    ConflictError,
+    IntegrationConfigurationError,
+    IntegrationError,
+    NotFoundError,
+)
+from app.core.integration import IntegrationClient
+from app.models.integration.call import IntegrationCall
 from app.models.integration.provider import Integration
 from app.schemas.integration.provider import IntegrationUpdateRequest
 from app.services.integration.operation import IntegrationOperationService
@@ -65,13 +73,14 @@ async def test_integration_service_execute_operation_uses_shared_client(factory)
 
         shared = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
         try:
-            result = await operation_service.execute_operation(
-                "catalog", "lookup", {"id": "abc"}, client=shared
+            result, call_id = await operation_service.execute_operation(
+                "catalog", "lookup", {"id": "abc"}, actor="tester", client=shared
             )
         finally:
             await shared.aclose()
         assert result.status_code == 200
         assert result.canonical_payload == {}
+        assert call_id is not None
         assert created_id is not None
 
 
@@ -99,7 +108,9 @@ async def test_integration_service_execute_operation_owns_its_client(
             "AsyncClient",
             lambda: real_client_cls(transport=httpx2.MockTransport(handler)),
         )
-        result = await operation_service.execute_operation("catalog", "lookup", {"id": "abc"})
+        result, _call_id = await operation_service.execute_operation(
+            "catalog", "lookup", {"id": "abc"}, actor="tester"
+        )
         assert result.status_code == 200
 
 
@@ -112,4 +123,101 @@ async def test_integration_service_execute_operation_unavailable(factory) -> Non
         await provider_service.create_integration(configured_integration(), "tester")
         await session.rollback()
         with pytest.raises(IntegrationConfigurationError):
-            await operation_service.execute_operation("catalog", "missing", {})
+            await operation_service.execute_operation("catalog", "missing", {}, actor="tester")
+
+
+@pytest.mark.asyncio
+async def test_execute_operation_logs_the_exchange(factory) -> None:
+    """The call log is the only record of what left this process.
+
+    Structured logs deliberately carry no bodies, so without this row an
+    incident has the provider's verdict nowhere — which is what the
+    `integration_call` table was created for and nothing wrote to.
+    """
+    async with factory() as session:
+        operation_service = IntegrationOperationService(session)
+        provider_service = IntegrationProviderService(session)
+        await provider_service.create_integration(configured_integration(), "tester")
+        await session.rollback()
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(200, json={})
+
+        shared = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+        try:
+            await operation_service.execute_operation(
+                "catalog", "lookup", {"id": "abc"}, actor="tester", client=shared
+            )
+        finally:
+            await shared.aclose()
+
+    async with factory() as session:
+        calls = list((await session.execute(select(IntegrationCall))).scalars().all())
+
+    assert len(calls) == 1
+    assert calls[0].outcome == "SUCCESS"
+    assert calls[0].provider_code == "catalog"
+    assert calls[0].operation_code == "lookup"
+    assert calls[0].status_code == 200
+    assert calls[0].created_by == "tester"
+
+
+@pytest.mark.asyncio
+async def test_execute_operation_logs_a_refused_call_and_still_raises(factory) -> None:
+    """A failure is logged and then re-raised, in that order.
+
+    Logging only the happy path would leave the table empty for exactly the
+    calls anyone opens it for; swallowing the error would leave the caller
+    believing the provider answered.
+    """
+    async with factory() as session:
+        operation_service = IntegrationOperationService(session)
+        provider_service = IntegrationProviderService(session)
+        await provider_service.create_integration(configured_integration(), "tester")
+        await session.rollback()
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(500, text="upstream exploded")
+
+        shared = httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+        try:
+            with pytest.raises(IntegrationError):
+                await operation_service.execute_operation(
+                    "catalog", "lookup", {"id": "abc"}, actor="batch", client=shared
+                )
+        finally:
+            await shared.aclose()
+
+    async with factory() as session:
+        calls = list((await session.execute(select(IntegrationCall))).scalars().all())
+
+    assert [call.outcome for call in calls] == ["REFUSED"]
+    assert calls[0].status_code == 500
+    assert calls[0].error_code == "integration_error"
+    assert calls[0].response_body is not None
+    # The fixture operation allows one retry, so a retried call is recorded
+    # as two attempts — the log answers "did we hammer them?" too.
+    assert calls[0].attempts == 2
+
+
+@pytest.mark.asyncio
+async def test__create_call_log_without_an_exchange_writes_nothing(factory) -> None:
+    """A client that never executed has nothing to record.
+
+    The log is written from a `finally`, so it also runs when the failure
+    happened before any request left — and an empty row would be a call that
+    never occurred.
+    """
+    async with factory() as session:
+        operation_service = IntegrationOperationService(session)
+        provider_service = IntegrationProviderService(session)
+        await provider_service.create_integration(configured_integration(), "tester")
+        await session.rollback()
+        client = await IntegrationClient.from_database(
+            session=session, provider_code="catalog", operation_code="lookup"
+        )
+        await operation_service._create_call_log(client, "tester")
+        await client.aclose()
+
+    async with factory() as session:
+        assert (await session.execute(select(IntegrationCall))).scalars().all() == []

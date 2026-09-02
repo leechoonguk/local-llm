@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from urllib.parse import urlsplit
 from uuid import UUID
 
@@ -66,6 +65,7 @@ FORBIDDEN_REQUEST_HEADERS = frozenset(
 # Classes
 # ============================================================
 
+
 class IntegrationProviderService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -77,11 +77,12 @@ class IntegrationProviderService:
             raise NotFoundError(integration_id)
         return provider
 
+    async def count_integrations(self) -> int:
+        """The collection's size, for the page the caller just read."""
+        return await self.provider_repository.count()
+
     async def list_integrations(self, offset: int = 0, limit: int = 100) -> list[Integration]:
         return await self.provider_repository.list(offset, limit)
-
-    async def find_stale(self, older_than: datetime) -> list[Integration]:
-        return await self.provider_repository.find_stale(older_than)
 
     async def create_integration(
         self, data: IntegrationCreateRequest, created_by: str
@@ -333,18 +334,14 @@ class IntegrationProviderService:
         """Each source owns exactly one value column; a secret is named, never inlined."""
         source = field.value_source
         if source is None:
-            raise IntegrationConfigurationError(
-                f"Request fields need a value source: {field.key}"
-            )
+            raise IntegrationConfigurationError(f"Request fields need a value source: {field.key}")
         if source == "SECRET":
             if field.secret_name is None or field.value is not None:
                 raise IntegrationConfigurationError(
                     f"Secret fields reference a provider secret by name: {field.key}"
                 )
             if field.secret_name not in secret_names:
-                raise IntegrationConfigurationError(
-                    f"Unknown provider secret: {field.secret_name}"
-                )
+                raise IntegrationConfigurationError(f"Unknown provider secret: {field.secret_name}")
             return
         if field.secret_name is not None:
             raise IntegrationConfigurationError(
@@ -356,9 +353,7 @@ class IntegrationProviderService:
             raise IntegrationConfigurationError(f"Unknown request context key: {field.key}")
 
     @staticmethod
-    def _validate_request_header(
-        header: str, value_source: str | None, sensitive: bool
-    ) -> None:
+    def _validate_request_header(header: str, value_source: str | None, sensitive: bool) -> None:
         normalized = header.lower()
         if normalized == "x-request-id" or HEADER_NAME_PATTERN.fullmatch(header) is None:
             raise IntegrationConfigurationError("Request header name is reserved or invalid")

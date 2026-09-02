@@ -30,6 +30,7 @@ from app.schemas.integration.secret import (
     IntegrationSecretReadResponse,
     IntegrationSecretUpdateRequest,
 )
+from app.schemas.page import Page
 
 
 # ============================================================
@@ -60,8 +61,11 @@ async def list_integrations(
     current_user: CurrentUserDep,
     offset: OffsetQuery = 0,
     limit: LimitQuery = settings.items_per_user,
-) -> list[IntegrationReadResponse]:
-    return to_read_list(await integration_provider_service.list_integrations(offset, limit))
+) -> Page[IntegrationReadResponse]:
+    return Page(
+        items=to_read_list(await integration_provider_service.list_integrations(offset, limit)),
+        total=await integration_provider_service.count_integrations(),
+    )
 
 
 @router.get("/{integration_id}")
@@ -118,9 +122,12 @@ async def list_integration_secrets(
     current_user: CurrentUserDep,
     offset: OffsetQuery = 0,
     limit: LimitQuery = settings.items_per_user,
-) -> list[IntegrationSecretReadResponse]:
+) -> Page[IntegrationSecretReadResponse]:
     secrets = await integration_secret_service.list_secrets(integration_id, offset, limit)
-    return [IntegrationSecretReadResponse.model_validate(secret) for secret in secrets]
+    return Page(
+        items=[IntegrationSecretReadResponse.model_validate(secret) for secret in secrets],
+        total=await integration_secret_service.count_secrets(integration_id),
+    )
 
 
 @router.put("/{integration_id}/secrets/{secret_name}")
@@ -166,10 +173,11 @@ async def execute_integration_operation(
     fields; SECRET values are resolved from the database, never the caller.
     """
     provider = await integration_provider_service.get_integration(integration_id)
-    result = await integration_operation_service.execute_operation(
+    result, _call_id = await integration_operation_service.execute_operation(
         provider.code,
         operation_code,
         data.inputs,
+        actor=current_user.username,
         client=integration_http_client,
     )
     return IntegrationExecuteResponse(

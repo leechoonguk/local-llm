@@ -12,6 +12,7 @@ from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
 from app.dependencies.query import LimitQuery, OffsetQuery
 from app.dependencies.services import UserServiceDep
+from app.schemas.page import Page
 from app.schemas.user import (
     UserCreateRequest,
     UserReadResponse,
@@ -44,8 +45,11 @@ async def list_users(
     current_user: CurrentUserDep,
     offset: OffsetQuery = 0,
     limit: LimitQuery = settings.items_per_user,
-) -> list[UserReadResponse]:
-    return to_read_list(await user_service.list_users(offset, limit))
+) -> Page[UserReadResponse]:
+    return Page(
+        items=to_read_list(await user_service.list_users(offset, limit)),
+        total=await user_service.count_users(),
+    )
 
 
 @router.get("/{user_id}")

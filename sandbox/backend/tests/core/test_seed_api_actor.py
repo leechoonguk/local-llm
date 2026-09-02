@@ -73,7 +73,6 @@ def test_seed_creates_the_api_actor_with_a_usable_password() -> None:
     assert verify_password("api-actor-secret", actor["hashed_password"])
 
 
-
 def test_http_files_send_the_seeded_credentials_verbatim() -> None:
     """The .http files and the migration must name the same account.
 
@@ -92,10 +91,10 @@ def test_http_files_send_the_seeded_credentials_verbatim() -> None:
         "batch.http",
         "integration.http",
         "integration.search-barcode-item-info.http",
-         "integration.search-food-item-report.http",
-         "integration.search-food-nutrition.http",
-         "integration.search-food-raw-material.http",
-         "integration.search-product-classification.http",
+        "integration.search-food-item-report.http",
+        "integration.search-food-nutrition.http",
+        "integration.search-food-raw-material.http",
+        "integration.search-product-classification.http",
         "integration.search-test-item.http",
         "user.http",
     ]

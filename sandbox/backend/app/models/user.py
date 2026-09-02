@@ -15,6 +15,7 @@ from app.models.base import AuditMixin, Base
 # Classes
 # ============================================================
 
+
 class User(Base, AuditMixin):
     __tablename__ = "user"
 

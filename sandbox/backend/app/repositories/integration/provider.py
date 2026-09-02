@@ -4,10 +4,9 @@
 
 from __future__ import annotations
 
-from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -23,6 +22,7 @@ from app.schemas.integration.provider import IntegrationCreateInternal, Integrat
 # ============================================================
 # Classes
 # ============================================================
+
 
 class IntegrationProviderRepository:
     """The provider aggregate root: its own rows, and its children's rows.
@@ -59,11 +59,10 @@ class IntegrationProviderRepository:
         )
         return list(result.scalars().unique().all())
 
-    async def find_stale(self, older_than: datetime) -> list[Integration]:
-        result = await self.session.execute(
-            select(Integration).where(Integration.created_at < older_than).options(*self._options())
-        )
-        return list(result.scalars().unique().all())
+    async def count(self) -> int:
+        """How many rows the unwindowed `list` would return."""
+        result = await self.session.execute(select(func.count()).select_from(Integration))
+        return result.scalar_one()
 
     async def create(self, data: IntegrationCreateInternal) -> Integration:
         secrets = [

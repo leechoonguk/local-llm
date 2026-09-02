@@ -1,10 +1,9 @@
 /**
  * The list screen template — every collection screen in the app is this shape.
  *
- * Five hooks in a fixed order, and nothing else decides state:
+ * Four hooks in a fixed order, and nothing else decides state:
  *   `useDataGridState` → paging, density, column visibility
  *   `use<Domain>List`  → the page, cached and invalidated by the hooks layer
- *   `usePagedRows`     → rows plus `hasNextPage` from the peeked row
  *   `useCrudDialog`    → which dialog is open and on which row
  *   `useToast`         → the outcome of a mutation
  *
@@ -23,7 +22,6 @@ import ServerDataGrid from '@/components/data-grid/ServerDataGrid'
 import UserFormDialog from '@/sections/user/UserFormDialog'
 import { useCrudDialog } from '@/hooks/useCrudDialog'
 import { useDataGridState } from '@/hooks/useDataGridState'
-import { usePagedRows } from '@/hooks/usePagedRows'
 import { useToast } from '@/hooks/useToast'
 import { toApiError } from '@/lib/api/errors'
 import { serverErrorMessage } from '@/lib/api/formErrors'
@@ -40,11 +38,8 @@ export default function UserList() {
 
   const grid = useDataGridState()
   const query = useUserList(grid.params)
-  const { rows, rowCount, paginationMeta } = usePagedRows(
-    query.data,
-    grid.paginationModel.page,
-    grid.paginationModel.pageSize,
-  )
+  const rows = query.data?.items ?? []
+  const rowCount = query.data?.total ?? 0
   const dialog = useCrudDialog<User>()
   const deleteMutation = useDeleteUser()
 
@@ -126,7 +121,6 @@ export default function UserList() {
           loading={query.isLoading}
           paginationModel={grid.paginationModel}
           onPaginationModelChange={grid.setPaginationModel}
-          paginationMeta={paginationMeta}
           density={grid.density}
           columnVisibilityModel={grid.columnVisibilityModel}
           onColumnVisibilityModelChange={grid.setColumnVisibilityModel}

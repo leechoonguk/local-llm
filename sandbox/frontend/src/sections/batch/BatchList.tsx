@@ -13,11 +13,12 @@
  * exception would fork it. The shape is copied; the decisions stay local.
  */
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Alert, Button, Card } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import BatchFormDialog from '@/sections/batch/BatchFormDialog'
+import BatchRunsDialog from '@/sections/batch/BatchRunsDialog'
 import ConfirmDialog from '@/components/confirm-dialog/ConfirmDialog'
 import ListToolbar from '@/components/data-grid/ListToolbar'
 import { rowActionsColumn } from '@/components/data-grid/RowActions'
@@ -26,7 +27,6 @@ import ServerDataGrid from '@/components/data-grid/ServerDataGrid'
 import { useBatchList, useDeleteBatch, useRunBatch } from '@/lib/api/hooks/useBatch'
 import { useCrudDialog } from '@/hooks/useCrudDialog'
 import { useDataGridState } from '@/hooks/useDataGridState'
-import { usePagedRows } from '@/hooks/usePagedRows'
 import { useToast } from '@/hooks/useToast'
 import { toApiError } from '@/lib/api/errors'
 import { serverErrorMessage } from '@/lib/api/formErrors'
@@ -46,12 +46,10 @@ export default function BatchList() {
 
   const grid = useDataGridState()
   const query = useBatchList(grid.params)
-  const { rows, rowCount, paginationMeta } = usePagedRows(
-    query.data,
-    grid.paginationModel.page,
-    grid.paginationModel.pageSize,
-  )
+  const rows = query.data?.items ?? []
+  const rowCount = query.data?.total ?? 0
   const dialog = useCrudDialog<Batch>()
+  const [historyBatch, setHistoryBatch] = useState<Batch | null>(null)
   const deleteMutation = useDeleteBatch()
   const runMutation = useRunBatch()
 
@@ -95,8 +93,13 @@ export default function BatchList() {
         valueFormatter: (value: string) => formatDateTime(value),
       },
       rowActionsColumn<Batch>({
-        count: 4,
+        count: 5,
         actions: ({ row }) => [
+          {
+            label: t('actions.history'),
+            icon: 'view',
+            onClick: () => setHistoryBatch(row),
+          },
           {
             label: t('actions.run'),
             icon: 'run',
@@ -121,7 +124,7 @@ export default function BatchList() {
         ],
       }),
     ],
-    [t, tCommon, dialog, handleRun],
+    [t, tCommon, dialog, handleRun, setHistoryBatch],
   )
 
   const handleDelete = async () => {
@@ -172,13 +175,18 @@ export default function BatchList() {
           loading={query.isLoading}
           paginationModel={grid.paginationModel}
           onPaginationModelChange={grid.setPaginationModel}
-          paginationMeta={paginationMeta}
           density={grid.density}
           columnVisibilityModel={grid.columnVisibilityModel}
           onColumnVisibilityModelChange={grid.setColumnVisibilityModel}
           localeText={grid.localeText}
         />
       </Card>
+
+      <BatchRunsDialog
+        open={historyBatch !== null}
+        batch={historyBatch}
+        onClose={() => setHistoryBatch(null)}
+      />
 
       <BatchFormDialog open={dialog.isCreateOpen} onClose={dialog.close} batch={null} />
 

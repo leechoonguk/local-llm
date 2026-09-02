@@ -5,7 +5,7 @@
 from datetime import UTC, datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -15,6 +15,7 @@ from app.schemas.user import UserCreateInternal, UserUpdateInternal
 # ============================================================
 # Classes
 # ============================================================
+
 
 class UserRepository:
     def __init__(self, session: AsyncSession) -> None:
@@ -35,9 +36,10 @@ class UserRepository:
         result = await self.session.execute(select(User).offset(offset).limit(limit))
         return list(result.scalars().all())
 
-    async def find_stale(self, older_than: datetime) -> list[User]:
-        result = await self.session.execute(select(User).where(User.created_at < older_than))
-        return list(result.scalars().all())
+    async def count(self) -> int:
+        """How many rows the unwindowed `list` would return."""
+        result = await self.session.execute(select(func.count()).select_from(User))
+        return result.scalar_one()
 
     async def create(self, data: UserCreateInternal) -> User:
         user = User(**data.model_dump())

@@ -24,6 +24,7 @@ from app.schemas.integration.secret import (
 # Classes
 # ============================================================
 
+
 class IntegrationBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -76,6 +77,7 @@ class IntegrationUpdateInternal(IntegrationUpdateRequest):
 # ============================================================
 # Functions
 # ============================================================
+
 
 def to_read(provider: object) -> IntegrationReadResponse:
     return IntegrationReadResponse.model_validate(provider)

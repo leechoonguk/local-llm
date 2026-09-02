@@ -1,9 +1,6 @@
-"""UserRepository tests — CRUD + find_stale + get_by_username/email."""
-
-from datetime import UTC, datetime, timedelta
+"""UserRepository tests — CRUD + get_by_username/email."""
 
 import pytest
-from sqlalchemy import update
 
 from app.models.user import User
 from app.repositories.user import UserRepository
@@ -42,24 +39,6 @@ async def test_user_repository_crud(factory) -> None:
         await session.commit()
         assert await repo.get(user_id) is None
         assert await repo.delete(user_id) is False
-
-
-@pytest.mark.asyncio
-async def test_user_repository_find_stale(factory) -> None:
-    """Two cutoffs around one row prove the comparison direction."""
-    async with factory() as session:
-        session.add(User(username="old", email="old@example.com", hashed_password="x"))
-        await session.commit()
-        await session.execute(
-            update(User).values(created_at=datetime.now(UTC) - timedelta(days=30))
-        )
-        await session.commit()
-
-    async with factory() as session:
-        repo = UserRepository(session)
-        stale = await repo.find_stale(datetime.now(UTC) - timedelta(days=1))
-        assert len(stale) == 1
-        assert await repo.find_stale(datetime.now(UTC) - timedelta(days=60)) == []
 
 
 @pytest.mark.asyncio

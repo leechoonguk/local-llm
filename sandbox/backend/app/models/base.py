@@ -23,6 +23,7 @@ CHILD_CASCADE = "all, delete-orphan"
 # Classes
 # ============================================================
 
+
 class Base(DeclarativeBase):
     pass
 

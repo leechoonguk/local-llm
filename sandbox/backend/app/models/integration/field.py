@@ -29,6 +29,7 @@ from app.models.integration.secret import SECRET_FK, IntegrationSecret
 # Classes
 # ============================================================
 
+
 class IntegrationField(Base, AuditMixin):
     """One wire field of an operation, inbound or outbound.
 
@@ -73,8 +74,7 @@ class IntegrationField(Base, AuditMixin):
             name="ck_integration_field_value_source_direction",
         ),
         CheckConstraint(
-            "value_source IS NULL "
-            "OR value_source IN ('CALLER', 'LITERAL', 'SECRET', 'CONTEXT')",
+            "value_source IS NULL OR value_source IN ('CALLER', 'LITERAL', 'SECRET', 'CONTEXT')",
             name="ck_integration_field_value_source",
         ),
         # A secret reference is exactly the SECRET source, never a stray FK.
@@ -122,9 +122,7 @@ class IntegrationField(Base, AuditMixin):
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     match_mode: Mapped[str | None] = mapped_column(String(16), default=None)
-    expected_values: Mapped[list[str] | None] = mapped_column(
-        JSON(none_as_null=True), default=None
-    )
+    expected_values: Mapped[list[str] | None] = mapped_column(JSON(none_as_null=True), default=None)
     operation: Mapped[IntegrationOperation] = relationship(
         back_populates="fields",
         lazy="raise_on_sql",

@@ -1,10 +1,11 @@
 /**
  * Grid state for a server-paginated list screen.
  *
- * The backend paginates with `offset`/`limit` and returns a bare array — there
- * is no total count anywhere in the API (`app/routers/*.py`). So the grid runs
- * in MUI's *unknown row count* mode: this hook asks for one row more than the
- * page needs, and `usePagedRows` turns that extra row into `hasNextPage`.
+ * The backend paginates with `offset`/`limit` and answers `Page<T>` — items and
+ * the collection's total (`app/schemas/page.py`). So the grid runs with an exact
+ * `rowCount` and this hook asks for exactly the page: the older shape had no
+ * total anywhere in the API, so the grid peeked one row past the page and could
+ * only ever say "there is more", never how much.
  *
  * Sorting is deliberately absent: no list endpoint accepts a sort parameter, so
  * a server sort model here would be a control that changes nothing. The grid
@@ -49,12 +50,10 @@ export function useDataGridState(options: UseDataGridStateOptions = {}) {
     setPaginationModel((previous) => ({ ...previous, page: 0 }))
   }, [])
 
-  // One row past the page: its presence is the only evidence of a next page an
-  // uncounted collection can give.
   const params = useMemo<OffsetLimitParams>(
     () => ({
       offset: paginationModel.page * paginationModel.pageSize,
-      limit: paginationModel.pageSize + 1,
+      limit: paginationModel.pageSize,
     }),
     [paginationModel.page, paginationModel.pageSize],
   )

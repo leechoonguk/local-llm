@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import uuid4
 
@@ -39,7 +38,6 @@ async def test_integration_service_crud_and_runtime_lookup(factory) -> None:
         await session.rollback()
         assert len(await provider_service.list_integrations()) == 1
         await session.rollback()
-        assert len(await provider_service.find_stale(datetime.now(UTC) + timedelta(days=1))) == 1
         await session.rollback()
         operation = await operation_service.get_operation("catalog", "lookup")
         assert operation.code == "lookup"
@@ -222,9 +220,7 @@ def test_integration_service_validates_response_fields() -> None:
     with pytest.raises(IntegrationConfigurationError, match="JSON Pointer"):
         service._validate_response_field(response_field(wire_path="invalid"))
     with pytest.raises(IntegrationConfigurationError, match="header name is invalid"):
-        service._validate_response_field(
-            response_field(location="HEADER", wire_path="bad header")
-        )
+        service._validate_response_field(response_field(location="HEADER", wire_path="bad header"))
     with pytest.raises(IntegrationConfigurationError, match="body or a header only"):
         service._validate_response_field(response_field(location="QUERY", wire_path="q"))
 
@@ -288,3 +284,27 @@ async def test_integration_service_delete_missing(factory) -> None:
     async with factory() as session:
         with pytest.raises(NotFoundError):
             await IntegrationProviderService(session).delete_integration(uuid4())
+
+
+@pytest.mark.asyncio
+async def test_count_integrations_ignores_the_window(factory) -> None:
+    """The total is the collection's size, not the page's.
+
+    `list_integrations` eager-loads operations and secrets; a count written as
+    `len(await list_integrations())` would load that whole graph to produce one
+    integer, so this asserts the number while the page holds only one row.
+    """
+    async with factory() as session:
+        service = IntegrationProviderService(session)
+        for code in ("alpha", "beta", "gamma"):
+            await service.create_integration(configured_integration(code=code), "tester")
+            await session.rollback()
+
+    async with factory() as session:
+        service = IntegrationProviderService(session)
+        page = await service.list_integrations(offset=2, limit=1)
+        await session.rollback()
+        total = await service.count_integrations()
+
+    assert len(page) == 1
+    assert total == 3

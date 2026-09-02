@@ -16,6 +16,8 @@ export const en = {
       reset: 'Reset filters',
       density: 'Change row height',
       retry: 'Retry',
+      expand: 'Expand',
+      collapse: 'Collapse',
     },
     messages: {
       no_data: 'No data',
@@ -159,11 +161,43 @@ export const en = {
     actions: {
       run: 'Run now',
       stop: 'Stop run',
+      history: 'Run history',
     },
     messages: {
       delete_confirm: 'The schedule {{name}} will be deleted.',
       run_started: 'Run started',
       run_stopped: 'Run stopped',
+    },
+    runs: {
+      title: 'Run history — {{name}}',
+      empty: 'No runs recorded',
+      steps_title: 'Steps',
+      steps_empty: 'No steps recorded — a manual CLI run leaves none',
+      table: {
+        status: 'Status',
+        trigger: 'Actor',
+        started_at: 'Started',
+        duration: 'Duration',
+        result: 'Result',
+        error: 'Error',
+      },
+      steps_table: {
+        sequence: 'Seq',
+        window: 'Window',
+        received: 'Received',
+        written: 'Written',
+      },
+      status: {
+        RUNNING: 'Running',
+        SUCCEEDED: 'Succeeded',
+        FAILED: 'Failed',
+        STOPPED: 'Stopped',
+        INTERRUPTED: 'Interrupted',
+      },
+      trigger: {
+        CRON: 'Cron',
+        MANUAL: 'Manual',
+      },
     },
   },
   integration: {

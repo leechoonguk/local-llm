@@ -17,8 +17,8 @@ from app.services.refresh import RefreshService
 
 @pytest.fixture()
 async def test_engine():
-    """In-memory engine + tables, replacing app.batch.refreshes.engine."""
-    import app.batch.refreshes as batch_refreshes
+    """In-memory engine + tables, replacing app.batch.purge_expired_refreshes.engine."""
+    import app.batch.purge_expired_refreshes as batch_purge_expired_refreshes
 
     engine = create_async_engine(
         "sqlite+aiosqlite://",
@@ -29,10 +29,10 @@ async def test_engine():
         await conn.run_sync(Base.metadata.create_all)
 
     # Swap the module-level engine so the job hits the test DB.
-    original = batch_refreshes.engine
-    batch_refreshes.engine = engine
+    original = batch_purge_expired_refreshes.engine
+    batch_purge_expired_refreshes.engine = engine
     yield engine
-    batch_refreshes.engine = original
+    batch_purge_expired_refreshes.engine = original
     await engine.dispose()
 
 
@@ -69,7 +69,7 @@ async def test_purge_expired_refreshes_deletes_past_the_grace_window(test_engine
         session.add(_token(user_id, "live", datetime.now(UTC) + timedelta(days=1)))
         await session.commit()
 
-    from app.batch.refreshes import purge_expired_refreshes
+    from app.batch.purge_expired_refreshes import purge_expired_refreshes
 
     deleted = await purge_expired_refreshes(days=30)
 
@@ -88,7 +88,7 @@ async def test_purge_keeps_recently_expired_tokens(test_engine) -> None:
         session.add(_token(user_id, "yesterday", datetime.now(UTC) - timedelta(days=1)))
         await session.commit()
 
-    from app.batch.refreshes import purge_expired_refreshes
+    from app.batch.purge_expired_refreshes import purge_expired_refreshes
 
     assert await purge_expired_refreshes(days=30) == 0
 
@@ -102,7 +102,7 @@ async def test_purge_skips_already_deleted(test_engine, monkeypatch) -> None:
         session.add(_token(user_id, "race", datetime.now(UTC) - timedelta(days=60)))
         await session.commit()
 
-    from app.batch.refreshes import purge_expired_refreshes
+    from app.batch.purge_expired_refreshes import purge_expired_refreshes
 
     async def _delete_race(self, refresh_id):
         raise NotFoundError(refresh_id)

@@ -15,9 +15,14 @@ from apscheduler.jobstores.base import JobLookupError
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.batch.refreshes import purge_expired_refreshes
+from app.batch.purge_expired_refreshes import purge_expired_refreshes
+from app.batch.purge_old_batch_runs import purge_old_batch_runs
+from app.batch.sync_barcode_ledger import sync_barcode_ledger
+from app.core.database import engine
 from app.core.exceptions import ConflictError
+from app.services.batch.run import BatchRunService, current_run_id
 
 
 # ============================================================
@@ -33,6 +38,8 @@ type BatchJob = Callable[[], Awaitable[int]]
 BATCH_JOBS: Mapping[str, BatchJob] = MappingProxyType(
     {
         "purge_expired_refreshes": purge_expired_refreshes,
+        "purge_old_batch_runs": purge_old_batch_runs,
+        "sync_barcode_ledger": sync_barcode_ledger,
     }
 )
 
@@ -44,12 +51,21 @@ MISFIRE_GRACE_SECONDS = 3600
 # job — the two are different things and must be able to coexist.
 MANUAL_RUN_SUFFIX = ":run-now"
 
+# Who fired this execution, in the words the row stores.
+CRON_TRIGGER = "CRON"
+
+MANUAL_TRIGGER = "MANUAL"
+
+SCHEDULER_ACTOR = "scheduler"
+
+
 logger = structlog.get_logger(__name__)
 
 
 # ============================================================
 # Classes
 # ============================================================
+
 
 class BatchScheduler:
     """An APScheduler whose job table is the `batch` table.
@@ -76,6 +92,9 @@ class BatchScheduler:
         self._jobs = jobs
         self._scheduler = AsyncIOScheduler()
         self._running: dict[UUID, Task[None]] = {}
+        # The run each executing row is writing into, so a stop can close it
+        # from the request — the one place that is not being cancelled.
+        self._runs: dict[UUID, UUID] = {}
 
     def start(self) -> None:
         self._scheduler.start()
@@ -118,7 +137,7 @@ class BatchScheduler:
         with suppress(JobLookupError):
             self._scheduler.remove_job(str(batch_id))
 
-    def run_now(self, batch_id: UUID, code: str) -> None:
+    def run_now(self, batch_id: UUID, code: str, actor: str = SCHEDULER_ACTOR) -> None:
         """Fire one execution immediately, outside the row's cron.
 
         Handed to the same scheduler as a one-shot date job rather than started
@@ -126,7 +145,7 @@ class BatchScheduler:
         already owns job execution, so `stop` and the run tracking work on it
         exactly as they do on a scheduled run.
         """
-        if self.is_running(batch_id):
+        if self._is_running(batch_id):
             raise ConflictError("Batch job is already running")
         job = self._job_for(batch_id, code)
         if job is None:
@@ -134,7 +153,13 @@ class BatchScheduler:
         self._scheduler.add_job(
             self._run,
             DateTrigger(),
-            kwargs={"batch_id": batch_id, "code": code, "job": job},
+            kwargs={
+                "batch_id": batch_id,
+                "code": code,
+                "job": job,
+                "trigger": MANUAL_TRIGGER,
+                "triggered_by": actor,
+            },
             id=f"{batch_id}{MANUAL_RUN_SUFFIX}",
             replace_existing=True,
             max_instances=1,
@@ -142,7 +167,7 @@ class BatchScheduler:
             misfire_grace_time=MISFIRE_GRACE_SECONDS,
         )
 
-    def stop(self, batch_id: UUID) -> bool:
+    async def stop(self, batch_id: UUID, actor: str = SCHEDULER_ACTOR) -> bool:
         """Cancel the execution in flight; report whether there was one.
 
         Idempotent on purpose: "stop" states the wanted end state, and a job
@@ -153,10 +178,14 @@ class BatchScheduler:
         task = self._running.get(batch_id)
         if task is None:
             return False
+        # Recorded here, before the cancellation: a write inside the cancelled
+        # task is itself cancelled — measured, the row never landed and the
+        # stop took seconds. This caller is not being cancelled.
+        await self._close_run(self._runs.get(batch_id), "STOPPED", stopped_by=actor)
         task.cancel()
         return True
 
-    def is_running(self, batch_id: UUID) -> bool:
+    def _is_running(self, batch_id: UUID) -> bool:
         return batch_id in self._running
 
     def _job_for(self, batch_id: UUID, code: str) -> BatchJob | None:
@@ -168,30 +197,109 @@ class BatchScheduler:
             logger.warning("batch_job_unknown", batch_id=str(batch_id), code=code)
         return job
 
-    async def _run(self, batch_id: UUID, code: str, job: BatchJob) -> None:
+    async def _run(
+        self,
+        batch_id: UUID,
+        code: str,
+        job: BatchJob,
+        trigger: str = CRON_TRIGGER,
+        triggered_by: str = SCHEDULER_ACTOR,
+    ) -> None:
+        """Execute one run and record how it ended.
+
+        The three endings are told apart here because this is the only place
+        that can: the job sees its own exception but not a cancellation's
+        meaning, and nothing at all sees a killed process — that one is settled
+        by the next startup's sweep.
+        """
         task = current_task()
         if task is not None:
             self._running[batch_id] = task
+        run_id = await self._open_run(batch_id, code, trigger, triggered_by)
+        if run_id is not None:
+            self._runs[batch_id] = run_id
+        token = current_run_id.set(run_id)
         try:
             result = await job()
         except CancelledError:
             # Cancellation is an operator decision, not a failure: it is logged
             # as such and re-raised so the task really ends cancelled.
+            # No write here on purpose: this task is the one being cancelled,
+            # so the ending was recorded by `stop` before the cancellation.
             logger.warning("batch_job_stopped", batch_id=str(batch_id), code=code)
             raise
-        except Exception:
+        except Exception as exc:
             # A job that raises must not take its own schedule down with it:
             # the next fire is the recovery, and the traceback is the record.
             logger.exception("batch_job_failed", code=code)
+            await self._close_run(
+                run_id,
+                "FAILED",
+                error_code=type(exc).__name__,
+                error_detail=str(exc),
+            )
         else:
             logger.info("batch_job_completed", code=code, result=result)
+            await self._close_run(run_id, "SUCCEEDED", result=result)
         finally:
+            current_run_id.reset(token)
             self._running.pop(batch_id, None)
+            self._runs.pop(batch_id, None)
+
+    async def _open_run(
+        self, batch_id: UUID, code: str, trigger: str, triggered_by: str
+    ) -> UUID | None:
+        """Write the run row before the job's first line, or carry on without it.
+
+        A logging failure must not cost the night's work: the job is the point,
+        the row is the record. What is lost then is the record, and the
+        exception says so.
+        """
+        try:
+            # expire_on_commit=False, like the request factory: the id is read
+            # after the commit, and an expired instance would lazy-load there —
+            # which under asyncio is a MissingGreenlet, not a query.
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                run = await BatchRunService(session).create_started_run(
+                    batch_id, code, trigger, triggered_by
+                )
+                return run.id
+        except Exception:
+            logger.exception("batch_run_not_recorded", batch_id=str(batch_id), code=code)
+            return None
+
+    async def _close_run(
+        self,
+        run_id: UUID | None,
+        status: str,
+        *,
+        result: int | None = None,
+        stopped_by: str | None = None,
+        error_code: str | None = None,
+        error_detail: str | None = None,
+    ) -> None:
+        """Write the ending, if a run was opened at all."""
+        if run_id is None:
+            return
+        try:
+            async with AsyncSession(engine, expire_on_commit=False) as session:
+                await BatchRunService(session).update_finished_run(
+                    run_id,
+                    status,
+                    SCHEDULER_ACTOR,
+                    result=result,
+                    stopped_by=stopped_by,
+                    error_code=error_code,
+                    error_detail=error_detail,
+                )
+        except Exception:
+            logger.exception("batch_run_ending_not_recorded", run_id=str(run_id), status=status)
 
 
 # ============================================================
 # Functions
 # ============================================================
+
 
 def validated_cron(cron: str) -> str:
     """Return the expression once APScheduler agrees it is a cron.

@@ -17,6 +17,7 @@ from app.models.integration.provider import Integration
 # Classes
 # ============================================================
 
+
 class IntegrationOperationRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session

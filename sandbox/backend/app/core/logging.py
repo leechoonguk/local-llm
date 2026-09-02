@@ -14,6 +14,7 @@ import structlog
 # Functions
 # ============================================================
 
+
 def configure_logging(environment: str) -> None:
     """Configure structured application logs for the current environment."""
     logging.basicConfig(

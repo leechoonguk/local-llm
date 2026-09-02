@@ -1,12 +1,39 @@
 """BatchScheduler tests — the running schedule follows the row, or it is not a schedule."""
 
 import asyncio
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from app.core.exceptions import ConflictError
 from app.core.scheduler import BATCH_JOBS, BatchScheduler, validated_cron
+from app.models.base import Base
+from app.models.batch.run import BatchRun
+from app.models.batch.schedule import BatchSchedule
+
+
+@pytest.fixture(autouse=True)
+async def run_log_engine(monkeypatch: pytest.MonkeyPatch):
+    """Point the scheduler's run log at an engine bound to this test's loop.
+
+    The scheduler records every execution, so its tests need a database — and
+    it must be this one: the production engine pools connections against
+    whichever loop touched it first, and a later test then waits on a
+    connection that belongs to a loop that is gone.
+    """
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    monkeypatch.setattr("app.core.scheduler.engine", engine)
+    yield engine
+    await engine.dispose()
 
 
 CRON = "0 3 * * *"
@@ -152,13 +179,13 @@ async def test_run_now_refuses_a_second_concurrent_run() -> None:
     scheduler.start()
 
     scheduler.run_now(batch_id, JOB_CODE)
-    await _until(lambda: scheduler.is_running(batch_id))
+    await _until(lambda: scheduler._is_running(batch_id))
 
     with pytest.raises(ConflictError):
         scheduler.run_now(batch_id, JOB_CODE)
 
     release.set()
-    await _until(lambda: not scheduler.is_running(batch_id))
+    await _until(lambda: not scheduler._is_running(batch_id))
     scheduler.shutdown()
 
 
@@ -171,10 +198,10 @@ async def test_stop_cancels_the_execution_in_flight() -> None:
     scheduler.start()
 
     scheduler.run_now(batch_id, JOB_CODE)
-    await _until(lambda: scheduler.is_running(batch_id))
+    await _until(lambda: scheduler._is_running(batch_id))
 
-    assert scheduler.stop(batch_id) is True
-    await _until(lambda: not scheduler.is_running(batch_id))
+    assert await scheduler.stop(batch_id) is True
+    await _until(lambda: not scheduler._is_running(batch_id))
     assert not release.is_set()
 
     scheduler.shutdown()
@@ -183,7 +210,7 @@ async def test_stop_cancels_the_execution_in_flight() -> None:
 @pytest.mark.asyncio
 async def test_stop_is_idempotent_when_nothing_runs() -> None:
     """A job that finished a moment ago is not an error to the operator who stopped it."""
-    assert _scheduler().stop(uuid4()) is False
+    assert await _scheduler().stop(uuid4()) is False
 
 
 @pytest.mark.asyncio
@@ -224,3 +251,169 @@ def test_validated_cron_rejects_a_broken_expression() -> None:
 def test_shipped_registry_is_runnable() -> None:
     """Every registered code maps to a callable — the API offers exactly these."""
     assert all(callable(job) for job in BATCH_JOBS.values())
+
+
+async def _scheduled_row(engine) -> tuple[UUID, async_sessionmaker[AsyncSession]]:
+    """A real schedule row, because `batch_run.batch_id` is a foreign key."""
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        row = BatchSchedule(code=JOB_CODE, name="probe", cron=CRON, created_by="tester")
+        session.add(row)
+        await session.commit()
+        return row.id, factory
+
+
+async def _runs(factory) -> list[BatchRun]:
+    async with factory() as session:
+        return list((await session.execute(select(BatchRun))).scalars().all())
+
+
+async def _observe_run(scheduler: BatchScheduler, batch_id: UUID, release: asyncio.Event) -> None:
+    """Let one queued run start, finish, and write its ending.
+
+    Watching `is_running` alone is two different questions — a queued run has
+    not started and a finished one has ended — so the job is held on an event
+    until the test has seen it running. Nothing polls the database while the
+    scheduler writes to it: on a StaticPool engine both share one connection.
+    """
+    await _until(lambda: scheduler._is_running(batch_id))
+    release.set()
+    await _until(lambda: not scheduler._is_running(batch_id))
+
+
+@pytest.mark.asyncio
+async def test_a_completed_run_is_recorded_with_what_it_returned(run_log_engine) -> None:
+    """The row is the only account of a night nobody watched.
+
+    It carries the job's own return value, so "did it import anything?" is
+    answerable without reading logs that may have rotated away.
+    """
+    batch_id, factory = await _scheduled_row(run_log_engine)
+    release = asyncio.Event()
+
+    async def _job() -> int:
+        await release.wait()
+        return 7
+
+    scheduler = BatchScheduler(jobs={JOB_CODE: _job})
+    scheduler.start()
+    scheduler.run_now(batch_id, JOB_CODE, "tester")
+    await _observe_run(scheduler, batch_id, release)
+    scheduler.shutdown()
+
+    runs = await _runs(factory)
+    assert [run.status for run in runs] == ["SUCCEEDED"]
+    assert runs[0].result == 7
+    assert (runs[0].trigger, runs[0].triggered_by) == ("MANUAL", "tester")
+    assert runs[0].finished_at is not None
+
+
+@pytest.mark.asyncio
+async def test_a_failed_run_keeps_the_exception_that_ended_it(run_log_engine) -> None:
+    """A failure that only reached the log is a failure nobody can query later."""
+    batch_id, factory = await _scheduled_row(run_log_engine)
+
+    release = asyncio.Event()
+
+    async def _boom() -> int:
+        await release.wait()
+        raise RuntimeError("provider refused")
+
+    scheduler = BatchScheduler(jobs={JOB_CODE: _boom})
+    scheduler.start()
+    scheduler.run_now(batch_id, JOB_CODE, "tester")
+    await _observe_run(scheduler, batch_id, release)
+    scheduler.shutdown()
+
+    runs = await _runs(factory)
+    assert [run.status for run in runs] == ["FAILED"]
+    assert runs[0].error_code == "RuntimeError"
+    assert runs[0].error_detail == "provider refused"
+
+
+@pytest.mark.asyncio
+async def test_a_stopped_run_is_recorded_by_the_request_that_stopped_it(run_log_engine) -> None:
+    """The cancelled task cannot write its own ending — its writes get cancelled too.
+
+    Measured: recording the stop inside the cancellation path lost the row and
+    made the stop take seconds. The request records it instead, and names the
+    operator who asked.
+    """
+    batch_id, factory = await _scheduled_row(run_log_engine)
+    release = asyncio.Event()
+    scheduler = _blocking_scheduler(release)
+    scheduler.start()
+    scheduler.run_now(batch_id, JOB_CODE, "tester")
+    await _until(lambda: scheduler._is_running(batch_id))
+
+    assert await scheduler.stop(batch_id, "operator") is True
+    await _until(lambda: not scheduler._is_running(batch_id))
+    release.set()
+    scheduler.shutdown()
+
+    runs = await _runs(factory)
+    assert [run.status for run in runs] == ["STOPPED"]
+    assert runs[0].stopped_by == "operator"
+
+
+@pytest.mark.asyncio
+async def test_a_job_runs_even_when_its_run_cannot_be_recorded(
+    run_log_engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The job is the point; the row is the record.
+
+    A database that refuses the log must not cost the night's work — so the
+    failure is logged, the run proceeds without a row, and the ending write
+    finds nothing to close.
+    """
+    batch_id, factory = await _scheduled_row(run_log_engine)
+    release = asyncio.Event()
+    calls: list[int] = []
+
+    async def _job() -> int:
+        await release.wait()
+        calls.append(1)
+        return 7
+
+    async def _refuse(*args, **kwargs):
+        raise RuntimeError("log unavailable")
+
+    monkeypatch.setattr("app.core.scheduler.BatchRunService.create_started_run", _refuse)
+    scheduler = BatchScheduler(jobs={JOB_CODE: _job})
+    scheduler.start()
+    scheduler.run_now(batch_id, JOB_CODE, "tester")
+    await _observe_run(scheduler, batch_id, release)
+    scheduler.shutdown()
+
+    assert calls == [1]
+    assert await _runs(factory) == []
+
+
+@pytest.mark.asyncio
+async def test_an_unwritable_ending_leaves_the_run_open(
+    run_log_engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A run that finished but could not say so stays open on purpose.
+
+    The next startup sweeps it as INTERRUPTED, which is exactly what an
+    unrecorded ending is — a run whose outcome nobody can attest to.
+    """
+    batch_id, factory = await _scheduled_row(run_log_engine)
+    release = asyncio.Event()
+
+    async def _job() -> int:
+        await release.wait()
+        return 7
+
+    async def _refuse(*args, **kwargs):
+        raise RuntimeError("log unavailable")
+
+    monkeypatch.setattr("app.core.scheduler.BatchRunService.update_finished_run", _refuse)
+    scheduler = BatchScheduler(jobs={JOB_CODE: _job})
+    scheduler.start()
+    scheduler.run_now(batch_id, JOB_CODE, "tester")
+    await _observe_run(scheduler, batch_id, release)
+    scheduler.shutdown()
+
+    runs = await _runs(factory)
+    assert [run.status for run in runs] == ["RUNNING"]

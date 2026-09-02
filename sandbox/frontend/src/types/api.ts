@@ -46,6 +46,19 @@ export interface AuditedResource {
  * derived from the page (see `useOffsetPage`), never read from a `total` field
  * that does not exist.
  */
+/**
+ * One page of a collection — the shape every list endpoint answers with
+ * (`backend/app/schemas/page.py`).
+ *
+ * `total` is the count under the same filter as `items`, without the window, so
+ * a footer can say "1–10 of 240" on the first page instead of discovering the
+ * number on the last.
+ */
+export interface Page<T> {
+  items: T[]
+  total: number
+}
+
 export interface OffsetLimitParams {
   offset: number
   limit: number

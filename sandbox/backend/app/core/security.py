@@ -29,6 +29,7 @@ REFRESH_TOKEN_BYTES = 32
 # Functions
 # ============================================================
 
+
 def hash_password(password: str) -> str:
     return password_hash.hash(password)
 

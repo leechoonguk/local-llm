@@ -108,3 +108,37 @@ async def test_integration_service_secret_update_keeps_absent_value(factory) -> 
             await secret_service.update_secret(
                 uuid4(), "api-key", IntegrationSecretUpdateRequest(value="v"), "editor"
             )
+
+
+@pytest.mark.asyncio
+async def test_count_secrets_counts_one_provider_only(factory) -> None:
+    """The total carries the same filter as the page it describes.
+
+    Another provider's credentials live in the same table, so a count without
+    the `provider_id` predicate would report a number this provider's pages
+    can never reach.
+    """
+    payload = configured_integration(
+        secrets=[
+            IntegrationSecretCreateRequest(name="a-key", value="1"),
+            IntegrationSecretCreateRequest(name="b-key", value="2"),
+        ]
+    )
+    other = configured_integration(
+        code="other", secrets=[IntegrationSecretCreateRequest(name="c-key", value="3")]
+    )
+    async with factory() as session:
+        provider_service = IntegrationProviderService(session)
+        created = await provider_service.create_integration(payload, "tester")
+        provider_id = created.id
+        await session.rollback()
+        await provider_service.create_integration(other, "tester")
+        await session.rollback()
+
+    async with factory() as session:
+        secret_service = IntegrationSecretService(session)
+        total = await secret_service.count_secrets(provider_id)
+        page = [secret.name for secret in await secret_service.list_secrets(provider_id, 1, 1)]
+
+    assert page == ["b-key"]
+    assert total == 2

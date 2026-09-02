@@ -40,3 +40,34 @@ export interface BatchRunResponse {
   code: string
   running: boolean
 }
+
+/** One execution of a schedule — mirror of `BatchRunReadResponse`. */
+export interface BatchRun extends AuditedResource {
+  batch_id: string | null
+  code: string
+  status: string
+  trigger: string
+  triggered_by: string
+  stopped_by: string | null
+  started_at: string
+  finished_at: string | null
+  duration_ms: number | null
+  result: number | null
+  error_code: string | null
+  error_detail: string | null
+}
+
+/** One unit inside a run — mirror of `BatchStepReadResponse`. */
+export interface BatchStep extends AuditedResource {
+  run_id: string
+  sequence: number
+  status: string
+  range_start: number | null
+  range_end: number | null
+  received: number | null
+  written: number | null
+  duration_ms: number
+  integration_call_id: string | null
+  error_code: string | null
+  error_detail: string | null
+}

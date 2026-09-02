@@ -1,12 +1,10 @@
-"""RefreshRepository tests — CRUD + get_by_hash + find_stale + revoke_user_tokens."""
+"""RefreshRepository tests — CRUD + get_by_hash + find_expired + revoke_user_tokens."""
 
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from sqlalchemy import update
 
-from app.models.refresh import Refresh
 from app.repositories.refresh import RefreshRepository
 from app.schemas.refresh import RefreshCreateInternal, RefreshUpdateInternal
 
@@ -54,26 +52,6 @@ async def test_refresh_repository_crud(factory) -> None:
         await session.commit()
         assert await repo.get(refresh_id) is None
         assert await repo.delete(refresh_id) is False
-
-
-@pytest.mark.asyncio
-async def test_refresh_repository_find_stale(factory) -> None:
-    """Two cutoffs around one row prove the comparison direction."""
-    user_id = uuid4()
-    async with factory() as session:
-        repo = RefreshRepository(session)
-        await repo.create(_create_data(user_id))
-        await session.commit()
-        await session.execute(
-            update(Refresh).values(created_at=datetime.now(UTC) - timedelta(days=30))
-        )
-        await session.commit()
-
-    async with factory() as session:
-        repo = RefreshRepository(session)
-        stale = await repo.find_stale(datetime.now(UTC) - timedelta(days=1))
-        assert len(stale) == 1
-        assert len(await repo.find_stale(datetime.now(UTC) - timedelta(days=60))) == 0
 
 
 @pytest.mark.asyncio

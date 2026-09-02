@@ -40,6 +40,7 @@ OPERATION_FK = "integration_operation.id"
 # Classes
 # ============================================================
 
+
 class IntegrationOperation(Base, AuditMixin):
     """One callable endpoint: transport settings plus its response contract.
 
@@ -98,7 +99,9 @@ class IntegrationOperation(Base, AuditMixin):
         lazy="raise_on_sql",
     )
     fields: Mapped[list[IntegrationField]] = relationship(
-        back_populates="operation", cascade=CHILD_CASCADE, passive_deletes=True,
+        back_populates="operation",
+        cascade=CHILD_CASCADE,
+        passive_deletes=True,
         lazy="raise_on_sql",
     )
     calls: Mapped[list[IntegrationCall]] = relationship(

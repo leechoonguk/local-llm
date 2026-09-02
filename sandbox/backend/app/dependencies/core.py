@@ -24,6 +24,7 @@ async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_o
 # Functions
 # ============================================================
 
+
 async def get_session() -> AsyncIterator[AsyncSession]:
     """Inject an AsyncSession for the request lifecycle.
 

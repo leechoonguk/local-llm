@@ -8,11 +8,11 @@
 
 import { api } from '@/lib/api/client'
 import { USER_ENDPOINTS } from '@/lib/api/endpoints'
-import type { OffsetLimitParams, OkResponse } from '@/types/api'
+import type { OffsetLimitParams, OkResponse, Page } from '@/types/api'
 import type { User, UserCreateRequest, UserUpdateRequest } from '@/types/user'
 
 export const userService = {
-  list: (params: OffsetLimitParams) => api.get<User[]>(USER_ENDPOINTS.LIST, { params }),
+  list: (params: OffsetLimitParams) => api.get<Page<User>>(USER_ENDPOINTS.LIST, { params }),
 
   detail: (id: string) => api.get<User>(USER_ENDPOINTS.DETAIL(id)),
 

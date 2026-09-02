@@ -118,6 +118,7 @@ async def test_execute_renders_request_and_normalizes_response() -> None:
     The path value contains a slash, so a missing encode step shows up here as
     a wrong URL rather than at a provider.
     """
+
     def handler(request: httpx2.Request) -> httpx2.Response:
         assert request.url.raw_path.startswith(b"/lookup/order%2F1")
         assert request.url.params["q"] == "summer"
@@ -312,6 +313,7 @@ async def test_execute_maps_timeout_network_and_rate_limit() -> None:
     Retries are disabled so the mapping is observed rather than the recovery;
     collapsing these to one error would erase the client's status codes.
     """
+
     def timeout_handler(request: httpx2.Request) -> httpx2.Response:
         raise httpx2.ReadTimeout("timeout", request=request)
 
@@ -472,9 +474,7 @@ async def test_execute_validates_response_headers_and_body() -> None:
     mapping_client = client(
         lambda request: httpx2.Response(200, json={}),
         fields=[
-            response_field(
-                wire_path="/missing", key="missing", value_type="STRING", required=True
-            )
+            response_field(wire_path="/missing", key="missing", value_type="STRING", required=True)
         ],
     )
     with pytest.raises(IntegrationError, match="Required response field"):
@@ -485,9 +485,7 @@ async def test_execute_validates_response_headers_and_body() -> None:
     # failure (502), not a caller/configuration one (422).
     type_client = client(
         lambda request: httpx2.Response(200, json={"flag": "yes"}),
-        fields=[
-            response_field(wire_path="/flag", key="flag", value_type="BOOLEAN", required=True)
-        ],
+        fields=[response_field(wire_path="/flag", key="flag", value_type="BOOLEAN", required=True)],
     )
     with pytest.raises(IntegrationError, match="does not match configured type"):
         await type_client.execute({})
@@ -620,9 +618,7 @@ def test_serializers_pointers_and_retry_after() -> None:
     assert IntegrationClient._serialize("1.5", "NUMBER", None) == 1.5
     assert IntegrationClient._serialize(True, "BOOLEAN", None) is True
     assert IntegrationClient._serialize(date(2026, 1, 2), "DATE", "%Y%m%d") == "20260102"
-    serialized_datetime = IntegrationClient._serialize(
-        datetime(2026, 1, 2, 3, 4), "DATETIME", None
-    )
+    serialized_datetime = IntegrationClient._serialize(datetime(2026, 1, 2, 3, 4), "DATETIME", None)
     assert str(serialized_datetime).startswith("2026")
     assert IntegrationClient._serialize({"x": 1}, "JSON", None) == {"x": 1}
     with pytest.raises(IntegrationConfigurationError):
@@ -757,11 +753,7 @@ async def test_execute_handles_optional_disabled_and_invalid_responses() -> None
 
     header_mismatch = client(
         lambda request: httpx2.Response(200, headers={"x-mode": "no"}, json={}),
-        fields=[
-            response_header(
-                wire_path="x-mode", match_mode="EXACT", expected_values=["yes"]
-            )
-        ],
+        fields=[response_header(wire_path="x-mode", match_mode="EXACT", expected_values=["yes"])],
     )
     with pytest.raises(IntegrationError, match="header validation"):
         await header_mismatch.execute({})

@@ -29,6 +29,8 @@ export const BATCH_ENDPOINTS = {
   UPDATE: (id: string) => `/batch/${id}`,
   DELETE: (id: string) => `/batch/${id}`,
   RUN: (id: string) => `/batch/${id}/run`,
+  RUNS: (id: string) => `/batch/${id}/runs`,
+  RUN_STEPS: (batchId: string, runId: string) => `/batch/${batchId}/runs/${runId}/steps`,
 } as const
 
 export const INTEGRATION_ENDPOINTS = {

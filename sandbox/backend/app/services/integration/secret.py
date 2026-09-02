@@ -22,6 +22,7 @@ from app.schemas.integration.secret import (
 # Classes
 # ============================================================
 
+
 class IntegrationSecretService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -55,6 +56,10 @@ class IntegrationSecretService:
             if secret is None:
                 raise NotFoundError(integration_id)
             return await self.secret_repository.update_secret(secret, data, updated_by)
+
+    async def count_secrets(self, provider_id: UUID) -> int:
+        """The collection's size, for the page the caller just read."""
+        return await self.secret_repository.count_secrets(provider_id)
 
     async def list_secrets(
         self, integration_id: UUID, offset: int = 0, limit: int = 100

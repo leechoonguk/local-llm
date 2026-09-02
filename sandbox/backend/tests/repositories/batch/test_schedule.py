@@ -1,13 +1,10 @@
-"""BatchRepository tests — CRUD, find_stale, and the scheduler's enabled read."""
-
-from datetime import UTC, datetime, timedelta
+"""BatchScheduleRepository tests — CRUD and the scheduler's enabled read."""
 
 import pytest
-from sqlalchemy import update
 
-from app.models.batch import Batch
-from app.repositories.batch import BatchRepository
-from app.schemas.batch import BatchCreateInternal, BatchUpdateInternal
+from app.models.batch.schedule import BatchSchedule
+from app.repositories.batch.schedule import BatchScheduleRepository
+from app.schemas.batch.schedule import BatchCreateInternal, BatchUpdateInternal
 
 
 CRON = "0 3 * * *"
@@ -23,7 +20,7 @@ async def test_batch_repository_crud(factory) -> None:
     instead of raising, which is what lets the service answer 404.
     """
     async with factory() as session:
-        repo = BatchRepository(session)
+        repo = BatchScheduleRepository(session)
         created = await repo.create(
             BatchCreateInternal(
                 code=JOB_CODE, name="A", description="d", cron=CRON, created_by="tester"
@@ -49,34 +46,15 @@ async def test_batch_repository_crud(factory) -> None:
 
 
 @pytest.mark.asyncio
-async def test_batch_repository_find_stale(factory) -> None:
-    """Two cutoffs around one row prove the comparison direction.
-
-    A reversed `<`/`>` passes any single-cutoff assertion.
-    """
+async def test_batch_repository_list_enabled(factory) -> None:
+    """Only enabled rows come back — a disabled job that still schedules is the bug."""
     async with factory() as session:
-        session.add(Batch(code=JOB_CODE, name="old", cron=CRON, created_by="tester"))
-        await session.commit()
-        await session.execute(
-            update(Batch).values(created_at=datetime.now(UTC) - timedelta(days=30))
+        session.add(BatchSchedule(code=JOB_CODE, name="on", cron=CRON, created_by="tester"))
+        session.add(
+            BatchSchedule(code=JOB_CODE, name="off", cron=CRON, enabled=False, created_by="tester")
         )
         await session.commit()
 
     async with factory() as session:
-        repo = BatchRepository(session)
-        stale = await repo.find_stale(datetime.now(UTC) - timedelta(days=1))
-        assert len(stale) == 1
-        assert await repo.find_stale(datetime.now(UTC) - timedelta(days=60)) == []
-
-
-@pytest.mark.asyncio
-async def test_batch_repository_list_enabled(factory) -> None:
-    """Only enabled rows come back — a disabled job that still schedules is the bug."""
-    async with factory() as session:
-        session.add(Batch(code=JOB_CODE, name="on", cron=CRON, created_by="tester"))
-        session.add(Batch(code=JOB_CODE, name="off", cron=CRON, enabled=False, created_by="tester"))
-        await session.commit()
-
-    async with factory() as session:
-        enabled = await BatchRepository(session).list_enabled()
+        enabled = await BatchScheduleRepository(session).list_enabled()
         assert [batch.name for batch in enabled] == ["on"]

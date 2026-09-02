@@ -25,17 +25,11 @@ class RefreshRepository:
         return await self.session.get(Refresh, refresh_id)
 
     async def get_by_hash(self, token_hash: str) -> Refresh | None:
-        result = await self.session.execute(
-            select(Refresh).where(Refresh.token_hash == token_hash)
-        )
+        result = await self.session.execute(select(Refresh).where(Refresh.token_hash == token_hash))
         return result.scalar_one_or_none()
 
     async def list(self, offset: int = 0, limit: int = 100) -> list[Refresh]:
         result = await self.session.execute(select(Refresh).offset(offset).limit(limit))
-        return list(result.scalars().all())
-
-    async def find_stale(self, older_than: datetime) -> list[Refresh]:
-        result = await self.session.execute(select(Refresh).where(Refresh.created_at < older_than))
         return list(result.scalars().all())
 
     async def find_expired(self, expired_before: datetime) -> list[Refresh]:

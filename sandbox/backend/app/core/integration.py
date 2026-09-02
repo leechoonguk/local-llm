@@ -68,6 +68,7 @@ ERROR_DETAIL_LIMIT = 512
 # Classes
 # ============================================================
 
+
 @dataclass(frozen=True)
 class IntegrationExecutionResult:
     # A record when the operation maps absolute pointers, a page when it maps every
@@ -116,7 +117,6 @@ class IntegrationExchange:
 class IntegrationClient:
     """Execute one database-configured external HTTP operation."""
 
-
     @property
     def last_exchange(self) -> IntegrationExchange | None:
         """What the last `execute` sent and received, or None before the first call."""
@@ -154,7 +154,6 @@ class IntegrationClient:
         if operation is None or not operation.provider.enabled or not operation.enabled:
             raise IntegrationConfigurationError("Integration operation is unavailable")
         return cls(operation=operation, client=client)
-
 
     async def aclose(self) -> None:
         """Close a client owned by this integration instance."""
@@ -587,6 +586,8 @@ class IntegrationClient:
                     self.operation.code,
                     f"External API refused the request: {field.key}={value} "
                     f"(expected {self._expected_label(field)})",
+                    envelope_key=field.key,
+                    envelope_value=None if value is None else str(value),
                 )
             collected[field.key] = value
         return collected

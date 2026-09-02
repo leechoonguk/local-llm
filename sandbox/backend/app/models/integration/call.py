@@ -28,6 +28,7 @@ from app.models.integration.operation import OPERATION_FK, IntegrationOperation
 # Classes
 # ============================================================
 
+
 class IntegrationCall(Base, AuditMixin):
     """One executed external call: what left this process, and what came back.
 

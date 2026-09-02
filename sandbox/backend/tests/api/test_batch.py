@@ -69,9 +69,11 @@ def test_list_batches(client: TestClient, auth_headers: dict[str, str]) -> None:
 
     response = client.get("/api/v1/batch/", headers=auth_headers)
     assert response.status_code == 200
-    names = [i["name"] for i in response.json()]
+    body = response.json()
+    names = [i["name"] for i in body["items"]]
     assert "Alpha" in names
     assert "Beta" in names
+    assert body["total"] == 2
 
 
 def test_get_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -181,7 +183,7 @@ def test_batch_reads_use_cache_and_writes_invalidate(
     user_id = client.get("/api/v1/auth/me", headers=auth_headers).json()["id"]
 
     listed = client.get("/api/v1/batch/", headers=auth_headers).json()
-    assert listed[0]["id"] == batch_id
+    assert listed["items"][0]["id"] == batch_id
     assert client.get("/api/v1/batch/", headers=auth_headers).json() == listed
 
     detail = client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json()
@@ -319,3 +321,90 @@ def test_run_batch_without_a_scheduler_409(
 
     assert response.status_code == 409
     client.delete(f"/api/v1/batch/{created['id']}", headers=auth_headers)
+
+
+def test_list_batch_runs_answers_history_and_404(client, auth_headers) -> None:
+    """The run log is reachable per schedule, and an unknown schedule is a 404.
+
+    An empty history must come from a schedule that exists — an unknown id
+    answering `[]` would read as "never ran" for a typo'd UUID.
+    """
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "history", "cron": CRON},
+        headers=auth_headers,
+    )
+    batch_id = created.json()["id"]
+
+    listed = client.get(f"/api/v1/batch/{batch_id}/runs", headers=auth_headers)
+    assert listed.status_code == 200
+    assert listed.json() == {"items": [], "total": 0}
+
+    missing = client.get(
+        "/api/v1/batch/00000000-0000-0000-0000-000000000000/runs", headers=auth_headers
+    )
+    assert missing.status_code == 404
+
+    client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
+
+
+def test_list_batch_run_steps_reads_one_run_and_guards_its_parentage(client, auth_headers) -> None:
+    """Steps hang off a run, and the path's claimed parent must be the real one.
+
+    Rows are seeded through the client's own portal — the scheduler that would
+    normally write them is disabled under `settings.env == "test"`. A run
+    reached through a schedule that is not its parent answers 404: anything
+    else leaks another schedule's history to whoever guesses a UUID.
+    """
+    from uuid import UUID
+
+    from app.dependencies import core as deps_core
+    from app.services.batch.run import BatchRunService
+    from app.services.batch.step import BatchStepService
+
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "steps", "cron": CRON},
+        headers=auth_headers,
+    )
+    batch_id = created.json()["id"]
+    other = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "other", "cron": CRON},
+        headers=auth_headers,
+    )
+    other_id = other.json()["id"]
+
+    async def _seed() -> str:
+        async with deps_core.async_session_factory() as session:
+            run = await BatchRunService(session).create_started_run(
+                UUID(batch_id), JOB_CODE, "MANUAL", "tester"
+            )
+        async with deps_core.async_session_factory() as session:
+            await BatchStepService(session).create_finished_step(
+                run.id, 1, 5, "tester", range_start=1, range_end=1000, received=1000, written=964
+            )
+        return str(run.id)
+
+    run_id = client.portal.call(_seed)
+
+    listed = client.get(f"/api/v1/batch/{batch_id}/runs/{run_id}/steps", headers=auth_headers)
+    assert listed.status_code == 200
+    steps = listed.json()
+    assert [(s["sequence"], s["written"]) for s in steps["items"]] == [(1, 964)]
+    assert steps["total"] == 1
+
+    runs = client.get(f"/api/v1/batch/{batch_id}/runs", headers=auth_headers)
+    assert [r["id"] for r in runs.json()["items"]] == [run_id]
+
+    foreign = client.get(f"/api/v1/batch/{other_id}/runs/{run_id}/steps", headers=auth_headers)
+    assert foreign.status_code == 404
+
+    missing = client.get(
+        f"/api/v1/batch/{batch_id}/runs/00000000-0000-0000-0000-000000000000/steps",
+        headers=auth_headers,
+    )
+    assert missing.status_code == 404
+
+    client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
+    client.delete(f"/api/v1/batch/{other_id}", headers=auth_headers)
