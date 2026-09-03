@@ -22,9 +22,10 @@ import { resolveProjectRoot } from "../lib/hook-project-root.ts";
  *      (enforced globally by naming/repository-access.yml)
  *   4. Return a meaningful count/status
  *   5. No business logic — all work goes through service layer methods
- *   6. A job that reads a checkpoint advances it, and a paging job records
- *      steps under the run in context — half a resume contract passes every
- *      other gate and resumes nothing
+ *   6. A job that consumes a row cursor advances it, a paged feed asks its
+ *      checkpoint, and a paging job records steps under the run in context —
+ *      half a resume contract passes every other gate and resumes nothing.
+ *      A checkpoint with a NULL cursor is a fact, not a violation
  *
  * It also enforces that the *schedule* lives in the database, not in Python.
  * The chain a job must complete — function → registry → seeded row → scheduler
@@ -185,58 +186,67 @@ function checkJobFileName(file: string, jobs: JobDeclaration[]): string[] {
 
 /**
  * Half a resume contract is worse than none, and every half passes every other
- * gate, because each is a working call:
+ * gate, because each is a working call.
  *
- * - A job that reads its checkpoint (`find_checkpoint`) and never advances it
- *   (`update_resume_point` / `update_checkpoint`) walks the whole feed every
- *   night from the same cursor — the 54 calls the tail was kept to avoid — and
- *   the row says it resumed.
- * - A job that advances a checkpoint it never read starts at row 1 every run
- *   and stores a cursor nothing consults.
- * - A job with a cursor pages, and a paging job that records no step leaves a
- *   run whose only fact is its ending: which window failed, how many rows a
- *   page carried, which provider call answered — all unrecoverable.
+ * The checkpoint is the batch layer's common place, and NULL there is a fact
+ * of its own — "this source has no row cursor" (migration 89, `find_checkpoint`
+ * docstring). So reading a checkpoint proves nothing about paging: a cutoff job
+ * may read its row, find no cursor, and recompute from the clock. What proves a
+ * row cursor is what a job *does* with the row: it consumes `next_range_start`,
+ * or it calls `update_resume_point`, whose signature takes an `int` and cannot
+ * write anything else.
+ *
+ * - A job that consumes `next_range_start` and never advances it walks the
+ *   whole feed every night from the same cursor — the 54 calls the tail was
+ *   kept to avoid — while its row says it resumed.
+ * - A job that advances a cursor it never read starts at row 1 every run and
+ *   stores a position nothing consults.
+ * - A job that calls a provider from inside a loop pages a feed, and a paged
+ *   feed decides what its checkpoint means by reading it — a NULL row, a
+ *   cursor, or no row at all; a walk that never asks decided nothing, and
+ *   restarts at row 1 without saying so.
+ * - A paging job records one step per window: a run without steps has one
+ *   fact, its ending — which window failed, how many rows a page carried,
+ *   which provider call answered, all unrecoverable.
  * - A step needs the run in context (`current_run_id`): a job that writes steps
  *   without reading it either invents a run or attaches to none.
- * - A job that calls a provider from inside a loop pages a feed, and a paged
- *   feed with no checkpoint restarts at row 1 every run — the shape a
- *   "resumable" job has when the cursor was never written.
  *
  * Measured on call names, not on job names: any module in `app/batch/` that
- * touches one side of a pair owes the other.
+ * touches one side of a pair owes the other. A job that never pages and never
+ * touches a cursor owes nothing here — the purge jobs are that shape.
  */
 function checkResumeContract(file: string, content: string): string[] {
   const issues: string[] = [];
   const reads = /\.find_checkpoint\(/.test(content);
-  const advances = /\.(update_resume_point|update_checkpoint|create_checkpoint)\(/.test(content);
+  const consumesCursor = reads && /\.next_range_start\b/.test(content);
+  const advances = /\.update_resume_point\(/.test(content);
   const readsRun = /\bcurrent_run_id\.get\(\)/.test(content);
   const recordsStep = /\.create_finished_step\(/.test(content);
   // A provider called from inside a loop is a paged feed — one call per window.
   const pagesFeed = /\.execute_operation\(/.test(content) && /^\s*(for|while)\b/m.test(content);
 
-  if (pagesFeed && !reads && !advances) {
+  if (consumesCursor && !advances) {
     issues.push(
-      `${file}: walks a provider feed page by page but keeps no checkpoint ` +
-        "(BatchCheckpointService.find_checkpoint / update_resume_point) — every run " +
-        "restarts at the first row, and a crash mid-feed loses the night",
-    );
-  }
-
-  if (reads && !advances) {
-    issues.push(
-      `${file}: reads its checkpoint (find_checkpoint) but never advances it ` +
-        "(update_resume_point) — every run walks the feed from the same cursor",
+      `${file}: consumes its cursor (checkpoint.next_range_start) but never advances it ` +
+        "(update_resume_point) — every run walks the feed from the same position",
     );
   }
   if (advances && !reads) {
     issues.push(
-      `${file}: advances a checkpoint it never reads (find_checkpoint) — the ` +
-        "cursor is stored and nothing resumes from it",
+      `${file}: advances a cursor it never reads (find_checkpoint) — the position is ` +
+        "stored and nothing resumes from it",
     );
   }
-  if ((reads || advances) && !recordsStep) {
+  if (pagesFeed && !reads) {
     issues.push(
-      `${file}: pages by cursor but records no step (BatchStepService.create_finished_step) ` +
+      `${file}: walks a provider feed page by page without asking its checkpoint ` +
+        "(find_checkpoint) — a paged feed decides what its row means by reading it: " +
+        "a cursor to resume from, NULL for no row cursor, or no row yet",
+    );
+  }
+  if ((pagesFeed || advances) && !recordsStep) {
+    issues.push(
+      `${file}: pages a feed but records no step (BatchStepService.create_finished_step) ` +
         "— a failed run says which job, never which window",
     );
   }

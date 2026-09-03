@@ -222,15 +222,18 @@ async def purge_expired_refreshes(days: int = 30) -> int:
 6. **No business logic** in batch jobs — use service layer methods
 7. **A job takes no required arguments** — the registry calls it with none, so
    every parameter carries a default
-8. **A resume contract is whole or absent.** A job that reads its checkpoint
-   (`find_checkpoint`) advances it (`update_resume_point`) in the same module,
-   and one that advances a cursor reads it first; a job that pages a feed —
-   a provider called from inside a loop — keeps a checkpoint at all; a job with
-   a cursor records one step per window (`create_finished_step`) under the run
-   it reads from `current_run_id`. Each half on its own is a working call that
-   resumes nothing: read-only walks the whole feed nightly, write-only stores a
-   cursor nothing consults, and a paging job without steps leaves a run whose
-   only fact is its ending
+8. **A resume contract is whole or absent — and a NULL cursor is neither.** The
+   checkpoint is every job's common place, so *reading* it proves nothing: a
+   cutoff job may read its row, find no cursor, and recompute from the clock.
+   What proves a row cursor is what the job does with the row — it consumes
+   `next_range_start`, or it calls `update_resume_point` (an `int`, by
+   signature). A job that consumes the cursor advances it in the same module,
+   and one that advances reads first; a job that pages a feed (a provider
+   called from inside a loop) asks its checkpoint at all — a cursor, a NULL
+   row, or no row is its decision, and a walk that never asks decided nothing;
+   a paging job records one step per window (`create_finished_step`) under the
+   run it reads from `current_run_id`. Each half alone is a working call that
+   resumes nothing
 
 ## Adding a New Batch Job
 
@@ -300,9 +303,9 @@ watching the gate go red:
 | the lifespan reads the table | `main.py` calls `list_enabled_batches` | the process schedules whatever the last deploy hardcoded |
 | the lifespan sweeps orphans | `main.py` calls `update_interrupted_runs` | a killed process's run claims RUNNING forever — `main.py` is outside coverage, so nothing else notices the deleted call |
 | `core/scheduler.py` `add_job` carries `id` / `replace_existing` / `max_instances` / `coalesce` / `misfire_grace_time` | option by option | duplicated, overlapping, or silently skipped runs |
-| a checkpoint is read and advanced by the same job | `find_checkpoint` ⇔ `update_resume_point` (or `update_checkpoint` / `create_checkpoint`) in one module | read-only re-walks the feed from the same cursor every night; write-only stores a cursor nothing resumes from |
-| a paged feed keeps a cursor | `execute_operation` inside a `for`/`while` requires one of the checkpoint calls | a "resumable" job that restarts at row 1 on every run and loses the night on a crash |
-| a paging job records its windows | any checkpoint call requires `create_finished_step`; `create_finished_step` ⇔ `current_run_id.get()` | a failed run says which job, never which window; a step written without the run in context belongs to none |
+| a consumed cursor is advanced by the same job | `find_checkpoint` + `.next_range_start` ⇒ `update_resume_point`; `update_resume_point` ⇒ `find_checkpoint` | read-only re-walks the feed from the same position every night; write-only stores a cursor nothing resumes from |
+| a paged feed asks its checkpoint | `execute_operation` inside a `for`/`while` ⇒ `find_checkpoint` (a NULL row or no row is a legitimate answer — reading only is fine) | a walk that restarts at row 1 without having decided to |
+| a paging job records its windows | `execute_operation` in a loop, or `update_resume_point` ⇒ `create_finished_step`; `create_finished_step` ⇔ `current_run_id.get()` | a failed run says which job, never which window; a step written without the run in context belongs to none |
 
 **AST rules** (`.omp/ast-grep/rules/batch/`) add structural checks:
 

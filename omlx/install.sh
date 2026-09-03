@@ -26,7 +26,8 @@ HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 # 모든 모델은 oMLX 앱 다운로드로 관리한다(~/.omlx/models, 짧은 서빙 id — 2026-08-28 전면 포팅,
 # HF 캐시 제거·hf CLI 경로 폐지, 다운로드는 POST /admin/api/hf/download). 관리 대상:
 # Qwen3.6-35B-A3B-5bit + Qwen3.6-35B-A3B-MTP-5bit(드래프터), Qwen3.5-4B-4bit + Qwen3.5-4B-MTP-4bit(aux),
-# Qwen3.8-27B-4bit(선택 코더, 2026-08-31 사용자 요청으로 재등록 — 드래프터 없음, 15GB),
+# Qwen3.8-27B-4bit(선택 코더, 2026-08-31 사용자 요청으로 재등록, 15GB) + Qwen3.8-27B-MTP-4bit(드래프터 253MB,
+#   2026-09-02 F3 프로브용 다운로드 — 3.8 은 nothink+MTP 로도 17.5 tok/s 상한이라 기각, 드래프터는 숨김 유지),
 # gemma-4-26b-a4b-it-5bit(선택 코더, 2026-08-31 — MoE 26B/활성 4B, 18GB, 드래프터 없음).
 # **`-it` 판이어야 한다**: 베이스 `gemma-4-26b-a4b-5bit`(+4bit)는 대화 형식·stop 토큰이 없어
 # 프롬프트를 되풀이한다(실측 2026-08-31). 그래서 베이스 두 벌(5bit 17GB + 4bit 15GB)은
@@ -34,7 +35,7 @@ HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 #
 # 서빙 목록에서 숨긴 것들(`is_hidden: true`, 2026-08-31) — omp 가 discovery 로 `/v1/models` 를
 # 그대로 읽으므로, 채팅으로 부를 수 없는 것은 서버가 아예 안 내보내게 한다:
-#   Qwen3.6-35B-A3B-MTP-5bit, Qwen3.5-4B-MTP-4bit  - MTP 드래프터(단독 호출 대상 아님)
+#   Qwen3.6-35B-A3B-MTP-5bit, Qwen3.5-4B-MTP-4bit, Qwen3.8-27B-MTP-4bit  - MTP 드래프터(단독 호출 대상 아님)
 #   Qwen3.6-35B-A3B-DFlash, Qwen3.8-27B-DFlash2    - DFlash 사이드카
 # 숨김은 파일에 직접 써 넣으면 앱이 무시한다 - `PUT /admin/api/models/<id>/settings` 로 적용한다.
 # 9B·3.8 실험 모델은 2026-08-28 어드바이저 매트릭스 기각과 함께 삭제(bench/2026-08-28.s2.advmatrix.md).
