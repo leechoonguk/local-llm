@@ -45,7 +45,7 @@ style: |
 <!-- sync: backend-audit-log.md=8ff51ab42272c7b2 -->
 <!-- sync: backend-auth.md=96c341a1d5492ff5 -->
 <!-- sync: backend-background-tasks.md=f44f5777655cd583 -->
-<!-- sync: backend-batch.md=cf2a72fc6b45887f -->
+<!-- sync: backend-batch.md=c657d53dd66441bc -->
 <!-- sync: backend-code-conventions.md=7f8ed81377c0e76a -->
 <!-- sync: backend-contract.md=269baf7e3c55c928 -->
 <!-- sync: backend-core-config.md=2df96e9e761e6fea -->
@@ -109,7 +109,7 @@ style: |
 <!-- sync: check-backend-audit-log.ts=556ba3b7e59fb9a4 -->
 <!-- sync: check-backend-auth.ts=33be64d56f12c2f8 -->
 <!-- sync: check-backend-background-tasks.ts=ce650499e3873dae -->
-<!-- sync: check-backend-batch.ts=4af84066ef37a524 -->
+<!-- sync: check-backend-batch.ts=b9c4684b675a0740 -->
 <!-- sync: check-backend-contract.ts=a0462a878c8e5007 -->
 <!-- sync: check-backend-core-config.ts=80bf2b91f94b74c4 -->
 <!-- sync: check-backend-domain.ts=6f9d1799320221f1 -->

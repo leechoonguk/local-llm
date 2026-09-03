@@ -22,6 +22,9 @@ import { resolveProjectRoot } from "../lib/hook-project-root.ts";
  *      (enforced globally by naming/repository-access.yml)
  *   4. Return a meaningful count/status
  *   5. No business logic — all work goes through service layer methods
+ *   6. A job that reads a checkpoint advances it, and a paging job records
+ *      steps under the run in context — half a resume contract passes every
+ *      other gate and resumes nothing
  *
  * It also enforces that the *schedule* lives in the database, not in Python.
  * The chain a job must complete — function → registry → seeded row → scheduler
@@ -118,6 +121,9 @@ function checkBackendBatchSync(): string[] {
     // `content.includes("async def")` passed a sync job the moment the module
     // held one async helper, which is the shape a job file always has.
     issues.push(...checkJobFileName(f, moduleJobs(content)));
+
+    // 6. A cursor is read and advanced by the same job; a step belongs to a run.
+    issues.push(...checkResumeContract(f, content));
   }
 
   issues.push(...checkDatabaseManagedSchedule(batchDir));
@@ -175,6 +181,78 @@ function checkJobFileName(file: string, jobs: JobDeclaration[]): string[] {
     ];
   }
   return [];
+}
+
+/**
+ * Half a resume contract is worse than none, and every half passes every other
+ * gate, because each is a working call:
+ *
+ * - A job that reads its checkpoint (`find_checkpoint`) and never advances it
+ *   (`update_resume_point` / `update_checkpoint`) walks the whole feed every
+ *   night from the same cursor — the 54 calls the tail was kept to avoid — and
+ *   the row says it resumed.
+ * - A job that advances a checkpoint it never read starts at row 1 every run
+ *   and stores a cursor nothing consults.
+ * - A job with a cursor pages, and a paging job that records no step leaves a
+ *   run whose only fact is its ending: which window failed, how many rows a
+ *   page carried, which provider call answered — all unrecoverable.
+ * - A step needs the run in context (`current_run_id`): a job that writes steps
+ *   without reading it either invents a run or attaches to none.
+ * - A job that calls a provider from inside a loop pages a feed, and a paged
+ *   feed with no checkpoint restarts at row 1 every run — the shape a
+ *   "resumable" job has when the cursor was never written.
+ *
+ * Measured on call names, not on job names: any module in `app/batch/` that
+ * touches one side of a pair owes the other.
+ */
+function checkResumeContract(file: string, content: string): string[] {
+  const issues: string[] = [];
+  const reads = /\.find_checkpoint\(/.test(content);
+  const advances = /\.(update_resume_point|update_checkpoint|create_checkpoint)\(/.test(content);
+  const readsRun = /\bcurrent_run_id\.get\(\)/.test(content);
+  const recordsStep = /\.create_finished_step\(/.test(content);
+  // A provider called from inside a loop is a paged feed — one call per window.
+  const pagesFeed = /\.execute_operation\(/.test(content) && /^\s*(for|while)\b/m.test(content);
+
+  if (pagesFeed && !reads && !advances) {
+    issues.push(
+      `${file}: walks a provider feed page by page but keeps no checkpoint ` +
+        "(BatchCheckpointService.find_checkpoint / update_resume_point) — every run " +
+        "restarts at the first row, and a crash mid-feed loses the night",
+    );
+  }
+
+  if (reads && !advances) {
+    issues.push(
+      `${file}: reads its checkpoint (find_checkpoint) but never advances it ` +
+        "(update_resume_point) — every run walks the feed from the same cursor",
+    );
+  }
+  if (advances && !reads) {
+    issues.push(
+      `${file}: advances a checkpoint it never reads (find_checkpoint) — the ` +
+        "cursor is stored and nothing resumes from it",
+    );
+  }
+  if ((reads || advances) && !recordsStep) {
+    issues.push(
+      `${file}: pages by cursor but records no step (BatchStepService.create_finished_step) ` +
+        "— a failed run says which job, never which window",
+    );
+  }
+  if (recordsStep && !readsRun) {
+    issues.push(
+      `${file}: records steps without reading the run in context (current_run_id.get()) ` +
+        "— a step belongs to the run the scheduler opened, and a job run by hand has none",
+    );
+  }
+  if (readsRun && !recordsStep) {
+    issues.push(
+      `${file}: reads current_run_id but writes nothing under it — the run is read for ` +
+        "steps, and a job that records none has no use for it",
+    );
+  }
+  return issues;
 }
 
 interface JobDeclaration {
