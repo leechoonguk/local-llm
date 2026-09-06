@@ -4,7 +4,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from uuid import UUID
 
 from sqlalchemy import func, select, update
@@ -54,6 +54,30 @@ class IntegrationSecretRepository:
         for secret in result.scalars():
             pool.setdefault(str(secret.rotation_group), []).append(secret)
         return pool
+
+    async def next_available_at(self, provider_code: str) -> datetime | None:
+        """When the first spent member of the provider's pool comes back, or None.
+
+        None when no grouped, enabled member is sitting out — either the pool
+        is free or the provider has no pool at all; the caller tells those
+        apart by whether it just marked one.
+        """
+        result = await self.session.execute(
+            select(func.min(IntegrationSecret.exhausted_until))
+            .join(Integration, Integration.id == IntegrationSecret.provider_id)
+            .where(
+                Integration.code == provider_code,
+                IntegrationSecret.rotation_group.is_not(None),
+                IntegrationSecret.enabled.is_(True),
+                IntegrationSecret.exhausted_until.is_not(None),
+            )
+        )
+        earliest = result.scalar_one()
+        # SQLite hands `DateTime(timezone=True)` back naive; the column is
+        # written in UTC, and a naive moment cannot be compared with `now`.
+        if earliest is not None and earliest.tzinfo is None:
+            earliest = earliest.replace(tzinfo=UTC)
+        return earliest
 
     async def mark_exhausted(self, secret_id: UUID, until: datetime, actor: str) -> None:
         """Record that a member answered the quota code, in one statement.

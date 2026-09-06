@@ -13,6 +13,7 @@ from app.schemas.food.barcode import (
     to_read_list,
 )
 from app.services.food.barcode import FoodBarcodeService
+from tests.services.food.helpers import pages
 
 
 BARCODE_NO = "8801234567890"
@@ -93,20 +94,22 @@ async def test_food_barcode_service_missing_row_raises_not_found(factory) -> Non
 
 
 @pytest.mark.asyncio
-async def test_update_barcode_ledger_inserts_then_leaves_unchanged_rows_alone(factory) -> None:
-    """Re-reading a window must not rewrite it.
+async def test_replace_barcode_ledger_inserts_then_leaves_unchanged_rows_alone(
+    factory, pinned
+) -> None:
+    """A pass that re-sends a row unchanged must not rewrite it.
 
-    Every incremental run overlaps the cursor's own day, so a page that always
-    wrote would bump `version` and `updated_at` on rows nothing changed about
-    — and "this row changed" would stop meaning anything.
+    Every night reads the whole feed, so a merge that always wrote would bump
+    `version` and `updated_at` on every row of the ledger - and "this row
+    changed" would stop meaning anything.
     """
-    async with factory() as session:
+    async with pinned() as session:
         service = FoodBarcodeService(session)
-        assert await service.update_barcode_ledger([_record()], SYNCED_BY) == (1, 1)
+        assert await service.replace_barcode_ledger(pages([_record()]), SYNCED_BY) == (1, 1)
 
-    async with factory() as session:
+    async with pinned() as session:
         service = FoodBarcodeService(session)
-        assert await service.update_barcode_ledger([_record()], SYNCED_BY) == (1, 0)
+        assert await service.replace_barcode_ledger(pages([_record()]), SYNCED_BY) == (1, 0)
 
     async with factory() as session:
         rows = await FoodBarcodeService(session).list_barcodes()
@@ -116,14 +119,14 @@ async def test_update_barcode_ledger_inserts_then_leaves_unchanged_rows_alone(fa
 
 
 @pytest.mark.asyncio
-async def test_update_barcode_ledger_refreshes_a_changed_record(factory) -> None:
-    """A changed column is what the provider's 변경일자 filter promises to deliver."""
-    async with factory() as session:
-        await FoodBarcodeService(session).update_barcode_ledger([_record()], SYNCED_BY)
+async def test_replace_barcode_ledger_refreshes_a_changed_record(factory, pinned) -> None:
+    """A row the feed changed is updated in place: same id, next version."""
+    async with pinned() as session:
+        await FoodBarcodeService(session).replace_barcode_ledger(pages([_record()]), SYNCED_BY)
 
-    async with factory() as session:
-        received, written = await FoodBarcodeService(session).update_barcode_ledger(
-            [_record(product_name="총각김치", last_update_datetime="2024-06-01 12:00:00.0")],
+    async with pinned() as session:
+        received, written = await FoodBarcodeService(session).replace_barcode_ledger(
+            pages([_record(product_name="총각김치", last_update_datetime="2024-06-01 12:00:00.0")]),
             SYNCED_BY,
         )
         assert (received, written) == (1, 1)
@@ -136,45 +139,35 @@ async def test_update_barcode_ledger_refreshes_a_changed_record(factory) -> None
 
 
 @pytest.mark.asyncio
-async def test_update_barcode_ledger_skips_records_without_a_natural_key(factory) -> None:
+async def test_replace_barcode_ledger_skips_records_without_a_natural_key(factory, pinned) -> None:
     """A record with no key cannot be matched again, so it must not be stored.
 
     The provider leaves columns empty on sparse rows; storing one would insert
     a duplicate on every later run and no query could ever find it.
     """
-    async with factory() as session:
-        received, written = await FoodBarcodeService(session).update_barcode_ledger(
-            [_record(barcode_no="   "), _record(report_no=None), "not-a-record"],
+    async with pinned() as session:
+        received, written = await FoodBarcodeService(session).replace_barcode_ledger(
+            pages([_record(), _record(barcode_no="   "), _record(report_no=None), "not-a-record"]),
             SYNCED_BY,
         )
-        assert (received, written) == (3, 0)
+        assert (received, written) == (4, 1)
 
     async with factory() as session:
-        assert await FoodBarcodeService(session).list_barcodes() == []
+        assert len(await FoodBarcodeService(session).list_barcodes()) == 1
 
 
 @pytest.mark.asyncio
-async def test_update_barcode_ledger_accepts_a_single_record_payload(factory) -> None:
-    """An operation mapping absolute pointers hands back one record, not a page.
-
-    The ledger has to store it rather than iterate a dict's keys — which is
-    what a bare `for record in payload` would silently do.
-    """
-    async with factory() as session:
-        service = FoodBarcodeService(session)
-        assert await service.update_barcode_ledger(_record(), SYNCED_BY) == (1, 1)
-
-
-@pytest.mark.asyncio
-async def test_update_barcode_ledger_keeps_a_record_with_an_unreadable_timestamp(factory) -> None:
-    """An unparseable 최종수정일시 costs the cursor, never the record.
+async def test_replace_barcode_ledger_keeps_a_record_with_an_unreadable_timestamp(
+    factory, pinned
+) -> None:
+    """An unparseable 최종수정일시 costs that column, never the record.
 
     Dropping the row would lose a real item because of a formatting change;
-    the row is stored and is simply invisible to the high-water mark.
+    the row is stored with the timestamp left empty.
     """
-    async with factory() as session:
-        await FoodBarcodeService(session).update_barcode_ledger(
-            [_record(last_update_datetime="어제")], SYNCED_BY
+    async with pinned() as session:
+        await FoodBarcodeService(session).replace_barcode_ledger(
+            pages([_record(last_update_datetime="어제")]), SYNCED_BY
         )
 
     async with factory() as session:
@@ -184,16 +177,16 @@ async def test_update_barcode_ledger_keeps_a_record_with_an_unreadable_timestamp
 
 
 @pytest.mark.asyncio
-async def test_update_barcode_ledger_reads_the_portal_date_only_form(factory) -> None:
+async def test_replace_barcode_ledger_reads_the_portal_date_only_form(factory, pinned) -> None:
     """The portal's sibling services answer `YYYYMMDD` for the same column.
 
     A parser that only knew the timestamp form would drop the provider's own
     최종수정일시, and the ledger would answer "unknown" for a record that
     states it.
     """
-    async with factory() as session:
-        await FoodBarcodeService(session).update_barcode_ledger(
-            [_record(last_update_datetime="20240115")], SYNCED_BY
+    async with pinned() as session:
+        await FoodBarcodeService(session).replace_barcode_ledger(
+            pages([_record(last_update_datetime="20240115")]), SYNCED_BY
         )
 
     async with factory() as session:
@@ -206,11 +199,11 @@ async def test_update_barcode_ledger_reads_the_portal_date_only_form(factory) ->
 
 
 @pytest.mark.asyncio
-async def test_update_barcode_ledger_accepts_a_record_without_a_timestamp(factory) -> None:
+async def test_replace_barcode_ledger_accepts_a_record_without_a_timestamp(factory, pinned) -> None:
     """A sparse record still belongs in the ledger; it just carries no timestamp."""
-    async with factory() as session:
-        await FoodBarcodeService(session).update_barcode_ledger(
-            [_record(last_update_datetime="")], SYNCED_BY
+    async with pinned() as session:
+        await FoodBarcodeService(session).replace_barcode_ledger(
+            pages([_record(last_update_datetime="")]), SYNCED_BY
         )
 
     async with factory() as session:

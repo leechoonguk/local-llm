@@ -14,7 +14,11 @@ import httpx2
 import pytest
 from sqlalchemy import select
 
-from app.core.exceptions import IntegrationConfigurationError, IntegrationError
+from app.core.exceptions import (
+    IntegrationConfigurationError,
+    IntegrationError,
+    IntegrationQuotaError,
+)
 from app.models.integration.call import IntegrationCall
 from app.models.integration.secret import IntegrationSecret
 from app.services.integration.operation import IntegrationOperationService
@@ -27,8 +31,12 @@ KEYS = {"key-a": "value-a", "key-b": "value-b", "key-c": "value-c"}
 NAMES = {value: name for name, value in KEYS.items()}
 
 
-def _pooled_integration(*, quota_codes: dict[str, int] | None = None):
-    """Three interchangeable keys, sent as a path segment, behind one verdict."""
+def _pooled_integration(*, quota_codes: dict[str, int] | None = None, grouped: bool = True):
+    """Three interchangeable keys, sent as a path segment, behind one verdict.
+
+    `grouped=False` is the provider without a pool: the same keys, none of
+    them a rotation member, so every call goes out with `key-a`.
+    """
     fields = [
         {
             "direction": "REQUEST",
@@ -66,7 +74,7 @@ def _pooled_integration(*, quota_codes: dict[str, int] | None = None):
         quota_codes={"INFO-320": 3600} if quota_codes is None else quota_codes,
     )
     secrets = [
-        {"name": name, "value": value, "rotation_group": "service-key"}
+        {"name": name, "value": value, "rotation_group": "service-key" if grouped else None}
         for name, value in KEYS.items()
     ]
     return configured_integration(code="portal", operations=[operation], secrets=secrets)
@@ -141,14 +149,40 @@ async def test_a_spent_key_is_skipped_and_the_same_request_goes_out_with_the_nex
 async def test_every_key_spent_is_the_provider_refusal_the_caller_already_handles(
     factory,
 ) -> None:
-    """The job's "leave the cursor and stop" ending did not change: it just moved later."""
+    """The refusal comes as the quota error, and it names when the pool comes back."""
     async with factory() as session:
         await _create(session)
         seen: list[str] = []
-        with pytest.raises(IntegrationError) as raised:
+        with pytest.raises(IntegrationQuotaError) as raised:
             await _execute(session, _handler(set(KEYS), seen))
         assert raised.value.envelope_value == QUOTA_CODE
         assert sorted(seen) == sorted(KEYS)
+        # Every member sits out, the last one included - the next call must not
+        # open with a key this one just proved spent. The marks were written on
+        # their own session, so this one's loaded rows are expired first.
+        session.expire_all()
+        secrets = (await session.execute(select(IntegrationSecret))).scalars().all()
+        assert all(secret.exhausted_until is not None for secret in secrets)
+        # `retry_at` is the earliest return of the pool, in UTC whatever the
+        # engine hands back.
+        earliest = min(secret.exhausted_until for secret in secrets)  # type: ignore[type-var]
+        assert raised.value.retry_at == earliest.replace(tzinfo=UTC)
+
+
+@pytest.mark.asyncio
+async def test_a_provider_without_a_pool_names_the_code_s_own_window(factory) -> None:
+    """One ungrouped key: nothing to rotate to, nothing marked, retry after the sit-out."""
+    async with factory() as session:
+        await _create(session, grouped=False)
+        seen: list[str] = []
+        before = datetime.now(UTC)
+        with pytest.raises(IntegrationQuotaError) as raised:
+            await _execute(session, _handler(set(KEYS), seen))
+        assert seen == ["key-a"]
+        assert before + timedelta(seconds=3600) <= raised.value.retry_at
+        assert raised.value.retry_at <= datetime.now(UTC) + timedelta(seconds=3600)
+        secrets = (await session.execute(select(IntegrationSecret))).scalars().all()
+        assert all(secret.exhausted_until is None for secret in secrets)
 
 
 @pytest.mark.asyncio

@@ -51,7 +51,7 @@ OPERATION_ID = uuid5(
 
 PAGE_ROOT = "/C002/row"
 PATH_TEMPLATE = "/api/{service_key}/{service_id}/{data_type}/{range_start}/{range_end}"
-QUOTA_CODES = {"INFO-320": 3600, "INFO-500": 60}
+QUOTA_CODES = {"INFO-320": 3600, "INFO-500": 60, "INFO-300": 3600}
 
 
 def _operation_table():

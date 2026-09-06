@@ -13,6 +13,9 @@ on a window two fresh keys answered `INFO-000` on, and recovered within the
 hour; `INFO-500` ("현재 접속 중인 인증키입니다. 잠시 후에 다시 시도하십시오")
 - one key, mid-walk, with no other process, and the next key answered at
 once. An hour's sit-out for a "moment" would shrink a three-key pool to one.
+`INFO-300` ("유효 호출건수를 이미 초과하셨습니다") - a key's daily ceiling, met
+after ~1,000 calls in a day (2026-09-06, 14:24, one key of three). When it
+resets is not documented; an hour's sit-out re-asks at the cost of one call.
 """
 
 from collections.abc import Sequence
@@ -30,7 +33,7 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 PROVIDER_ID = uuid5(NAMESPACE_URL, "fast-api-standard/mfds-food-safety-korea/provider")
-QUOTA_CODES = {"INFO-320": 3600, "INFO-500": 60}
+QUOTA_CODES = {"INFO-320": 3600, "INFO-500": 60, "INFO-300": 3600}
 
 
 def _operation_table():

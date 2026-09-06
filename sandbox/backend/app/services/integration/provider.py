@@ -13,7 +13,7 @@ from jsonschema.exceptions import SchemaError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, IntegrationConfigurationError, NotFoundError
-from app.core.integration import PAGING_FAMILIES, PAGING_KEYS
+from app.core.integration import paging_family
 from app.models.integration.provider import Integration
 from app.repositories.integration.provider import IntegrationProviderRepository
 from app.schemas.integration.field import IntegrationFieldCreateRequest
@@ -246,19 +246,11 @@ class IntegrationProviderService:
                 raise IntegrationConfigurationError(
                     f"A response root must name the page, not one record in it: {root}"
                 )
-        request_keys = {field.key for field in operation.fields if field.direction == "REQUEST"}
-        paging = request_keys & PAGING_KEYS
-        if not paging:
+        # The family check is the walk's own reading of the fields, so a set of
+        # keys this refuses is exactly the set a feed walk could not window.
+        request_keys = (field.key for field in operation.fields if field.direction == "REQUEST")
+        if paging_family(request_keys) is None:
             return
-        family = next(
-            (name for name, keys in PAGING_FAMILIES.items() if paging == keys),
-            None,
-        )
-        if family is None:
-            raise IntegrationConfigurationError(
-                f"Paging inputs {sorted(paging)} are not one whole family — "
-                f"declare exactly one of {sorted(PAGING_FAMILIES)}"
-            )
         if root is None:
             raise IntegrationConfigurationError(
                 "A paging operation must name the page it returns in response_root"

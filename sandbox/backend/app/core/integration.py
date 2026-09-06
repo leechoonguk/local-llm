@@ -6,13 +6,14 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from time import perf_counter
 from typing import Any, Literal, cast, get_args
 from urllib.parse import quote
+from uuid import UUID
 from xml.etree import ElementTree
 
 import httpx2
@@ -86,6 +87,21 @@ class IntegrationExecutionResult:
     status_code: int
 
 
+@dataclass(frozen=True)
+class IntegrationPage:
+    """One window of a paging operation, as a feed walk hands it on.
+
+    The window and the call log id ride with the records because the reader
+    that stores a batch step needs all three and the walk is a generator: a
+    bare list would leave the step without the window it was read for.
+    """
+
+    window: dict[str, int]
+    records: list[object]
+    call_id: UUID | None
+    duration_ms: int
+
+
 #: `ck_integration_call_method` — the verbs this client can issue.
 CallMethod = Literal["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
 
@@ -93,6 +109,55 @@ CallMethod = Literal["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
 #: `ck_integration_call_outcome` — how the exchange ended. `REFUSED` is the
 #: provider answering no; the other three are it not answering at all.
 CallOutcome = Literal["SUCCESS", "REFUSED", "TIMEOUT", "UNREACHABLE", "RATE_LIMITED"]
+
+
+def paging_family(request_keys: Iterable[str]) -> str | None:
+    """The paging family a set of REQUEST field keys declares, or None.
+
+    Read off the fields rather than stated by a caller, so a job cannot name
+    a family the operation does not take: the keys are the whole declaration,
+    and a set that is not exactly one family is a configuration error the
+    provider service refuses at write time. Takes the keys, not the
+    operation, so the write-time check and the walk read the same thing off
+    a request and off a row.
+    """
+    paging = set(request_keys) & PAGING_KEYS
+    if not paging:
+        return None
+    family = next((name for name, keys in PAGING_FAMILIES.items() if paging == keys), None)
+    if family is None:
+        raise IntegrationConfigurationError(
+            f"Paging inputs {sorted(paging)} are not one whole family — "
+            f"declare exactly one of {sorted(PAGING_FAMILIES)}"
+        )
+    return family
+
+
+def paging_window(family: str, index: int, size: int) -> dict[str, int]:
+    """The caller inputs that ask for the `index`-th window (from 0) of `size` rows.
+
+    Both families count from 1 on the wire: RANGE names the row interval
+    (`1..1000`, `1001..2000`), PAGE names the page and its width.
+    """
+    if family == "RANGE":
+        start = 1 + index * size
+        return {"range_start": start, "range_end": start + size - 1}
+    if family == "PAGE":
+        return {"page_no": index + 1, "num_of_rows": size}
+    raise IntegrationConfigurationError(f"Unknown paging family {family!r}")
+
+
+def window_rows(window: Mapping[str, int]) -> tuple[int, int]:
+    """The row interval a window of either family asks for, both ends inclusive.
+
+    The batch step log speaks in rows whichever family the operation pages
+    by, so a reader comparing two feeds' steps compares like with like.
+    """
+    if "range_start" in window:
+        return window["range_start"], window["range_end"]
+    size = window["num_of_rows"]
+    start = (window["page_no"] - 1) * size + 1
+    return start, start + size - 1
 
 
 def _call_method(configured: str) -> CallMethod:

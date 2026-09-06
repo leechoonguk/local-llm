@@ -4,17 +4,30 @@
 
 from __future__ import annotations
 
+import asyncio
 import secrets as random_secrets
-from collections.abc import Iterable, Mapping
+from collections.abc import AsyncIterator, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from itertools import count
+from time import perf_counter
 from uuid import UUID
 
 import httpx2
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import IntegrationConfigurationError, IntegrationError
-from app.core.integration import IntegrationClient, IntegrationExecutionResult
+from app.core.exceptions import (
+    IntegrationConfigurationError,
+    IntegrationError,
+    IntegrationQuotaError,
+)
+from app.core.integration import (
+    IntegrationClient,
+    IntegrationExecutionResult,
+    IntegrationPage,
+    paging_family,
+    paging_window,
+)
 from app.models.integration.operation import IntegrationOperation
 from app.models.integration.secret import IntegrationSecret
 from app.repositories.integration.call import IntegrationCallRepository
@@ -31,6 +44,8 @@ from app.schemas.integration.call import IntegrationCallCreateInternal
 #: advancing per call: the scheduler and a manual run spread across the pool
 #: instead of both wearing the first key first, without a row write per call.
 _rotation_offset = count(random_secrets.randbelow(1 << 16))
+
+logger = structlog.get_logger(__name__)
 
 
 # ============================================================
@@ -91,9 +106,10 @@ class IntegrationOperationService:
         sends the next member, and an answer carrying one of the operation's
         `quota_codes` sits that member out for the code's seconds and sends
         the same request with the next one. Every try is its own call log row (the
-        log answers "which key hit the quota"). The caller sees the provider's
-        refusal only when every member is spent - the batch job's "leave the
-        cursor and stop" is then the right ending, and it did not change.
+        log answers "which key hit the quota"). The caller sees the refusal
+        only when every member is spent, and then as `IntegrationQuotaError`,
+        which names the moment the first member comes back - the endpoint
+        reports it, the walk sleeps until then.
         """
         self._last_call_id = None
         pool = await self.secret_repository.list_pool(provider_code, datetime.now(UTC))
@@ -117,9 +133,14 @@ class IntegrationOperationService:
                 result = await integration_client.execute(inputs)
             except IntegrationError as exc:
                 sit_out = integration_client.operation.quota_codes.get(str(exc.envelope_value))
-                if sit_out is None or attempt == tries - 1:
+                if sit_out is None:
                     raise
+                # Marked whether or not a member is left to try: a spent key
+                # that the last try leaves unmarked is the first key the next
+                # call sends - measured, the pool then refused twice a second.
                 await self._mark_exhausted(choice.values(), timedelta(seconds=sit_out), actor)
+                if attempt == tries - 1:
+                    raise await self._quota_error(provider_code, exc, sit_out) from exc
                 result = None
             finally:
                 self._last_call_id = await self._create_call_log(integration_client, actor)
@@ -127,6 +148,108 @@ class IntegrationOperationService:
             if result is not None:
                 return result, self._last_call_id
             attempt += 1
+
+    async def walk_operation(
+        self,
+        provider_code: str,
+        operation_code: str,
+        *,
+        actor: str,
+        page_size: int,
+        end_codes: frozenset[str],
+    ) -> AsyncIterator[IntegrationPage]:
+        """Read a paging operation from its first window to its last, one page per yield.
+
+        One rule ends the walk, whatever the provider: **fewer records than
+        the window asked for**. A window past the last record is that rule
+        too — it holds zero rows — and the portal that answers such a window
+        with a refusal instead of an empty page (`end_codes`) is read as the
+        empty page it means. Nothing else is consulted: a `total_count` field
+        is not trusted (measured fixed at `1` on some operations), and there
+        is no cursor to keep, because the caller reads the whole feed.
+
+        The family comes off the operation's own REQUEST fields, so the caller
+        states a width and nothing about the wire.
+
+        **A spent pool is a wait, not a failure.** When every key has answered
+        a quota code the error names the moment the first comes back; the walk
+        sleeps until then and asks for the same window again. A pass over a
+        million-row feed spans several quota windows by design, and a run that
+        failed at each would never reach the end.
+        """
+        # Its own transaction for the same reason as each call below: a read
+        # left open here would be the idle transaction every window then holds.
+        async with self.session.begin():
+            operation = await self.get_operation(provider_code, operation_code)
+            family = paging_family(
+                field.key for field in operation.fields if field.direction == "REQUEST"
+            )
+        if family is None:
+            raise IntegrationConfigurationError(
+                f"{provider_code}/{operation_code} declares no paging family and cannot be walked"
+            )
+        index = 0
+        while True:
+            window = paging_window(family, index, page_size)
+            started = perf_counter()
+            try:
+                # Each call is its own transaction: the configuration read
+                # would otherwise stay open as one idle transaction per window.
+                async with self.session.begin():
+                    result, call_id = await self.execute_operation(
+                        provider_code, operation_code, window, actor=actor
+                    )
+                payload = result.canonical_payload
+                # An operation mapping absolute pointers hands back one record,
+                # not a page; iterating it would hand the ledger its keys.
+                records: list[object] = [payload] if isinstance(payload, Mapping) else list(payload)
+            except IntegrationQuotaError as exc:
+                wait = (exc.retry_at - datetime.now(UTC)).total_seconds()
+                logger.info(
+                    "integration.walk.quota_wait",
+                    provider=provider_code,
+                    operation=operation_code,
+                    retry_at=exc.retry_at.isoformat(),
+                )
+                await asyncio.sleep(max(wait, 0))
+                continue
+            except IntegrationError as exc:
+                if exc.envelope_value not in end_codes:
+                    raise
+                records = []
+                call_id = self.last_call_id
+            yield IntegrationPage(
+                window=window,
+                records=records,
+                call_id=call_id,
+                duration_ms=int((perf_counter() - started) * 1000),
+            )
+            if len(records) < page_size:
+                return
+            index += 1
+
+    async def _quota_error(
+        self, provider_code: str, refusal: IntegrationError, sit_out: int
+    ) -> IntegrationQuotaError:
+        """The refusal the pool's last member answered, with the moment to retry.
+
+        The moment is the earliest `exhausted_until` of the pool, read after
+        the marks were committed; a provider with no pool at all has nothing
+        marked, and its single key comes back after the code's own window.
+        """
+        retry_at = await self.secret_repository.next_available_at(provider_code)
+        if retry_at is None:
+            retry_at = datetime.now(UTC) + timedelta(seconds=sit_out)
+        return IntegrationQuotaError(
+            refusal.provider,
+            refusal.operation,
+            refusal.detail,
+            retry_at=retry_at,
+            status_code=refusal.status_code,
+            body=refusal.body,
+            envelope_key=refusal.envelope_key,
+            envelope_value=refusal.envelope_value,
+        )
 
     async def _mark_exhausted(
         self, members: Iterable[IntegrationSecret], window: timedelta, actor: str

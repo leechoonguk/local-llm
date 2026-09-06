@@ -26,21 +26,6 @@ class FoodBarcodeRepository:
     async def get(self, food_barcode_id: UUID) -> FoodBarcode | None:
         return await self.session.get(FoodBarcode, food_barcode_id)
 
-    async def get_by_natural_key(self, barcode_no: str, report_no: str) -> FoodBarcode | None:
-        """The row the provider's record refers to, by the pair it is keyed on.
-
-        The sync has no ids of its own: the only thing an incoming record and a
-        stored row share is `(barcode_no, report_no)`, which is why that pair
-        carries a unique constraint rather than merely an index.
-        """
-        result = await self.session.execute(
-            select(FoodBarcode).where(
-                FoodBarcode.barcode_no == barcode_no,
-                FoodBarcode.report_no == report_no,
-            )
-        )
-        return result.scalar_one_or_none()
-
     async def list(self, offset: int = 0, limit: int = 100) -> list[FoodBarcode]:
         result = await self.session.execute(select(FoodBarcode).offset(offset).limit(limit))
         return list(result.scalars().all())

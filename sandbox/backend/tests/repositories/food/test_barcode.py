@@ -52,28 +52,6 @@ async def test_food_barcode_repository_crud(factory) -> None:
 
 
 @pytest.mark.asyncio
-async def test_food_barcode_repository_get_by_natural_key(factory) -> None:
-    """The sync matches records by `(barcode_no, report_no)` and nothing else.
-
-    The second lookup uses the same barcode with another report number: a
-    query that ignored `report_no` would return the stored row and the sync
-    would overwrite a different item's record.
-    """
-    async with factory() as session:
-        repo = FoodBarcodeRepository(session)
-        await repo.create(
-            FoodBarcodeCreateInternal(
-                barcode_no=BARCODE_NO, report_no=REPORT_NO, created_by="batch"
-            )
-        )
-        await session.commit()
-
-        found = await repo.get_by_natural_key(BARCODE_NO, REPORT_NO)
-        assert found is not None
-        assert await repo.get_by_natural_key(BARCODE_NO, "F1999000000000") is None
-
-
-@pytest.mark.asyncio
 async def test_food_barcode_repository_stores_the_source_timestamp(factory) -> None:
     """최종수정일시 is business data on the ledger, not machinery.
 

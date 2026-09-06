@@ -2,6 +2,7 @@
 # Imports
 # ============================================================
 
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import FastAPI, Request
@@ -178,6 +179,69 @@ class IntegrationRateLimitError(IntegrationError):
     ) -> None:
         super().__init__(provider, operation, detail, status_code=status_code, body=body)
         self.retry_after = retry_after
+
+
+class IntegrationQuotaError(IntegrationError):
+    """Raised when every key of a provider's pool has answered a quota code.
+
+    A subclass and not a flag, because the caller that must act on it is not
+    the one that must explain it: the API maps it like any refusal (the
+    provider said no), while a feed walk reads `retry_at` — the moment the
+    first spent key comes back — and sleeps until then instead of failing a
+    pass that only needed to wait. Without the moment on the error, the walk
+    would have to know how the pool is stored.
+    """
+
+    def __init__(
+        self,
+        provider: str,
+        operation: str,
+        detail: str,
+        *,
+        retry_at: datetime,
+        status_code: int | None = None,
+        body: str | None = None,
+        envelope_key: str | None = None,
+        envelope_value: str | None = None,
+    ) -> None:
+        super().__init__(
+            provider,
+            operation,
+            detail,
+            status_code=status_code,
+            body=body,
+            envelope_key=envelope_key,
+            envelope_value=envelope_value,
+        )
+        self.retry_at = retry_at
+
+
+class LedgerFloorError(ConflictError):
+    """Raised when a feed pass came back too small to replace its ledger with.
+
+    A ledger is a full copy of a feed, so a pass replaces the whole table — and
+    a pass that lost most of the feed (a provider that silently answered empty
+    pages, a filter it decided to apply) would replace 300k rows with a few
+    hundred and call it a night. The floor is the ratio of staged to live rows
+    below which the merge refuses: the live rows stay as they were, and the
+    run fails with both counts in the message.
+
+    A conflict, because that is what it is: the pass disagrees with the state
+    of the resource it would replace, and the resource wins. Only a batch job
+    raises it today and the scheduler records the failure without letting it
+    out, so the parent's 409 handler is the mapping it would get, not one it
+    needs a screen for.
+    """
+
+    def __init__(self, table: str, staged: int, live: int, floor: float) -> None:
+        super().__init__(
+            f"{table}: the pass staged {staged} rows against {live} live, "
+            f"under the floor of {floor:.0%} — ledger left untouched"
+        )
+        self.table = table
+        self.staged = staged
+        self.live = live
+        self.floor = floor
 
 
 # ============================================================

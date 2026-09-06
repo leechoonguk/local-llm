@@ -15,7 +15,6 @@ from sqlalchemy.pool import StaticPool
 from app.core.settings import Settings, settings
 from app.main import app
 from app.models.base import Base
-from app.models.batch.checkpoint import BatchCheckpoint  # noqa: F401 — on metadata
 from app.models.batch.run import BatchRun  # noqa: F401 — on metadata
 from app.models.batch.schedule import BatchSchedule  # noqa: F401 — on metadata
 from app.models.batch.step import BatchStep  # noqa: F401 — on metadata
@@ -25,7 +24,11 @@ from app.models.food.item_report_raw_material import (  # noqa: F401 — on meta
     FoodItemReportRawMaterial,
 )
 from app.models.food.nutrition import FoodNutrition  # noqa: F401 — on metadata
+from app.models.food.product_classification import (  # noqa: F401 — on metadata
+    FoodProductClassification,
+)
 from app.models.food.raw_material import FoodRawMaterial  # noqa: F401 — on metadata
+from app.models.food.test_item import FoodTestItem  # noqa: F401 — on metadata
 from app.models.integration.call import IntegrationCall  # noqa: F401 — on metadata
 from app.models.integration.field import IntegrationField  # noqa: F401 — on metadata
 from app.models.integration.operation import IntegrationOperation  # noqa: F401 — on metadata

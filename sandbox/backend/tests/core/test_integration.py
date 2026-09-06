@@ -16,7 +16,13 @@ from app.core.exceptions import (
     IntegrationRateLimitError,
     IntegrationTimeoutError,
 )
-from app.core.integration import UPSTREAM_BODY_LIMIT, IntegrationClient
+from app.core.integration import (
+    UPSTREAM_BODY_LIMIT,
+    IntegrationClient,
+    paging_family,
+    paging_window,
+    window_rows,
+)
 from app.models.integration.field import IntegrationField
 from app.models.integration.operation import IntegrationOperation
 from app.models.integration.provider import Integration
@@ -1169,3 +1175,21 @@ async def test_execute_rejects_body_that_violates_request_schema() -> None:
     with pytest.raises(IntegrationError, match="request does not match configured schema"):
         await configured.execute({})
     await configured.aclose()
+
+
+def test_paging_windows_of_both_families_speak_in_the_same_rows() -> None:
+    """RANGE names the row interval, PAGE the page; the step log reads both as rows.
+
+    The family is the whole set of keys - a caller cannot name one the
+    operation's fields do not declare, and a family this module does not know
+    is refused rather than windowed as something else.
+    """
+    assert paging_family({"range_start", "range_end", "service_key"}) == "RANGE"
+    assert paging_family({"page_no", "num_of_rows"}) == "PAGE"
+    assert paging_family({"service_key"}) is None
+    with pytest.raises(IntegrationConfigurationError, match="not one whole family"):
+        paging_family({"page_no", "range_start", "range_end"})
+    assert window_rows(paging_window("RANGE", 1, 1000)) == (1001, 2000)
+    assert window_rows(paging_window("PAGE", 1, 500)) == (501, 1000)
+    with pytest.raises(IntegrationConfigurationError, match="Unknown paging family"):
+        paging_window("OFFSET", 0, 10)

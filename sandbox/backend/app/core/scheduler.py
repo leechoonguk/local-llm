@@ -19,13 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.batch.purge_expired_refreshes import purge_expired_refreshes
 from app.batch.purge_old_batch_runs import purge_old_batch_runs
-from app.batch.sync_food_barcode_ledger import sync_food_barcode_ledger
-from app.batch.sync_food_item_report_ledger import sync_food_item_report_ledger
-from app.batch.sync_food_item_report_raw_material_ledger import (
-    sync_food_item_report_raw_material_ledger,
-)
-from app.batch.sync_food_nutrition_ledger import sync_food_nutrition_ledger
-from app.batch.sync_food_raw_material_ledger import sync_food_raw_material_ledger
+from app.batch.sync_data_go_kr_ledgers import sync_data_go_kr_ledgers
+from app.batch.sync_mfds_ledgers import sync_mfds_ledgers
 from app.core.database import engine
 from app.core.exceptions import ConflictError
 from app.schemas.batch.run import BatchRunStatus, BatchTrigger
@@ -56,11 +51,8 @@ BATCH_JOBS: Mapping[str, BatchJob] = MappingProxyType(
     {
         "purge_expired_refreshes": purge_expired_refreshes,
         "purge_old_batch_runs": purge_old_batch_runs,
-        "sync_food_barcode_ledger": sync_food_barcode_ledger,
-        "sync_food_item_report_ledger": sync_food_item_report_ledger,
-        "sync_food_item_report_raw_material_ledger": sync_food_item_report_raw_material_ledger,
-        "sync_food_nutrition_ledger": sync_food_nutrition_ledger,
-        "sync_food_raw_material_ledger": sync_food_raw_material_ledger,
+        "sync_data_go_kr_ledgers": sync_data_go_kr_ledgers,
+        "sync_mfds_ledgers": sync_mfds_ledgers,
     }
 )
 

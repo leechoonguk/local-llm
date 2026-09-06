@@ -4,14 +4,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from datetime import UTC, datetime
-from typing import Any
+from collections.abc import AsyncIterable, Mapping, Sequence
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
+from app.core.ledger import DEFAULT_FLOOR, LedgerStage
 from app.models.food.item_report import FoodItemReport
 from app.repositories.food.item_report import FoodItemReportRepository
 from app.schemas.food.item_report import (
@@ -26,12 +25,17 @@ from app.schemas.food.item_report import (
 # Constants
 # ============================================================
 
-# The columns a stored row and an incoming record are compared on — read off the
-# update request, which is *defined* as the record minus its identity. Listed by
-# hand instead, a column added to the ledger would keep comparing equal forever
-# and the sync would stop refreshing it silently; here the list cannot drift
-# from the schema because it is the schema.
+# The columns a pass may refresh — read off the update request, which is
+# *defined* as the record minus its identity. Listed by hand instead, a column
+# added to the ledger would never be staged and the sync would stop refreshing
+# it silently; here the list cannot drift from the schema because it is the
+# schema.
 SYNCED_COLUMNS = tuple(FoodItemReportUpdateRequest.model_fields)
+
+# What identifies a record across passes: the merge joins the stage to the
+# ledger on it, so a row keeps its `id` and `created_at` from one pass to the
+# next.
+NATURAL_KEY = ("item_report_no",)
 
 
 # ============================================================
@@ -72,66 +76,49 @@ class FoodItemReportService:
                 raise NotFoundError(food_item_report_id)
             return report
 
-    async def update_item_report_ledger(
-        self, payload: dict[str, object] | list[object], synced_by: str
+    async def replace_item_report_ledger(
+        self,
+        pages: AsyncIterable[Sequence[object]],
+        synced_by: str,
+        *,
+        floor: float = DEFAULT_FLOOR,
     ) -> tuple[int, int]:
-        """Upsert one page of I1250 records; return (records read, rows written).
+        """Replace the ledger with one whole pass of I1250; return (records read, rows changed).
 
-        The two numbers answer different questions and the caller needs both:
-        the page's length says whether another window exists, and the written
-        count says what actually changed. They differ on every run after the
-        first, because a window overlapping the cursor re-sends records the
-        ledger already holds — those are matched, compared, and left alone
-        rather than rewritten, so `updated_at` and `version` keep meaning "this
-        record changed" instead of "the batch ran".
+        The pass arrives page by page and each page commits into a stage on
+        its own, so the walk — hours long, quota waits included — never holds
+        a transaction open; the ledger itself changes in one short merge at
+        the end (`LedgerStage`), and a pass that came back under `floor` of
+        the live rows is refused there. A record without its natural key is
+        skipped where it arrives, and a key the pass sends twice counts once.
 
-        One transaction per page: a page is the unit the provider hands over,
-        so a failure halfway through it leaves no half-imported window.
+        The two numbers answer different questions: `received` is what the
+        provider handed over, `written` is what the merge actually changed —
+        inserted, updated or deleted — never a row the pass re-sent unchanged.
         """
-        records = payload if isinstance(payload, list) else [payload]
-        written = 0
+        stage = LedgerStage(self.session, FoodItemReport, NATURAL_KEY, SYNCED_COLUMNS)
+        received = 0
         async with self.session.begin():
-            for record in records:
-                if not isinstance(record, Mapping):
-                    continue
-                data = FoodItemReportCreateRequest.from_record(record)
-                if data is None:
-                    continue
-                if await self._upsert(data, synced_by):
-                    written += 1
-        return len(records), written
+            await stage.create()
+        try:
+            async for page in pages:
+                received += len(page)
+                parsed = (
+                    FoodItemReportCreateRequest.from_record(record)
+                    for record in page
+                    if isinstance(record, Mapping)
+                )
+                rows = [data.model_dump() for data in parsed if data is not None]
+                async with self.session.begin():
+                    await stage.add(rows)
+            async with self.session.begin():
+                written = await stage.merge(synced_by, floor=floor)
+        finally:
+            async with self.session.begin():
+                await stage.drop()
+        return received, written
 
     async def delete_item_report(self, food_item_report_id: UUID) -> None:
         async with self.session.begin():
             if not await self.food_item_report_repository.delete(food_item_report_id):
                 raise NotFoundError(food_item_report_id)
-
-    async def _upsert(self, data: FoodItemReportCreateRequest, synced_by: str) -> bool:
-        """Insert or refresh one record; report whether a row was written.
-
-        Runs inside the caller's transaction — a page is one boundary, and a
-        per-record one would leave the window half applied.
-        """
-        existing = await self.food_item_report_repository.get_by_natural_key(data.item_report_no)
-        if existing is None:
-            await self.food_item_report_repository.create(
-                FoodItemReportCreateInternal(**data.model_dump(), created_by=synced_by)
-            )
-            return True
-        changes: dict[str, Any] = {}
-        for column in SYNCED_COLUMNS:
-            stored = getattr(existing, column)
-            # SQLite hands `DateTime(timezone=True)` back without its offset, and
-            # the column is written in UTC — without this every re-read window
-            # would compare unequal and rewrite rows nothing changed about.
-            if isinstance(stored, datetime) and stored.tzinfo is None:
-                stored = stored.replace(tzinfo=UTC)
-            incoming = getattr(data, column)
-            if incoming != stored:
-                changes[column] = incoming
-        if not changes:
-            return False
-        await self.food_item_report_repository.update(
-            existing.id, FoodItemReportUpdateInternal(**changes, updated_by=synced_by)
-        )
-        return True

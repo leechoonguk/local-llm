@@ -1,4 +1,9 @@
-"""Integration operation service: behaviour the API and the transport depend on."""
+"""Integration operation service: behaviour the API and the transport depend on.
+
+`walk_operation` - the whole-feed walk the provider jobs read through - is
+proven in `test_operation_walk.py`, and the key-pool rotation under it in
+`test_operation_rotation.py`; this file is `get_operation`/`execute_operation`.
+"""
 
 from __future__ import annotations
 

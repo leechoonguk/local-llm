@@ -29,19 +29,6 @@ class FoodItemReportRepository:
     async def get(self, food_item_report_id: UUID) -> FoodItemReport | None:
         return await self.session.get(FoodItemReport, food_item_report_id)
 
-    async def get_by_natural_key(self, item_report_no: str) -> FoodItemReport | None:
-        """The row the provider's record refers to, by the code it is keyed on.
-
-        The sync has no ids of its own: the only thing an incoming record and a
-        stored row share is `item_report_no`, which is why that column carries
-        a unique constraint rather than merely an index. One column, not the
-        barcode ledger's pair — I1250 identifies a report by its own code.
-        """
-        result = await self.session.execute(
-            select(FoodItemReport).where(FoodItemReport.item_report_no == item_report_no)
-        )
-        return result.scalar_one_or_none()
-
     async def list(self, offset: int = 0, limit: int = 100) -> list[FoodItemReport]:
         result = await self.session.execute(select(FoodItemReport).offset(offset).limit(limit))
         return list(result.scalars().all())

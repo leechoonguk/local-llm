@@ -12,6 +12,7 @@ from app.schemas.food.item_report import (
     to_read_list,
 )
 from app.services.food.item_report import FoodItemReportService
+from tests.services.food.helpers import pages
 
 
 ITEM_REPORT_NO = "1955050900169"
@@ -97,23 +98,24 @@ async def test_food_item_report_service_missing_row_raises_not_found(factory) ->
 
 
 @pytest.mark.asyncio
-async def test_update_item_report_ledger_inserts_then_leaves_unchanged_rows_alone(
+async def test_replace_item_report_ledger_inserts_then_leaves_unchanged_rows_alone(
     factory,
+    pinned,
 ) -> None:
-    """Re-reading a window must not rewrite it.
+    """A pass that re-sends a row unchanged must not rewrite it.
 
-    Every incremental run overlaps the cursor's own row, so a page that always
-    wrote would bump `version` and `updated_at` on rows nothing changed about
-    — and "this row changed" would stop meaning anything.
+    Every night reads the whole feed, so a merge that always wrote would bump
+    `version` and `updated_at` on every row of the ledger - and "this row
+    changed" would stop meaning anything.
     """
-    async with factory() as session:
-        assert await FoodItemReportService(session).update_item_report_ledger(
-            [_record()], SYNCED_BY
+    async with pinned() as session:
+        assert await FoodItemReportService(session).replace_item_report_ledger(
+            pages([_record()]), SYNCED_BY
         ) == (1, 1)
 
-    async with factory() as session:
-        assert await FoodItemReportService(session).update_item_report_ledger(
-            [_record()], SYNCED_BY
+    async with pinned() as session:
+        assert await FoodItemReportService(session).replace_item_report_ledger(
+            pages([_record()]), SYNCED_BY
         ) == (1, 0)
 
     async with factory() as session:
@@ -124,14 +126,16 @@ async def test_update_item_report_ledger_inserts_then_leaves_unchanged_rows_alon
 
 
 @pytest.mark.asyncio
-async def test_update_item_report_ledger_refreshes_a_changed_record(factory) -> None:
+async def test_replace_item_report_ledger_refreshes_a_changed_record(factory, pinned) -> None:
     """A column the portal changed is what the ledger exists to carry forward."""
-    async with factory() as session:
-        await FoodItemReportService(session).update_item_report_ledger([_record()], SYNCED_BY)
+    async with pinned() as session:
+        await FoodItemReportService(session).replace_item_report_ledger(
+            pages([_record()]), SYNCED_BY
+        )
 
-    async with factory() as session:
-        assert await FoodItemReportService(session).update_item_report_ledger(
-            [_record(production_ended="예", last_updated_date="20260901")], SYNCED_BY
+    async with pinned() as session:
+        assert await FoodItemReportService(session).replace_item_report_ledger(
+            pages([_record(production_ended="예", last_updated_date="20260901")]), SYNCED_BY
         ) == (1, 1)
 
     async with factory() as session:
@@ -142,43 +146,38 @@ async def test_update_item_report_ledger_refreshes_a_changed_record(factory) -> 
 
 
 @pytest.mark.asyncio
-async def test_update_item_report_ledger_skips_records_without_a_code(factory) -> None:
+async def test_replace_item_report_ledger_skips_records_without_a_code(factory, pinned) -> None:
     """A record with no code cannot be matched again, so it must not be stored.
 
     The portal leaves columns empty on sparse rows; storing one would insert a
     duplicate on every later run and no query could ever find it.
     """
-    async with factory() as session:
-        assert await FoodItemReportService(session).update_item_report_ledger(
-            [_record(item_report_no="   "), _record(item_report_no=None), "not-a-record"],
+    async with pinned() as session:
+        assert await FoodItemReportService(session).replace_item_report_ledger(
+            pages(
+                [
+                    _record(),
+                    _record(item_report_no="   "),
+                    _record(item_report_no=None),
+                    "not-a-record",
+                ]
+            ),
             SYNCED_BY,
-        ) == (3, 0)
+        ) == (4, 1)
 
     async with factory() as session:
-        assert await FoodItemReportService(session).list_item_reports() == []
+        assert len(await FoodItemReportService(session).list_item_reports()) == 1
 
 
 @pytest.mark.asyncio
-async def test_update_item_report_ledger_accepts_a_single_record_payload(factory) -> None:
-    """An operation mapping absolute pointers hands back one record, not a page.
-
-    The ledger has to store it rather than iterate a dict's keys — which is
-    what a bare `for record in payload` would silently do.
-    """
-    async with factory() as session:
-        assert await FoodItemReportService(session).update_item_report_ledger(
-            _record(), SYNCED_BY
-        ) == (1, 1)
-
-
-@pytest.mark.asyncio
-async def test_update_item_report_ledger_keeps_a_record_with_an_unreadable_timestamp(
+async def test_replace_item_report_ledger_keeps_a_record_with_an_unreadable_timestamp(
     factory,
+    pinned,
 ) -> None:
-    """An unparseable 최종수정일시 costs the cursor, never the record."""
-    async with factory() as session:
-        await FoodItemReportService(session).update_item_report_ledger(
-            [_record(last_updated_date="어제")], SYNCED_BY
+    """An unparseable 최종수정일시 costs that column, never the record."""
+    async with pinned() as session:
+        await FoodItemReportService(session).replace_item_report_ledger(
+            pages([_record(last_updated_date="어제")]), SYNCED_BY
         )
 
     async with factory() as session:

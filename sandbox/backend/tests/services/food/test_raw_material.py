@@ -13,6 +13,7 @@ from app.schemas.food.raw_material import (
     to_read_list,
 )
 from app.services.food.raw_material import FoodRawMaterialService
+from tests.services.food.helpers import pages
 
 
 RAW_MATERIAL_CODE = "M000012345"
@@ -102,23 +103,24 @@ async def test_food_raw_material_service_missing_row_raises_not_found(factory) -
 
 
 @pytest.mark.asyncio
-async def test_update_raw_material_ledger_inserts_then_leaves_unchanged_rows_alone(
+async def test_replace_raw_material_ledger_inserts_then_leaves_unchanged_rows_alone(
     factory,
+    pinned,
 ) -> None:
-    """Re-reading a window must not rewrite it.
+    """A pass that re-sends a row unchanged must not rewrite it.
 
-    Every incremental run overlaps the cursor's own row, so a page that always
-    wrote would bump `version` and `updated_at` on rows nothing changed about
-    — and "this row changed" would stop meaning anything.
+    Every night reads the whole feed, so a merge that always wrote would bump
+    `version` and `updated_at` on every row of the ledger - and "this row
+    changed" would stop meaning anything.
     """
-    async with factory() as session:
-        assert await FoodRawMaterialService(session).update_raw_material_ledger(
-            [_record()], SYNCED_BY
+    async with pinned() as session:
+        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages([_record()]), SYNCED_BY
         ) == (1, 1)
 
-    async with factory() as session:
-        assert await FoodRawMaterialService(session).update_raw_material_ledger(
-            [_record()], SYNCED_BY
+    async with pinned() as session:
+        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages([_record()]), SYNCED_BY
         ) == (1, 0)
 
     async with factory() as session:
@@ -129,14 +131,16 @@ async def test_update_raw_material_ledger_inserts_then_leaves_unchanged_rows_alo
 
 
 @pytest.mark.asyncio
-async def test_update_raw_material_ledger_refreshes_a_changed_record(factory) -> None:
+async def test_replace_raw_material_ledger_refreshes_a_changed_record(factory, pinned) -> None:
     """A column the portal changed is what the ledger exists to carry forward."""
-    async with factory() as session:
-        await FoodRawMaterialService(session).update_raw_material_ledger([_record()], SYNCED_BY)
+    async with pinned() as session:
+        await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages([_record()]), SYNCED_BY
+        )
 
-    async with factory() as session:
-        assert await FoodRawMaterialService(session).update_raw_material_ledger(
-            [_record(use_yn="N", last_update_datetime="20240601")], SYNCED_BY
+    async with pinned() as session:
+        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages([_record(use_yn="N", last_update_datetime="20240601")]), SYNCED_BY
         ) == (1, 1)
 
     async with factory() as session:
@@ -147,43 +151,38 @@ async def test_update_raw_material_ledger_refreshes_a_changed_record(factory) ->
 
 
 @pytest.mark.asyncio
-async def test_update_raw_material_ledger_skips_records_without_a_code(factory) -> None:
+async def test_replace_raw_material_ledger_skips_records_without_a_code(factory, pinned) -> None:
     """A record with no code cannot be matched again, so it must not be stored.
 
     The portal leaves columns empty on sparse rows; storing one would insert a
     duplicate on every later run and no query could ever find it.
     """
-    async with factory() as session:
-        assert await FoodRawMaterialService(session).update_raw_material_ledger(
-            [_record(raw_material_code="   "), _record(raw_material_code=None), "not-a-record"],
+    async with pinned() as session:
+        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages(
+                [
+                    _record(),
+                    _record(raw_material_code="   "),
+                    _record(raw_material_code=None),
+                    "not-a-record",
+                ]
+            ),
             SYNCED_BY,
-        ) == (3, 0)
+        ) == (4, 1)
 
     async with factory() as session:
-        assert await FoodRawMaterialService(session).list_raw_materials() == []
+        assert len(await FoodRawMaterialService(session).list_raw_materials()) == 1
 
 
 @pytest.mark.asyncio
-async def test_update_raw_material_ledger_accepts_a_single_record_payload(factory) -> None:
-    """An operation mapping absolute pointers hands back one record, not a page.
-
-    The ledger has to store it rather than iterate a dict's keys — which is
-    what a bare `for record in payload` would silently do.
-    """
-    async with factory() as session:
-        assert await FoodRawMaterialService(session).update_raw_material_ledger(
-            _record(), SYNCED_BY
-        ) == (1, 1)
-
-
-@pytest.mark.asyncio
-async def test_update_raw_material_ledger_keeps_a_record_with_an_unreadable_timestamp(
+async def test_replace_raw_material_ledger_keeps_a_record_with_an_unreadable_timestamp(
     factory,
+    pinned,
 ) -> None:
-    """An unparseable 최종수정일시 costs the cursor, never the record."""
-    async with factory() as session:
-        await FoodRawMaterialService(session).update_raw_material_ledger(
-            [_record(last_update_datetime="어제")], SYNCED_BY
+    """An unparseable 최종수정일시 costs that column, never the record."""
+    async with pinned() as session:
+        await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages([_record(last_update_datetime="어제")]), SYNCED_BY
         )
 
     async with factory() as session:
@@ -193,20 +192,22 @@ async def test_update_raw_material_ledger_keeps_a_record_with_an_unreadable_time
 
 
 @pytest.mark.asyncio
-async def test_list_and_count_agree_under_the_same_filters(factory) -> None:
+async def test_list_and_count_agree_under_the_same_filters(factory, pinned) -> None:
     """The page and its total are built from one predicate, so they cannot drift.
 
     A total counted without the filter would make the grid say "1-2 of 3" over
     two matching rows - the footer describing a different collection than the
     one on screen.
     """
-    async with factory() as session:
-        await FoodRawMaterialService(session).update_raw_material_ledger(
-            [
-                _record(raw_material_code="A1", representative_raw_material_name="고추가루"),
-                _record(raw_material_code="A2", representative_raw_material_name="마늘"),
-                _record(raw_material_code="B1", representative_raw_material_name="고추장"),
-            ],
+    async with pinned() as session:
+        await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages(
+                [
+                    _record(raw_material_code="A1", representative_raw_material_name="고추가루"),
+                    _record(raw_material_code="A2", representative_raw_material_name="마늘"),
+                    _record(raw_material_code="B1", representative_raw_material_name="고추장"),
+                ]
+            ),
             SYNCED_BY,
         )
 
@@ -222,27 +223,29 @@ async def test_list_and_count_agree_under_the_same_filters(factory) -> None:
 
 
 @pytest.mark.asyncio
-async def test_facets_are_the_ledgers_own_values_sorted_without_null(factory) -> None:
+async def test_facets_are_the_ledgers_own_values_sorted_without_null(factory, pinned) -> None:
     """A select can only offer what a row holds, and NULL is not a choice."""
-    async with factory() as session:
-        await FoodRawMaterialService(session).update_raw_material_ledger(
-            [
-                _record(
-                    raw_material_code="A1",
-                    raw_material_large_class="식물",
-                    raw_material_medium_class="채소류",
-                ),
-                _record(
-                    raw_material_code="A2",
-                    raw_material_large_class="동물",
-                    raw_material_medium_class=None,
-                ),
-                _record(
-                    raw_material_code="A3",
-                    raw_material_large_class="식물",
-                    raw_material_medium_class="과일류",
-                ),
-            ],
+    async with pinned() as session:
+        await FoodRawMaterialService(session).replace_raw_material_ledger(
+            pages(
+                [
+                    _record(
+                        raw_material_code="A1",
+                        raw_material_large_class="식물",
+                        raw_material_medium_class="채소류",
+                    ),
+                    _record(
+                        raw_material_code="A2",
+                        raw_material_large_class="동물",
+                        raw_material_medium_class=None,
+                    ),
+                    _record(
+                        raw_material_code="A3",
+                        raw_material_large_class="식물",
+                        raw_material_medium_class="과일류",
+                    ),
+                ]
+            ),
             SYNCED_BY,
         )
 
