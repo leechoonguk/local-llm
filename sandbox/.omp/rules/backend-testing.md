@@ -37,7 +37,7 @@ backend/tests/
 │   ├── test_<domain>.py     # one per CRUD domain — 10 standard cases
 │   └── test_auth.py         # auth standard (login, /auth/me, 401 paths)
 ├── batch/                   # batch job tests
-│   └── test_<job_code>.py   # mirrors app/batch/<job_code>.py (e.g. test_sync_barcode_ledger.py)
+│   └── test_<job_code>.py   # mirrors app/batch/<job_code>.py (e.g. test_sync_mfds_ledgers.py)
 ├── repositories/            # repository unit tests — one file per source module
 │   └── test_batch.py  test_user.py
 ├── services/                # service unit tests — one file per source module

@@ -4,6 +4,7 @@ import { guarded } from "../lib/hook-visibility.ts";
 import { runAstRules } from "../lib/ast-rules.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
+import { ledgerTablesOf } from "../lib/backend-ledger-feeds.ts";
 import {
   SRC_DIRECTORIES,
   frontendSrc,
@@ -185,11 +186,11 @@ function checkListScreen(fileLabel: string, content: string): string[] {
  * `*LedgerList.tsx` is a claim about the backend, and the backend has to agree.
  *
  * The suffix relaxes the CRUD template, so it must not be borrowable: a screen
- * earns it only when a batch job fills the table it lists
- * (`backend/app/batch/sync_<domain>_<table>_ledger.py`, the file
- * `check-backend-batch` names after the ledger). Read off the domain folder and
- * the hook the screen calls, so `sections/food/FoodRawMaterialLedgerList.tsx`
- * is held to `sync_food_raw_material_ledger.py` and not to "some ledger".
+ * earns it only when a provider job replaces the table it lists - a `Feed` of
+ * some `backend/app/batch/sync_<provider>_ledgers.py` whose service is
+ * `app/services/<domain>/<table>.py`. Read off the domain folder and the
+ * screen's name, so `sections/food/FoodRawMaterialLedgerList.tsx` is held to
+ * the `raw_material` feed and not to "some ledger".
  */
 function checkLedgerListIsALedger(fileLabel: string): string[] {
   const domain = fileLabel.split("/").at(-2) ?? "";
@@ -198,12 +199,11 @@ function checkLedgerListIsALedger(fileLabel: string): string[] {
     .replace(new RegExp(`^${domain.charAt(0).toUpperCase()}${domain.slice(1)}`), "")
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase();
-  const job = join(projectRoot, "backend", "app", "batch", `sync_${domain}_${table}_ledger.py`);
-  if (table !== "" && existsSync(job)) return [];
-  const expected = `sync_${domain}_${table === "" ? "<table>" : table}_ledger.py`;
+  const tables = ledgerTablesOf(join(projectRoot, "backend", "app"), domain);
+  if (table !== "" && tables.includes(table)) return [];
   return [
-    `${fileLabel}: named a ledger list, but no batch job fills it - ` +
-      `backend/app/batch/${expected} does not exist. A table nothing ` +
+    `${fileLabel}: named a ledger list, but no provider job replaces ${domain}.${table === "" ? "<table>" : table} - ` +
+      "no Feed of backend/app/batch/sync_*_ledgers.py names its service. A table nothing " +
       "syncs is edited by people and gets the CRUD list template (<Domain>List.tsx)",
   ];
 }

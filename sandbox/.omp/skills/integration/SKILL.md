@@ -297,6 +297,17 @@ still match. **Only step 1 sees it** — one filtered call against one unfiltere
 comparing the totals. Skipping the measurement makes this defect unreachable by any
 later check.
 
+### 9. A paging operation is not done here
+
+`make verify` stays red after step 8 when the operation pages: `check-backend-batch`
+asks for the `Feed` that walks every seeded paging operation, and names the job it
+belongs in (`sync_<provider>_ledgers.py`). That is the hand-off, not a false
+positive - an integration target is a ledger (`backend-batch.md`), and the seed is
+the first half of it. Continue with the `ledger` skill in the same change: the
+table, its `replace_<table>_ledger`, the `Feed`, and the numbers from a live pass.
+A lookup operation (no `range_start`/`page_no` among its caller inputs) ends at
+step 8.
+
 ## Discovery Pitfalls
 
 Readers that assumed a single integration, each measured after a second provider
@@ -331,3 +342,6 @@ landed. Check these when a new provider joins:
   `api/integration.http` that exercises it.
 - Put a `required` row on a column the provider leaves empty for sparse records.
 - Claim a window works without two calls that show it moving.
+- Stop at the seed for an operation that pages. Two operations sat seeded and
+  unread for the life of five sync jobs because the gate asked only whether what
+  a job named existed, never whether what existed was walked.

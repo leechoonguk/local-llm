@@ -3,6 +3,7 @@ import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-saf
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
+import { ledgerTablesOf } from "../lib/backend-ledger-feeds.ts";
 import {
   SRC_DIRECTORIES,
   discoverDomains,
@@ -106,16 +107,12 @@ export function checkFrontendDomainSync(): string[] {
 }
 
 /**
- * A domain is a ledger when the backend fills its tables from a provider:
- * `backend/app/batch/sync_<domain>_*_ledger.py` exists - the same fact
+ * A domain is a ledger when a provider job replaces its tables feed by feed -
+ * the `FEEDS` of `backend/app/batch/sync_<provider>_ledgers.py`, the same fact
  * `check-backend-domain` reads to make the router read-only.
  */
 function isLedgerDomain(domain: string): boolean {
-  const batchDir = join(projectRoot, "backend", "app", "batch");
-  if (!existsSync(batchDir)) return false;
-  return readdirSync(batchDir).some((file: string) =>
-    new RegExp(`^sync_${domain}_[a-z0-9_]+_ledger\\.py$`).test(file),
-  );
+  return ledgerTablesOf(join(projectRoot, "backend", "app"), domain).length > 0;
 }
 
 /**

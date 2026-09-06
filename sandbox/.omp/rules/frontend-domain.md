@@ -19,8 +19,9 @@ Machine-checked by `check-frontend-domain.ts` (`make check-frontend-domain`).
 
 ## Ledger Domains
 
-A domain whose backend tables a batch job fills (`sync_<domain>_*_ledger.py`) is
-a **ledger domain** on this side too, and `check-frontend-domain` checks it per
+A domain whose backend tables a provider job replaces (a `Feed` of
+`backend/app/batch/sync_<provider>_ledgers.py`, read through
+`hooks/lib/backend-ledger-feeds.ts`) is a **ledger domain** on this side too, and `check-frontend-domain` checks it per
 table instead of per CRUD resource:
 
 | Layer | Ledger domain | CRUD domain |

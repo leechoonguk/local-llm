@@ -1,6 +1,7 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { layerFiles } from "./backend-layout.ts";
+import { ledgerTablesOf } from "./backend-ledger-feeds.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { resolveProjectRoot } from "./hook-project-root.ts";
@@ -73,23 +74,6 @@ function schemaLeafSources(schemaDir: string, name: string): [string | null, str
       file.replace(/\.py$/, ""),
       readFileSync(join(folder, file), "utf-8"),
     ]);
-}
-
-/**
- * The tables of a domain that a batch job fills from a provider - one per
- * `app/batch/sync_<name>_<table>_ledger.py`. The job's name carries the table
- * it fills (`check-backend-batch`), so the file is the fact, not a marker; a
- * domain with none is not a ledger domain.
- */
-function ledgerTablesOf(base: string, name: string): string[] {
-  const batchDir = join(base, "batch");
-  if (!existsSync(batchDir)) return [];
-  const tables: string[] = [];
-  for (const file of readdirSync(batchDir)) {
-    const m = new RegExp(`^sync_${name}_([a-z0-9_]+)_ledger\\.py$`).exec(file);
-    if (m !== null) tables.push(m[1]);
-  }
-  return tables;
 }
 
 function pascalCase(domain: string): string {
@@ -925,8 +909,8 @@ export function checkDomainStructure(): string[] {
     }
 
     // Router: the CRUD template has 5 endpoints and UUID path params. A
-    // **ledger domain** - one whose tables a batch job fills from a provider
-    // (`app/batch/sync_<name>_*_ledger.py`) - is read-only instead: a row
+    // **ledger domain** - one whose tables a provider job replaces feed by feed
+    // (a `Feed` of `app/batch/sync_<provider>_ledgers.py`) - is read-only instead: a row
     // written by hand is compared against the provider's record on the next
     // pass and overwritten, so a write endpoint there is a lie the sync corrects
     // nightly. The check refuses the write verbs rather than requiring them.

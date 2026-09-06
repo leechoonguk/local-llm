@@ -142,11 +142,10 @@ what the routers name — the body (`data: <X>Request`) and the return annotatio
 (`Page[X]` unwrapped) — and the closure follows field annotations, so a nested
 `IntegrationOperationCreateRequest` arriving inside a provider `PUT` stays in.
 
-`backend-domain` requires a full schema set per table, so `batch_run`,
-`batch_step` and `batch_checkpoint` each have Create/Update/Read classes. The
-browser never posts a run, and no endpoint returns a checkpoint at all —
-demanding TypeScript twins for those asks the client to declare shapes the API
-neither accepts nor answers with.
+`backend-domain` requires a full schema set per table, so `batch_run` and
+`batch_step` each have Create/Update/Read classes. The browser never posts a
+run or a step — demanding TypeScript twins for those asks the client to declare
+shapes the API neither accepts nor answers with.
 
 ## Writing the Types
 

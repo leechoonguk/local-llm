@@ -60,8 +60,8 @@ The two rules point in opposite directions and meet exactly:
 
 Together they read: *declare exactly the aliases your endpoints use.* Before the
 pair existed, `backend-domain` required an alias for every domain including the
-router-less ones (`food_barcode`, and the `batch_checkpoint` leaf of the `batch`
-domain), which is dead code the rule itself mandated.
+router-less ones (`food_barcode`, and the since-dropped `batch_checkpoint` leaf
+of the `batch` domain), which is dead code the rule itself mandated.
 
 ## Never Do These
 

@@ -51,8 +51,8 @@ requires both.
 ## Ledger List
 
 The list template with its write half removed. A ledger is a table a nightly
-batch job fills from a provider (`backend/app/batch/sync_<domain>_<table>_ledger.py`)
-and compares against the provider on every pass, so a row typed on this screen
+provider job replaces with a whole pass of its feed (a `Feed` of
+`backend/app/batch/sync_<provider>_ledgers.py`), so a row typed on this screen
 would be overwritten by morning - and the backend has no verb to accept it
 (`backend-domain.md`, "Ledger Domains Are Read-Only Over HTTP").
 
@@ -72,8 +72,9 @@ column of the ledger is a grid column - the column selector is the detail view,
 so there is no detail dialog and no GET-by-id.
 
 **The suffix is a claim the backend must back.** `check-frontend-screens` holds
-`<Domain><Table>LedgerList.tsx` to the existence of
-`sync_<domain>_<table>_ledger.py`; a table nothing syncs is edited by people and
+`<Domain><Table>LedgerList.tsx` to a feed whose service is
+`app/services/<domain>/<table>.py` (`hooks/lib/backend-ledger-feeds.ts`); a
+table nothing syncs is edited by people and
 gets the CRUD template. Measured before the rule: the CRUD check demanded
 `useCrudDialog` on the raw material screen, and the only way to satisfy it was a
 dialog that edited rows the next sync would erase.

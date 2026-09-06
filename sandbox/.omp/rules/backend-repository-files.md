@@ -19,9 +19,8 @@ its filename names.
 repositories/
   user.py                UserRepository → table user
   food_barcode.py        FoodBarcodeRepository → table food_barcode
-  batch/                 # four repositories → a folder
+  batch/                 # three repositories → a folder
     schedule.py          BatchScheduleRepository   → batch_schedule
-    checkpoint.py        BatchCheckpointRepository → batch_checkpoint
     run.py               BatchRunRepository        → batch_run
     step.py              BatchStepRepository       → batch_step
   integration/

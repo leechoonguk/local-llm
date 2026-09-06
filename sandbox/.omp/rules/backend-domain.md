@@ -204,9 +204,11 @@ from deferring a step's verification until the end.
 
 ## Ledger Domains Are Read-Only Over HTTP
 
-A domain whose tables a batch job fills from a provider
-(`app/batch/sync_<domain>_<table>_ledger.py` exists) is a **ledger domain**, and
-each such `<table>` is a ledger. A ledger's routes expose `GET` only: a row
+A domain whose tables a provider job replaces feed by feed (a `Feed` of
+`app/batch/sync_<provider>_ledgers.py` names `app.services.<domain>.<table>`)
+is a **ledger domain**, and each such `<table>` is a ledger. The fact is read by
+one reader for every check (`hooks/lib/backend-ledger-feeds.ts`), never off a
+file name. A ledger's routes expose `GET` only: a row
 written by hand is compared against the provider's record on the next pass and
 overwritten, so `POST`/`PATCH`/`DELETE` there would be a promise the sync breaks
 nightly. `check-backend-domain` refuses a write verb on a route whose first path

@@ -362,6 +362,14 @@ export interface IntegrationOperation {
   root: string | null;
   /** The `path_template` its newest seed writes, or null when the file omits it. */
   pathTemplate: string | null;
+  /**
+   * The code of the provider whose id the operation seed names, as a migrated
+   * database carries it now - a rename (`provider.update().values(code=...)`)
+   * is followed, so revision 74's `data-go-kr` is what the nutrition
+   * operations answer, not the `mfds-food-nutrition` their seed string says.
+   * Null when the seed file carries no `PROVIDER_ID`.
+   */
+  provider: string | null;
 }
 
 /**
@@ -476,6 +484,7 @@ export function listIntegrationOperations(): IntegrationOperation[] {
   const templateOf = new Map<string, string | null>();
   const providerOf = new Map<string, string>();
   const providerReplacedAt = new Map<string, number>();
+  const providerCodeOf = new Map<string, string>();
   for (const filename of readdirSync(versionsDir).filter((f: string) => f.endsWith(".py")).sort()) {
     const revision = Number.parseInt(filename.split("_")[0], 10);
     const content = readFileSync(join(versionsDir, filename), "utf-8");
@@ -486,6 +495,20 @@ export function listIntegrationOperations(): IntegrationOperation[] {
     if (tables.has(FIELD_TABLE) && seed !== null) configuredSeeds.add(seed);
     if (tables.has(PROVIDER_TABLE) && providerSeed !== null && PROVIDER_DELETE.test(upgradeBody(content))) {
       providerReplacedAt.set(providerSeed, Math.max(providerReplacedAt.get(providerSeed) ?? 0, revision));
+    }
+    if (tables.has(PROVIDER_TABLE) && providerSeed !== null) {
+      // The provider's current code: the newest insert or rename of its seed
+      // wins, in revision order (the same reading `listIntegrationProviderCodes`
+      // makes, kept per seed so an operation can be joined to it).
+      for (const insert of bulkInserts(content)) {
+        if (insertTarget(insert, bindings) !== PROVIDER_TABLE) continue;
+        const scope = `${insert.rows}${calledHelperBodies(content, insert.rows)}`;
+        for (const code of scope.matchAll(CODE_LITERAL)) providerCodeOf.set(providerSeed, code[1]);
+      }
+      const upgrade = upgradeBody(content);
+      if (PROVIDER_CODE_UPDATE.test(`${upgrade}${calledHelperBodies(content, upgrade)}`)) {
+        for (const code of resolvedCodes(content, upgrade)) providerCodeOf.set(providerSeed, code);
+      }
     }
     if (!tables.has(OPERATION_TABLE)) continue;
     for (const insert of bulkInserts(content)) {
@@ -513,6 +536,7 @@ export function listIntegrationOperations(): IntegrationOperation[] {
       configured: seed !== null && configuredSeeds.has(seed),
       root: rootOf.get(code) ?? null,
       pathTemplate: templateOf.get(code) ?? null,
+      provider: providerCodeOf.get(providerOf.get(code) ?? "") ?? null,
     }))
     .sort((left, right) => left.code.localeCompare(right.code));
 }

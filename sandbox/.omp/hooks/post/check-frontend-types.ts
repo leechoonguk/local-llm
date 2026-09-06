@@ -280,11 +280,10 @@ function modelToInterface(model: string): string | null {
  * `operations: list[IntegrationOperationCreateRequest]` — replacing a provider
  * is how that nested body arrives, so the client must be able to express it.
  *
- * A model nothing reaches is written by the server for itself. `batch_run`,
- * `batch_step` and `batch_checkpoint` have full schema sets because the domain
- * rule requires them, but the browser never posts a run and no endpoint returns
- * a checkpoint at all — demanding TypeScript twins would be asking the client to
- * declare shapes the API neither takes nor sends.
+ * A model nothing reaches is written by the server for itself. `batch_run` and
+ * `batch_step` have full schema sets because the domain rule requires them, but
+ * the browser never posts a run or a step — demanding TypeScript twins would be
+ * asking the client to declare shapes the API neither takes nor sends.
  */
 function wireReachableModels(pyTypes: Map<string, Map<string, FieldType>>): Set<string> {
   const routersDir = join(projectRoot, "backend", "app", "routers");
