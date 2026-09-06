@@ -37,6 +37,40 @@ export const projectRoot = existsSync(join(process.cwd(), "frontend", "src"))
 
 export const frontendSrc = join(projectRoot, "frontend", "src");
 
+/**
+ * The frontend layout — what may exist directly under `frontend/src/`.
+ *
+ * The backend twin (`backend-layout.ts`) also constrains depth, because flat
+ * layer scans went blind when domains became folders. Here the read side
+ * (`walkSources`) is fully recursive, so depth blinds nothing and only the
+ * directory set is declared: the write gate refuses a new top-level directory
+ * (`frontend/src/adapters/`) the way `strict-backend-app-structure` refuses
+ * `backend/app/adapters/`.
+ */
+export const SRC_LAYOUT = {
+  directories: {
+    auth: true,
+    components: true,
+    hooks: true,
+    layouts: true,
+    lib: true,
+    locales: true,
+    pages: true,
+    routes: true,
+    sections: true,
+    theme: true,
+    types: true,
+    utils: true,
+  } as Record<string, true>,
+  rootFiles: {
+    "App.tsx": true,
+    "main.tsx": true,
+    "config.ts": true,
+    "styles.css": true,
+    "vite-env.d.ts": true,
+  } as Record<string, true>,
+};
+
 export const SRC_DIRECTORIES = {
   components: join(frontendSrc, "components"),
   hooks: join(frontendSrc, "hooks"),
@@ -82,6 +116,22 @@ export function label(path: string): string {
 
 export function readIfPresent(path: string): string | null {
   return existsSync(path) ? readFileSync(path, "utf-8") : null;
+}
+
+/**
+ * Source with comments removed — the first step of every structural read.
+ *
+ * A check that scans raw source matches the prose explaining the construct as
+ * readily as the construct: a style assertion here once passed against a file
+ * whose style had been deleted, because the comment above it still named the
+ * property. Both JSX (`{/* … *\/}`) and plain block comments go, then whole-line
+ * `//` — a trailing `//` is left alone, since stripping it would need the string
+ * tracking the callers do for themselves.
+ */
+export function stripComments(content: string): string {
+  return content
+    .replace(/\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
 /**

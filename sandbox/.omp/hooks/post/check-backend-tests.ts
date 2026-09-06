@@ -24,7 +24,8 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
-import { aggregateDomains, belongsToAggregateDomain, listModelFiles } from "../lib/backend-domain-structure.ts";
+import { aggregateDomains, belongsToAggregateDomain } from "../lib/backend-domain-structure.ts";
+import { layerFiles } from "../lib/backend-layout.ts";
 import { hasLayer } from "../lib/backend-domain-layers.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 import { guarded } from "../lib/hook-visibility.ts";
@@ -192,6 +193,9 @@ function checkBackendTestsSync(): string[] {
   // moment the aggregate was split.
   if (existsSync(apiDir) && existsSync(servicesDir)) {
     const apiFiles = new Set(readdirSync(apiDir).filter((f: string) => f.endsWith(".py")));
+    // layer-flat-ok: the unit here is a domain, not a file — a folder domain is
+    // one domain with one API test file, and `belongsToAggregateDomain` already
+    // excludes it, so descending would demand `test_batch/run.py`.
     for (const f of readdirSync(servicesDir)) {
       if (!f.endsWith(".py") || f === "__init__.py") continue;
       const name = f.replace(/\.py$/, "");
@@ -292,8 +296,14 @@ function checkBackendTestsSync(): string[] {
       for (const m of routerContent.matchAll(/@router\.(get|post|put|delete)\("([^"]*)"\)/g)) {
         const method = m[1].toUpperCase();
         const path = m[2] === "/" ? `${prefix}/` : `${prefix}${m[2]}`;
+        // A parameterised path is exercised through an f-string that carries the
+        // literal head up to its first `{`: `/user/{user_id}` as `f"/api/v1/user/{`,
+        // and `/food/raw-material/{food_raw_material_id}` as
+        // `f"/api/v1/food/raw-material/{`. Matching only `<prefix>/{` missed
+        // every sub-resource path - measured on the first folder-domain router.
+        const head = path.split("{")[0];
         const pathRe = new RegExp(
-          `[\"']${API_VERSION_PREFIX}${escapeRegExp(path)}[\"']|f[\"']${API_VERSION_PREFIX}${escapeRegExp(prefix)}/\\{`,
+          `[\"']${API_VERSION_PREFIX}${escapeRegExp(path)}[\"']|f[\"']${API_VERSION_PREFIX}${escapeRegExp(head)}\\{`,
         );
         if (!pathRe.test(testContent)) {
           issues.push(`tests/api/test_${name}.py: endpoint ${method} ${path} not exercised — add a test hitting this path`);
@@ -331,7 +341,7 @@ function checkBackendTestsSync(): string[] {
   // reported success on nothing.
   const reposSrcDir = join(projectRoot, "backend", "app", "repositories");
   if (existsSync(reposSrcDir) && existsSync(repositoriesTestDir)) {
-    for (const f of listModelFiles(reposSrcDir)) {
+    for (const f of layerFiles(reposSrcDir)) {
       const name = f.replace(/\.py$/, "").split("/").pop() ?? "";
       const domain = f.includes("/") ? f.split("/")[0] : name;
       if (belongsToAggregateDomain(domain, aggregates)) continue;
@@ -355,7 +365,7 @@ function checkBackendTestsSync(): string[] {
   // service-layer contracts (NotFoundError raising, transaction boundaries,
   // ConflictError/AuthenticationError paths).
   if (existsSync(servicesDir) && existsSync(servicesTestDir)) {
-    for (const f of listModelFiles(servicesDir)) {
+    for (const f of layerFiles(servicesDir)) {
       const serviceDomain = f.includes("/") ? f.split("/")[0] : f.replace(/\.py$/, "");
       // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중

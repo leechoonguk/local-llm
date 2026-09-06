@@ -29,7 +29,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
-import { listModelFiles } from "./backend-domain-structure.ts";
+import { layerFiles } from "./backend-layout.ts";
 
 const projectRoot = existsSync(join(process.cwd(), "backend", "app"))
   ? process.cwd()
@@ -47,7 +47,7 @@ export function checkModelFilesSync(): string[] {
   const issues: string[] = [];
   const flatSiblings = new Map<string, string[]>();
 
-  for (const file of listModelFiles(MODELS_DIR).sort()) {
+  for (const file of layerFiles(MODELS_DIR).sort()) {
     const content = readFileSync(join(MODELS_DIR, file), "utf-8");
     const tables = [...content.matchAll(new RegExp(TABLENAME.source, "g"))].map((m) => m[1]);
     if (tables.length === 0) continue;

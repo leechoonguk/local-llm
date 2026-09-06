@@ -12,7 +12,7 @@
  */
 
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 
@@ -124,10 +124,25 @@ export function resolveFields(name: string, shapes: Map<string, TypeShape>): Set
  * app's own `mfds-food-safety-korea`). A form that validates less lets a value
  * reach the server and come back as a generic 422 toast with no field named.
  */
+export interface YupRule {
+  max?: number;
+  min?: number;
+  matches: boolean;
+  required: boolean;
+  boolean: boolean;
+}
+
 export interface FieldConstraints {
   min?: number;
   max?: number;
   pattern: boolean;
+  /** No default of any kind: the server refuses the body without this field. */
+  required: boolean;
+  /** `ge=` / `gt=` / `le=` / `lt=` — what the server refuses for a number. */
+  atLeast?: number;
+  greaterThan?: number;
+  atMost?: number;
+  lessThan?: number;
 }
 
 /**
@@ -174,6 +189,11 @@ export function parsePydanticConstraints(source: string): Map<string, Map<string
       min: readNumber(declaration, "min_length", constants),
       max: readNumber(declaration, "max_length", constants),
       pattern: /\bpattern\s*=/.test(declaration),
+      required: isRequired(declaration),
+      atLeast: readNumber(declaration, "ge", constants),
+      greaterThan: readNumber(declaration, "gt", constants),
+      atMost: readNumber(declaration, "le", constants),
+      lessThan: readNumber(declaration, "lt", constants),
     });
   }
 
@@ -203,7 +223,7 @@ export function parsePydanticConstraints(source: string): Map<string, Map<string
  * `code-layout.md` requires the literal to be a named constant at the top of
  * the file — so the rule reads `.max(CODE_MAX_LENGTH)`, never `.max(64)`.
  */
-export function parseYupRules(source: string): Map<string, { max?: number; min?: number; matches: boolean }> {
+export function parseYupRules(source: string): Map<string, YupRule> {
   const constants = new Map<string, number>();
   // `export const` is the same declaration: a screen that edits in place reads
   // the length from the form that owns it rather than retyping it, and the
@@ -212,8 +232,11 @@ export function parseYupRules(source: string): Map<string, { max?: number; min?:
     constants.set(match[1], Number(match[2]));
   }
 
-  const schemaStart = source.indexOf("yup.object({");
-  const rules = new Map<string, { max?: number; min?: number; matches: boolean }>();
+  // Tolerant of formatting: `yup\n  .object({` is the same program, and an
+  // exact-string marker turned the whole parity family off for that dialog —
+  // measured, PASS with every comparison gone.
+  const schemaStart = source.search(/yup\s*\.\s*object\s*\(\{/);
+  const rules = new Map<string, YupRule>();
   if (schemaStart === -1) return rules;
   const schema = source.slice(schemaStart);
 
@@ -233,6 +256,11 @@ export function parseYupRules(source: string): Map<string, { max?: number; min?:
       // `.email()` and `.url()` are patterns yup ships; only `.matches()` spells
       // one out, and reading just that reported a form rule as missing.
       matches: /\.matches\(|\.email\(|\.url\(/.test(chain),
+      required: /\.required\(/.test(chain),
+      // A checkbox always submits true or false, so "required" has no meaning
+      // for it — yup spells that `.defined()`, and demanding `.required()`
+      // here would ask a form to refuse a value the control cannot produce.
+      boolean: /yup\s*\.boolean\(/.test(chain),
     });
   });
   return rules;
@@ -255,6 +283,22 @@ export function parseServiceShapeRules(source: string): Set<string> {
     fields.add(match[1]);
   }
   return fields;
+}
+
+/**
+ * Whether the server refuses a body that omits this field.
+ *
+ * Required is the **absence of a default**, which is not the same as the absence
+ * of `Field(...)`: `code: str = Field(max_length=64)` declares constraints and
+ * no default, so it is required. `= None`, `= Field(default=...)` and a bare
+ * literal are the three ways a field stops being.
+ */
+function isRequired(declaration: string): boolean {
+  const assignment = /^\s*\w+\s*:\s*[^=\n]+=\s*(.*)$/.exec(declaration);
+  if (assignment === null) return true;
+  const value = assignment[1].trim();
+  if (value.startsWith("Field(")) return !/\bdefault\s*=/.test(value);
+  return false;
 }
 
 function readNumber(
@@ -318,5 +362,19 @@ export function normalisePath(path: string): string {
 
 export function readBackendModule(projectRoot: string, ...segments: string[]): string | null {
   const path = join(projectRoot, "backend", "app", ...segments);
-  return existsSync(path) ? readFileSync(path, "utf-8") : null;
+  if (existsSync(path)) return readFileSync(path, "utf-8");
+
+  // A domain that grew into a folder is still one domain: `schemas/batch.py`
+  // became `schemas/batch/{schedule,run,step,checkpoint}.py`, and reading only
+  // the flat path returned null — so `checkValidationParity` returned early and
+  // **two of the three domains were never compared at all**. The check kept
+  // passing; it had simply stopped applying, which is this harness's one
+  // silent failure mode (`omp-hooks.md` → Measure The Domain, Never Name It).
+  const folder = path.replace(/\.py$/, "");
+  if (!existsSync(folder)) return null;
+  const modules = readdirSync(folder)
+    .filter((file: string) => file.endsWith(".py") && file !== "__init__.py")
+    .sort();
+  if (modules.length === 0) return null;
+  return modules.map((file: string) => readFileSync(join(folder, file), "utf-8")).join("\n");
 }

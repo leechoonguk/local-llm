@@ -41,9 +41,25 @@ there is no configuration revision, configuration cache, or invalidation path.
   unique). A field references it by FK, so a key is rotated in one place, survives a
   full replacement of an operation's fields, and is stored once no matter how many
   operations send it. Read responses expose the name, never the value.
+  **A pool is a property of the secret.** Secrets of one provider sharing a
+  `rotation_group` are interchangeable, and the caller sees one credential. The group
+  lives on the secret and not on the field or the operation because the keys are the
+  portal's and so is their quota: six operations under `mfds-food-safety-korea` would
+  otherwise each carry a list of the same three keys, and the list that missed the
+  fourth key would be the one running that night. `exhausted_until` is the only runtime
+  state on the table - when a member answered one of the operation's quota codes, plus
+  that code's sit-out. Written by a Core UPDATE without the version
+  bump: the job and the endpoint that hit the quota in the same second must both
+  succeed, and no reader compares this column's revision.
 - `integration_operation` owns method, relative path template, timeout/retry policy,
-  idempotency, request JSON Schema, `response_format` (JSON|XML), and `response_root` —
-  the whole response contract. **Mapping is the only response contract**: the RESPONSE
+  idempotency, request JSON Schema, `response_format` (JSON|XML), `response_root` —
+  the whole response contract — and `quota_codes`: the envelope values that mean "not
+  this key right now" rather than "this answer is wrong", each with the seconds the key
+  sits out (`{"INFO-320": 3600, "INFO-500": 60}` on the mfds portal: the hour's quota
+  recovers within the hour, a "busy key" within seconds - an hour for a moment would
+  shrink a three-key pool to one). Disjoint from the ENVELOPE row's accepted values by
+  construction (`_validate_quota_codes`): a code that is "success" and "spent" at once
+  would never turn the pool. **Mapping is the only response contract**: the RESPONSE
   rows always build the canonical payload. `response_root` says what they are resolved
   against: absent, one record through absolute pointers; present, every element of the
   page it names through element-relative pointers.
@@ -231,6 +247,19 @@ capability is added, move all three layers and let this test decide:
 - `SECRET` fields resolve through `integration_secret.value` at call time; a disabled
   or missing secret is an `IntegrationConfigurationError` (422). Never use environment
   variables for integration secrets, and never echo a secret value in a read response.
+- **The key pool is invisible above the operation service.** `execute_operation` lists
+  the provider's grouped, enabled, unspent secrets, picks a member per group by a
+  per-process round-robin (random start, advancing per call - no row write per call,
+  so the scheduler and a manual run spread across the pool without a lock), and hands
+  the choice to `IntegrationClient.from_database(secrets=...)`. An answer carrying one
+  of the operation's `quota_codes` sits that member out for the code's seconds and
+  sends the same request with the next one; every try is its own `integration_call` row carrying
+  `secret_name` (the name, never the value). The caller sees the provider's refusal
+  only when every member is spent - the batch job's "leave the cursor and stop" is
+  then the right ending, and it did not change. `batch/`, `routers/` and
+  `dependencies/` may not mention `rotation_group`, `exhausted_until`, `list_pool` or
+  `mark_exhausted` (machine-checked): a caller that re-implements the rotation once
+  is the copy that forgets to mark the spent key.
 
 ## Request and Response Rules
 

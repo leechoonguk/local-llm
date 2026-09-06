@@ -40,7 +40,7 @@
  * the integration screens it was measured on.
  */
 
-import { SRC_DIRECTORIES, readSources } from "./frontend-source.ts";
+import { SRC_DIRECTORIES, readSources, stripComments } from "./frontend-source.ts";
 
 /** Container tags a section is built from: the blocks worth comparing. */
 const CONTAINER_TAGS = ["Stack", "Box", "Card"];
@@ -163,12 +163,6 @@ function checkModeTwinFiles(labels: string[]): string[] {
     );
   }
   return issues;
-}
-
-function stripComments(content: string): string {
-  return content
-    .replace(/\{\/\*[\s\S]*?\*\/\}|\/\*[\s\S]*?\*\//g, "")
-    .replace(/^[ \t]*\/\/.*$/gm, "");
 }
 
 function normalizedLines(source: string): string[] {

@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { APP_LAYERS } from "../lib/backend-layout.ts";
 import { touchesStrict } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -122,6 +123,130 @@ function stripComments(source: string): string {
  * cannot see. Refusal is a pre hook's job; the two are already separated by
  * directory, and this keeps the separation true in the code.
  */
+/**
+ * A backend layer is traversed through the shared walker, never a bare scan.
+ *
+ * `models/`, `schemas/`, `services/` and `repositories/` hold folder domains —
+ * `backend-domain.md` documents that shape, and today **seventy percent of the
+ * files in those layers are one level down**. `readdirSync(dir)` filtered on
+ * `.py` skips every directory, so a hook written that way keeps passing while it
+ * inspects a third of the layer.
+ *
+ * That is not hypothetical. Four checks were measured blind by planting the same
+ * violation twice — once in a flat file, once in a nested one:
+ *
+ * | Check | Flat file | Nested file |
+ * |---|---|---|
+ * | `check-backend-service-injection` | FAIL | **PASS** |
+ * | `check-backend-table-design` | FAIL | **PASS** |
+ * | `check-backend-auth` | FAIL | **PASS** |
+ * | `check-backend-naming` (conftest imports) | FAIL | **PASS** |
+ *
+ * `layerFiles` (lib/backend-layout.ts) descends the one level the convention
+ * allows, and the layer set below comes from the same `APP_LAYERS` declaration
+ * the write gate enforces — so neither side can drift from the other. A
+ * `withFileTypes` scan is accepted too: it means the author is distinguishing a
+ * directory from a file rather than silently dropping it.
+ */
+function checkLayerTraversal(): string[] {
+  const issues: string[] = [];
+  // Folder domains exist only where the layout allows depth: derived, not listed.
+  const layers = Object.entries(APP_LAYERS)
+    .filter(([, shape]) => shape.depth === 1)
+    .map(([name]) => name);
+  const root = join(ompDir, "hooks");
+  for (const scope of ["post", "lib"]) {
+    const directory = join(root, scope);
+    if (!existsSync(directory)) continue;
+    for (const file of readdirSync(directory)) {
+      if (!file.endsWith(".ts")) continue;
+      const source = readFileSync(join(directory, file), "utf-8");
+      // Which locals name a backend layer directory in this file.
+      const locals = new Set<string>();
+      for (const match of source.matchAll(/(?:const|let)\s+(\w+)\s*=\s*join\(([^)]*)\)/g)) {
+        // `frontend/src/lib/api/services` is flat and shares a layer name, so the
+        // join must actually address the backend tree — otherwise the check
+        // reports a directory that has no subdirectories to miss.
+        const argument = match[2];
+        // In a backend-scoped module the layer name is enough; a cross-cutting
+        // one must say so, because `frontend/src/lib/api/services` is flat and
+        // shares the name — reporting it would name a directory with no
+        // subdirectories to miss.
+        const backendScoped = file.startsWith("check-backend-") || file.startsWith("backend-");
+        if (!backendScoped && !/\bappDir\b|"backend"|"app"/.test(argument)) continue;
+        if (layers.some((layer) => argument.includes(`"${layer}"`))) locals.add(match[1]);
+      }
+      for (const local of locals) {
+        const bare = new RegExp(`readdirSync\\(\\s*${local}\\s*\\)`);
+        const match = bare.exec(source);
+        if (match === null) continue;
+        // Some scans are about the *domain*, not the file: mapping a domain to
+        // its API test file has one unit per domain, and folder domains are
+        // already excluded by `belongsToAggregateDomain`. The reason is required
+        // and sits with the line, so an exemption cannot outlive its argument.
+        const preceding = source.slice(0, match.index).split("\n").slice(-5).join("\n");
+        if (/\/\/ layer-flat-ok: \S/.test(preceding)) continue;
+        issues.push(
+          `.omp/hooks/${scope}/${file}: readdirSync(${local}) scans a backend ` +
+            "layer one level too shallow — folder domains keep most of their files in " +
+            "subdirectories, so the check would pass while seeing a third of the layer; " +
+            "use layerFiles()",
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * A prerequisite that vanishes must have a named owner, or the vanishing is a
+ * finding.
+ *
+ * The pattern: `const x = readIfPresent(...); if (x === null) return ...` with
+ * nothing reported. The file is gone, the check family it fed retires, and the
+ * gate stays green — measured across one audit as the harness's recurring
+ * failure shape (folder domains, `SUPPORTED_LANGUAGES`, `yup.object`). Most of
+ * the eighteen such sites are legitimate: the file is imported by the app (tsc
+ * owns it), or another check reports its absence, or a sentinel downstream
+ * fires on the emptiness. Legitimate is fine — **stated** is the requirement.
+ *
+ * So a silent null-return needs one of:
+ *
+ * - a string literal in the return (the check itself reports the absence);
+ * - `// existence-ok: <reason>` within five lines above the read, naming the
+ *   owner. The reason is required, so the classification this audit did by
+ *   hand is done once, at authoring time, by whoever writes the next site.
+ */
+function checkSilentPrerequisites(): string[] {
+  const issues: string[] = [];
+  const root = join(ompDir, "hooks");
+  for (const scope of ["post", "lib"]) {
+    const directory = join(root, scope);
+    if (!existsSync(directory)) continue;
+    for (const file of readdirSync(directory)) {
+      if (!file.endsWith(".ts")) continue;
+      const lines = readFileSync(join(directory, file), "utf-8").split("\n");
+      lines.forEach((line: string, index: number) => {
+        const read = /const (\w+) = (?:readIfPresent|readBackendModule)\(/.exec(line);
+        if (read === null) return;
+        const window = lines.slice(index + 1, index + 6).join("\n");
+        const bail = new RegExp(`if \\(${read[1]} === null\\)\\s*(?:\\{\\s*)?return ([^;\\n]*)`).exec(window);
+        if (bail === null) return;
+        if (/["'\`]/.test(bail[1])) return;
+        const preceding = lines.slice(Math.max(0, index - 5), index).join("\n");
+        if (/\/\/ existence-ok: \S/.test(preceding)) return;
+        issues.push(
+          `.omp/hooks/${scope}/${file}:${index + 1}: ${read[1]} returns silently when its file ` +
+            "is missing — name the owner with `// existence-ok: <reason>` (tsc? another " +
+            "check? a downstream sentinel?) or report the absence, because a vanished " +
+            "prerequisite otherwise retires this check without a trace",
+        );
+      });
+    }
+  }
+  return issues;
+}
+
 function checkPostHooksNeverBlock(): string[] {
   const issues: string[] = [];
   const postDir = join(ompDir, "hooks", "post");
@@ -386,6 +511,8 @@ function checkOmpHooksSync(): string[] {
   // --- 3. Rule ↔ Hook 1:1 mapping (per the table in omp-hooks.md) ---
 
   issues.push(...checkPostHooksNeverBlock());
+  issues.push(...checkLayerTraversal());
+  issues.push(...checkSilentPrerequisites());
   issues.push(...checkRuleHookMapping(content, actualFiles));
 
   // --- 3b. Hook name ↔ path scope consistency (omp-naming-consistency.md) ---

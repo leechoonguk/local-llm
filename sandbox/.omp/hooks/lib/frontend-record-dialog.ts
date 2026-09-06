@@ -31,15 +31,7 @@
  * and each violation fires.
  */
 
-import { SRC_DIRECTORIES, readSources } from "./frontend-source.ts";
-
-/** JSX order is the whole point of two of these rules, so comments must go first. */
-function stripComments(content: string): string {
-  return content
-    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/^[ \t]*\/\/.*$/gm, "");
-}
+import { SRC_DIRECTORIES, readSources, stripComments } from "./frontend-source.ts";
 
 /** `<Name` opening tags in source order — enough to compare positions. */
 function openingTags(content: string): string[] {

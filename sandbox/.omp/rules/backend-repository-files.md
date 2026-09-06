@@ -18,7 +18,7 @@ its filename names.
 ```
 repositories/
   user.py                UserRepository → table user
-  barcode.py             BarcodeRepository → table barcode
+  food_barcode.py        FoodBarcodeRepository → table food_barcode
   batch/                 # four repositories → a folder
     schedule.py          BatchScheduleRepository   → batch_schedule
     checkpoint.py        BatchCheckpointRepository → batch_checkpoint

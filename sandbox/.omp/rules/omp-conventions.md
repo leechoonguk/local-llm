@@ -220,6 +220,15 @@ project — every session (bench cell or real work) runs the same configuration,
   sickness (context-size, similarity) fire during productive work and cost
   re-reads that can push a task past its deadline.
 
+## Before the Hook Is Written
+
+A rule states an invariant; the hook makes it mechanical. Before writing the
+hook, walk `omp-hooks.md` → *The Measured Failure Classes*: seven ways a check
+in this repository kept reporting PASS after it stopped looking. Each has a
+question to answer at authoring time and, where possible, a meta-check that
+refuses the unanswered form. A rule whose hook can go silently blind documents
+an invariant nobody holds.
+
 ## Never Do These
 
 - Add rules outside `.omp/rules/` directory

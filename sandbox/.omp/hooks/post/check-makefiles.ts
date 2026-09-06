@@ -64,7 +64,11 @@ export function checkMakeTargetReferences(): string[] {
   };
   const sub: Record<string, Set<string>> = { backend: targetsOf("backend/Makefile"), frontend: targetsOf("frontend/Makefile") };
   const union = new Set([...targetsOf("Makefile"), ...sub.backend, ...sub.frontend]);
-  const PLACEHOLDER = new Set(["check-", "check-x", "check-anything", "definitely-not-a-target", "target", "targets", "command", "commands", "runs", "every", "two", "the", "this", "sense", "sure", "name"]);
+// Names a doc writes *as* a command while meaning "any target": `make <target>`
+// renders as `make target` once the angle brackets are stripped. The English
+// words this set used to carry ("the", "two", "sure", ...) are gone with the
+// prose scan that needed them - a code span is a command, and a sentence is not.
+const PLACEHOLDER = new Set(["check-", "check-x", "check-anything", "definitely-not-a-target", "target", "targets", "command", "commands"]);
   const roots = [".omp/rules", ".omp/hooks", ".omp/extensions", ".omp/skills"];
   const files: string[] = [join(projectRoot, ".omp", "RULES.md"), join(projectRoot, ".omp", "AGENTS.md")];
   const walk = (dir: string): void => {
@@ -78,8 +82,23 @@ export function checkMakeTargetReferences(): string[] {
   for (const file of files) {
     if (!existsSync(file)) continue;
     const text = readFileSync(file, "utf-8");
-    for (const line of text.split("\n")) {
-      if (/do not exist|없다|not-a-target|존재하지 않|제거|removed|지시했고|안내했다/.test(line)) continue; // 부재·제거를 말하는 문장 자신은 지시가 아니다
+    // Only what is written as code is an instruction. Scanned over raw prose,
+    // this reported "would make one of them fail every night" as a call to a
+    // missing `one` target - and every English sentence that pairs "make" with
+    // a word was one PLACEHOLDER entry away from the same false positive.
+    let inFence = false;
+    for (const rawLine of text.split("\n")) {
+      if (/^\s*```/.test(rawLine)) {
+        inFence = !inFence;
+        continue;
+      }
+      if (/do not exist|없다|not-a-target|존재하지 않|제거|removed|지시했고|안내했다/.test(rawLine)) continue; // 부재·제거를 말하는 문장 자신은 지시가 아니다
+      // Separated by a character `\s` cannot cross: joined by whitespace, the two
+      // spans of "`make` targets, a bare `uvicorn`" read as one call to a target
+      // named by the second span - which is how this check first reported itself.
+      const line = inFence
+        ? rawLine
+        : [...rawLine.matchAll(/`([^`\n]+)`/g)].map((span) => span[1]).join(" ; ");
       for (const m of line.matchAll(/\bmake\s+(?:-C\s+(backend|frontend)\s+)?([a-z][\w-]{2,})/g)) {
         const t = m[2].toLowerCase();
         if (PLACEHOLDER.has(t)) continue;

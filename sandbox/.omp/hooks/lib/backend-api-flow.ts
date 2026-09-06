@@ -51,6 +51,9 @@ const VARIABLE_LINE = /^@([\w-]+)\s*=\s*(.*)$/;
 const HEADER_LINE = /^([A-Za-z][A-Za-z0-9-]*):\s*(.*)$/;
 const DECLARED_STATUS = /[—–-]\s*(\d{3})\b/;
 const TEMPLATE = /\{\{([^}]+)\}\}/g;
+/** `$datetime 'YYYYMMDD' -1 d` or `$datetime 'YYYY-MM-DD' 2 d` - days only. */
+const DATETIME_REF = /^\$datetime '(YYYYMMDD|YYYY-MM-DD)'(?:\s+(-?\d+)\s+d)?$/;
+
 const DOTENV_REF = /^\$dotenv\s+(\w+)$/;
 const RESPONSE_REF = /^(\w+)\.response\.body\.(.+)$/;
 
@@ -528,6 +531,16 @@ function render(
     if (expression.startsWith("$randomInt")) {
       return String(1 + Math.floor(Math.random() * 1_000_000));
     }
+    // `{{$datetime 'YYYYMMDD' -1 d}}` - a date relative to today, for a provider
+    // filter the clock bounds (foodsafetykorea's CHNG_DT refuses anything older
+    // than seven days, so a literal date is a block that stops answering 200).
+    const relative = DATETIME_REF.exec(expression);
+    if (relative !== null) {
+      const at = new Date();
+      at.setUTCDate(at.getUTCDate() + Number(relative[2] ?? 0));
+      const iso = at.toISOString().slice(0, 10);
+      return relative[1] === "YYYYMMDD" ? iso.replaceAll("-", "") : iso;
+    }
     const dotenv = DOTENV_REF.exec(expression);
     if (dotenv !== null) {
       const value = readDotenv(dotenv[1]);
@@ -590,7 +603,8 @@ function dig(responses: Map<string, unknown>, name: string, path: string): strin
     throw new Error(`${name}.response.body.${path} (block '${name}' produced no response)`);
   }
   let value = responses.get(name);
-  for (const segment of path.split(".")) {
+  // REST Client spells an index `items[0].id`; a dotted `items.0.id` is read too.
+  for (const segment of path.replaceAll(/\[(\d+)\]/g, ".$1").split(".")) {
     if (Array.isArray(value) && /^\d+$/.test(segment)) {
       value = value[Number(segment)];
       continue;

@@ -17,6 +17,7 @@
 
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { layerFiles } from "./backend-layout.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 
@@ -31,8 +32,11 @@ const SERVICE_IMPORT = /^\s*(?:from\s+app\.services(?:\.\w+)?\s+import\s+\w|impo
 export function checkServiceInjectionSync(): string[] {
   if (!existsSync(SERVICES_DIR)) return [];
   const issues: string[] = [];
-  for (const file of readdirSync(SERVICES_DIR).sort()) {
-    if (!file.endsWith(".py") || file === "__init__.py") continue;
+  // One level down is where seven of the ten services live. A `readdirSync`
+  // filtered on `.py` saw only the three flat ones, so the rule this file exists
+  // for was unenforced across most of the layer — measured by planting the same
+  // import in `services/batch/run.py` (PASS) and `services/refresh.py` (FAIL).
+  for (const file of layerFiles(SERVICES_DIR).sort()) {
     const content = readFileSync(join(SERVICES_DIR, file), "utf-8");
     const match = SERVICE_IMPORT.exec(content);
     if (match !== null) {

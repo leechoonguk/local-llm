@@ -96,8 +96,12 @@ make migrate-gen m="add <name> table"
   them; never rewrite deployed schema history.
 - The one-table rule applies to every unpushed revision `7` and later. Split
   changes for multiple tables into separate revisions, including indexes and constraints.
-- Unpushed revisions may not use `op.execute`; raw SQL cannot be safely
-  verified as one-table scoped.
+- Unpushed revisions may not use `op.execute` **with raw SQL** (a string, or
+  `sa.text(...)`): a SQL string hides its target from the one-table check. A
+  statement over a `sa.table(...)` declared in the same revision is allowed —
+  it names its table to the same reader `op.bulk_insert` does. Without that
+  distinction a seeded row could be inserted but never corrected, which is what
+  a renamed job code needs (revision 92).
 - `op.bulk_insert` is allowed for seed data, but it must target exactly one table.
 - Every unpushed revision—DDL or seed data—must resolve to exactly one table.
 - Any revision that creates, alters, drops, or seeds an `integration_*` table must

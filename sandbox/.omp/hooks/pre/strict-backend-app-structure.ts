@@ -1,4 +1,5 @@
 import { writtenPaths } from "../lib/hook-tool-paths.ts";
+import { APP_LAYERS, layerDepthViolation } from "../lib/backend-layout.ts";
 
 /**
  * Strict-Backend-App-Structure Pre Hook
@@ -23,18 +24,6 @@ import { writtenPaths } from "../lib/hook-tool-paths.ts";
  *
  * To add/remove directories: edit the allowlists below. No other logic changes.
  */
-const allowedAppDirs: Record<string, true> = {
-  models: true,
-  schemas: true,
-  repositories: true,
-  services: true,
-  routers: true,
-  dependencies: true,
-  core: true,
-  batch: true,
-  tests: true,
-};
-
 const allowedBackendDirs: Record<string, true> = {
   app: true,
   tests: true,
@@ -65,14 +54,24 @@ export default function strictBackendAppStructure(pi: ExtensionAPI): void {
  */
 function structureViolation(path: string): { block: true; reason: string } | null {
   // backend/app/<subdir>/... — known app subdirectories only.
-  const appMatch = path.match(/(?:^|\/)backend\/app\/([^/]+)\//)
+  // The directory set and each layer's depth come from one declaration
+  // (`lib/backend-layout.ts`) — the same one the read-side traversal and the
+  // hook meta-check derive from, so the write gate cannot drift from what the
+  // scans assume. Before the depth rule, `routers/sub/x.py` passed this gate
+  // and would then have been seen by no router scan at all.
+  const appMatch = path.match(/(?:^|\/)backend\/app\/([^/]+\/.*)$/)
   if (appMatch) {
-    const subdir = appMatch[1]
-    if (!allowedAppDirs[subdir]) {
+    const appRelative = appMatch[1]
+    const subdir = appRelative.split("/")[0]
+    if (APP_LAYERS[subdir] === undefined) {
       return {
         block: true,
-        reason: `\`${subdir}\` — backend/app/ 하위에 새 디렉토리 생성 금지\n\n기존 구조만 사용하세요:\n  models, schemas, repositories, services, routers,\n  dependencies, core, batch, tests`,
+        reason: `\`${subdir}\` — backend/app/ 하위에 새 디렉토리 생성 금지\n\n기존 구조만 사용하세요:\n  ${Object.keys(APP_LAYERS).join(", ")}`,
       }
+    }
+    const depth = layerDepthViolation(appRelative)
+    if (depth !== null) {
+      return { block: true, reason: `\`backend/app/${appRelative}\` — ${depth}` }
     }
     return null
   }

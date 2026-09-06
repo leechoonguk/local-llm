@@ -20,7 +20,7 @@ import { checkRequestContracts } from "../lib/frontend-request-contract.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
@@ -115,9 +115,18 @@ function checkDomainTypes(domain: string, sharedTs: string): string[] {
   const tsAliases = parseAliases(combined, "ts");
   const label = `frontend/src/types/${domain}.ts`;
 
+  const overWire = wireReachableModels(pyTypes);
+
   for (const [model, fields] of pyTypes) {
     const target = modelToInterface(model);
     if (target === null) continue;
+    // A request model the API never accepts over HTTP is not the client's to
+    // express. `BatchRunCreateRequest` is written by the scheduler, and demanding
+    // a TypeScript twin for it asks the browser to declare a body no endpoint
+    // takes. Reachability, not a list: a nested model like
+    // `IntegrationOperationCreateRequest` arrives inside the provider body a
+    // router does accept, so it stays in.
+    if (!overWire.has(model)) continue;
     const declared = tsTypes.get(target);
     if (declared === undefined) {
       // Every request model the server accepts, nested ones included: the
@@ -224,6 +233,7 @@ function compareField(context: {
 /** A query parameter the router reads must exist as a field of a params type. */
 function checkQueryParams(sharedTs: string): string[] {
   const issues: string[] = [];
+  // existence-ok: dependencies/query.py is imported by every router — the backend build owns it.
   const dependency = readBackendModule(projectRoot, "dependencies", "query.py");
   if (dependency === null) return issues;
 
@@ -258,6 +268,49 @@ function modelToInterface(model: string): string | null {
     return suffix === RESPONSE_SUFFIX ? model.slice(0, -suffix.length) : model;
   }
   return null;
+}
+
+/**
+ * The models that actually cross the wire, nested ones included.
+ *
+ * Roots are what the routers name: the bodies they accept (`data: <X>Request`,
+ * the one body shape `backend-router-params` allows) and the models they return
+ * (the handler's annotation, `Page[X]` unwrapped). The closure then follows
+ * field annotations, because `IntegrationUpdateRequest` carries
+ * `operations: list[IntegrationOperationCreateRequest]` — replacing a provider
+ * is how that nested body arrives, so the client must be able to express it.
+ *
+ * A model nothing reaches is written by the server for itself. `batch_run`,
+ * `batch_step` and `batch_checkpoint` have full schema sets because the domain
+ * rule requires them, but the browser never posts a run and no endpoint returns
+ * a checkpoint at all — demanding TypeScript twins would be asking the client to
+ * declare shapes the API neither takes nor sends.
+ */
+function wireReachableModels(pyTypes: Map<string, Map<string, FieldType>>): Set<string> {
+  const routersDir = join(projectRoot, "backend", "app", "routers");
+  const reachable = new Set<string>();
+  if (!existsSync(routersDir)) return reachable;
+
+  const queue: string[] = [];
+  for (const file of readdirSync(routersDir)) {
+    if (!file.endsWith(".py")) continue;
+    const source = readFileSync(join(routersDir, file), "utf-8");
+    for (const match of source.matchAll(/\bdata\s*:\s*(\w+Request)\b/g)) queue.push(match[1]);
+    // `-> Page[XReadResponse]:` and `-> XReadResponse:` are the same root.
+    for (const match of source.matchAll(/->\s*(?:Page\[)?(\w+Response)\b/g)) queue.push(match[1]);
+  }
+
+  while (queue.length > 0) {
+    const model = queue.pop()!;
+    if (reachable.has(model)) continue;
+    reachable.add(model);
+    for (const field of (pyTypes.get(model) ?? new Map<string, FieldType>()).values()) {
+      for (const referenced of field.base.matchAll(/\b(\w+(?:Request|Response))\b/g)) {
+        if (!reachable.has(referenced[1])) queue.push(referenced[1]);
+      }
+    }
+  }
+  return reachable;
 }
 
 // Direct execution (make check-frontend-types): run the check and print results.

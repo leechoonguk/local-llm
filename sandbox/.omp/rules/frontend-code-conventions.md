@@ -16,6 +16,18 @@ Machine-checked by `check-frontend-code.ts` (`make check-frontend-code`) for the
 structural half; the toolchain (`make verify` → lint, typecheck, build) owns the
 rest.
 
+## Structure Is Gated at Write Time
+
+`frontend/src/` has a declared layout — `SRC_LAYOUT` in
+`.omp/hooks/lib/frontend-source.ts`, the same module every frontend scan reads
+its directories from. `strict-frontend-app-structure` refuses a new top-level
+directory (`src/adapters/`) or a stray src-root file at write time, the way the
+backend gate refuses `backend/app/adapters/`. The scans here are recursive, so
+an undeclared directory would still be *seen* — the harm is quieter: every
+convention keyed on directory role (sections are screens, `lib/api` is the
+transport, pages are thin) simply fails to apply to a directory no rule names.
+Extending the layout is editing that one declaration.
+
 ## Stack
 
 | Concern | Choice |

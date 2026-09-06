@@ -29,7 +29,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
-import { listModelFiles } from "./backend-domain-structure.ts";
+import { layerFiles } from "./backend-layout.ts";
 
 const projectRoot = existsSync(join(process.cwd(), "backend", "app"))
   ? process.cwd()
@@ -54,7 +54,7 @@ const REPOSITORY_INIT = /def __init__\(self,\s*session:/;
 function tableByModelClass(): Map<string, string> {
   const byClass = new Map<string, string>();
   if (!existsSync(MODELS_DIR)) return byClass;
-  for (const file of listModelFiles(MODELS_DIR)) {
+  for (const file of layerFiles(MODELS_DIR)) {
     const content = readFileSync(join(MODELS_DIR, file), "utf-8");
     const table = TABLENAME.exec(content)?.[1];
     if (table === undefined) continue;
@@ -73,7 +73,7 @@ export function checkRepositoryFilesSync(): string[] {
 
   const flatSiblings = new Map<string, string[]>();
 
-  for (const file of listModelFiles(REPOS_DIR).sort()) {
+  for (const file of layerFiles(REPOS_DIR).sort()) {
     // `integration/provider.py` queries `integration_provider`, the same
     // folder-is-the-domain naming the model layer uses.
     const [folder, leaf] = file.includes("/")

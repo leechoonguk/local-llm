@@ -93,6 +93,61 @@ So the length lives in one named constant per side, and
 `pattern=` on the server field; otherwise the check fails and the choice is
 explicit: declare it on both sides or drop it.
 
+**Required is the third axis, and it runs both ways.** A field the server has no
+default for must carry `.required()`, or an empty submit comes back a 422 naming
+no field; a field the server defaults must not, or the form refuses a body the
+API accepts. A boolean is exempt by construction — a checkbox always submits a
+value, so yup spells its state `.defined()` and "required" means nothing there.
+
+**The check was applying to one domain out of three.** `readBackendModule` looked
+for `schemas/<domain>.py`, and `batch` and `integration` had long since become
+folders (`schemas/batch/{schedule,run,step,checkpoint}.py`), so the lookup
+returned null and `checkValidationParity` returned early — silently, while
+reporting PASS. A folder domain now reads as the concatenation of its modules,
+which is what `readLayerSource` already does for the backend structure checks.
+This is the harness's one failure mode that leaves no trace: the check did not
+break, it stopped applying.
+
+### The panel is a form too
+
+The rules above read `<Domain>FormDialog.tsx`, and the three dialogs in this app
+hold only strings and booleans. **Every numeric bound the backend declares lives
+on a nested record** — timeouts, retry counts, an ordinal — edited through a
+panel that check never opened. Measured on `IntegrationOperationPanel`:
+
+| Field | Server | Control declared |
+|---|---|---|
+| `path_template` | `max_length=2048` | nothing |
+| `response_root` | `max_length=512` | nothing |
+| `connect_timeout_ms` | `gt=0` | nothing |
+| `read_timeout_ms` | `gt=0` | nothing |
+
+So a panel control declares the bound its field's schema declares:
+`ScalarField` carries `maxLength`, `NumberField` carries `min`/`max`. The schema
+is found by the naming the record-dialog standard already uses — `<Name>Panel.tsx`
+↔ `<Name>CreateRequest` — so a panel that edits no record (`IntegrationRunPanel`
+is a console) is skipped rather than guessed at, and a field the panel does not
+render is never demanded.
+
+**Only bounds the control can actually violate.** `NumberField` strips
+non-digits, so a negative cannot be produced and `ge=0` needs no restating.
+`gt=0` is the opposite case: `0` is exactly what the widget hands back for an
+emptied input, so that field needs its own floor or the user meets the rule as a
+422 with no field named.
+
+### Only what crosses the wire
+
+The comparison covers the models an endpoint actually takes or sends. Roots are
+what the routers name — the body (`data: <X>Request`) and the return annotation
+(`Page[X]` unwrapped) — and the closure follows field annotations, so a nested
+`IntegrationOperationCreateRequest` arriving inside a provider `PUT` stays in.
+
+`backend-domain` requires a full schema set per table, so `batch_run`,
+`batch_step` and `batch_checkpoint` each have Create/Update/Read classes. The
+browser never posts a run, and no endpoint returns a checkpoint at all —
+demanding TypeScript twins for those asks the client to declare shapes the API
+neither accepts nor answers with.
+
 ## Writing the Types
 
 ```ts

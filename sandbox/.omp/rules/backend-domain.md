@@ -39,7 +39,7 @@ backend/app/
 
 | Folder | Contains | Composition rule |
 |---|---|---|
-| `core/` | `settings.py`, `database.py`, `exceptions.py`, `security.py`, `logging.py`, `cache.py`, `integration.py` | Infrastructure only — no routers, no repositories. One module per concern. |
+| `core/` | `settings.py`, `database.py`, `exceptions.py`, `security.py`, `logging.py`, `cache.py`, `integration.py`, `scheduler.py`, `mfds_source.py` | Process infrastructure, plus the wire dialect of one external source that several domains read through (`mfds_source.py`). No routers, no repositories. One module per concern, **named after what it knows** — the source, never a domain that happens to be its only reader today. |
 | `dependencies/` | `core.py`, `auth.py`, `query.py`, `services.py`, `integrations.py` | DI wiring only — `Annotated[T, Depends(factory)]` aliases and their factories. No business logic. |
 | `models/` | `base.py` + one file per table | `base.py` holds `Base` + `AuditMixin`; a table per file, named after the table, in `models/<domain>/` once a domain owns several (`backend-model-files.md`). |
 | `schemas/` | one file per domain, or `schemas/<domain>/` | Pydantic classes only — `Request`/`Response`/`Internal` suffixes, `to_read()`/`to_read_list()` helpers. |
@@ -62,6 +62,11 @@ backend/app/
 - `core/` and `dependencies/` are fixed sets — a new module there needs a
   matching `tests/core/test_<name>.py` (or `tests/` coverage) and a rule
   update; they are not per-domain.
+- There is no `utils/`, and adding one would be a second home with no owner:
+  `core/` is the only shared layer, and it is the one a check already governs
+  (a module without `tests/core/test_<name>.py` fails `check-backend-tests`).
+  A helper that serves exactly one domain is not shared — it belongs to that
+  domain's service, or to the class it builds (`<Class>.from_record`).
 - `batch/` mirrors `app/batch/<module>.py` → `tests/batch/test_<module>.py`.
 - `.http` test files live in the repository-root `api/` directory, never
   `backend/api/` (backend-api-http.md).
@@ -181,6 +186,40 @@ from deferring a step's verification until the end.
   (machine-checked by `check-backend-domain.ts`)
 - Class names capitalized: `User`, `Todo`, `UserService`; a folder domain carries
   the leaf too (`BatchSchedule`, `BatchScheduleService`)
+- **A folder domain need not have a root entity.** A family's name is the
+  domain's own *or a leaf's*: `integration/provider.py` declares `Integration*`,
+  while `food` — two sibling ledgers with nothing between them — declares
+  `FoodBarcode*` and `FoodRawMaterial*` and no `Food*` at all. Demanding the root
+  would have invented an entity nothing stores; that `integration`'s aggregate
+  root happens to wear the domain's own name is what made "one domain, one root"
+  look like a rule
+- **`<Family>Base` is the promise of the other five.** A file that declares it
+  owes `CreateRequest`, `CreateInternal`, `ReadResponse`, `UpdateRequest`,
+  `UpdateInternal` under the same name, and every domain owes at least one such
+  file. A nested aggregate carries only what it needs and declares no `Base`
+  (`IntegrationSecretCreateRequest`, `IntegrationCallCreateInternal`) — the
+  `Base` is what tells a CRUD surface from a leaf of one. Checked per file:
+  read across a folder, a sibling's `FoodBarcodeUpdateInternal` answered for the
+  `raw_material` leaf that had lost its own (`check-backend-domain.ts`)
+
+## Ledger Domains Are Read-Only Over HTTP
+
+A domain whose tables a batch job fills from a provider
+(`app/batch/sync_<domain>_<table>_ledger.py` exists) is a **ledger domain**, and
+each such `<table>` is a ledger. A ledger's routes expose `GET` only: a row
+written by hand is compared against the provider's record on the next pass and
+overwritten, so `POST`/`PATCH`/`DELETE` there would be a promise the sync breaks
+nightly. `check-backend-domain` refuses a write verb on a route whose first path
+segment names a ledger table (`/raw-material/` → `raw_material`) instead of
+requiring one, and still requires `GET`. A table people edit may live in the
+same domain under its own path - measured, a planted `POST /note/` beside the
+ledgers passes while `DELETE /raw-material/{id}` fails. The service keeps its full CRUD - the batch job is its writer - and the
+router is the surface that says who owns the rows.
+
+Path parameters on a folder domain name the leaf: `food_raw_material_id: UUID`,
+never `food_id`, because `food` is four tables and the service already spells
+the leaf's name. The request file (`api/food.http`) reads and pages; it changes
+nothing, and says so in its header.
 
 ## Model (`app/models/<name>.py`)
 
@@ -240,7 +279,7 @@ Helper functions: `to_read()` and `to_read_list()` using `model_validate`.
 **Those two are the layer's whole public function surface** (machine-checked by
 `check-backend-domain.ts`). A schema module exports Pydantic classes; anything
 else public in `schemas/` is another layer's logic parked where it happened to
-compile. Measured on the barcode ledger: a mapper building a request object out
+compile. Measured on the food barcode ledger: a mapper building a request object out
 of an external API record, and a timestamp normaliser the service needed, both
 landed here and passed every gate. Where each belonged:
 
@@ -274,6 +313,61 @@ rule://backend-naming forbids importing an underscore name across modules.
   `*UpdateInternal`), then standalone request/response pairs
   (`*ExecuteRequest`, `*ExecuteResponse`), then `to_read()`/`to_read_list()`
   helpers last. Nested child classes precede the parent that references them.
+
+### An input must fit the column that stores it
+
+A `*CreateRequest` / `*UpdateRequest` string field whose column is `String(n)`
+declares `max_length` and never above `n`. The layer above this — the form
+against the schema — is `frontend-contract`'s length parity; this is the layer
+below, and its failure is worse:
+
+| Schema says | What the user gets |
+|---|---|
+| `max_length=200` into `String(120)` | not a 422 — an `IntegrityError`, answered as a **500** |
+| no `max_length` at all | the same 500, for any string long enough |
+
+A 422 names the field and the form can show it. A 500 reads as a server fault,
+and the log blames the database for input the API should have refused.
+
+Only requests are checked: a read response carries what the row already holds, so
+a bound there proves nothing. Model and schema mirror by path, the same
+correspondence the vocabulary rule below uses.
+
+### A closed column stays closed in its schema
+
+`backend-table-design` requires a short type/status/mode column to carry
+`CheckConstraint("<col> IN (...)")`. That decides the vocabulary; the schema is
+where it is **kept**. A field that widens the column back to `str` throws the set
+away at the only layer a client can read — and silently, because the server still
+refuses a bad value, so nothing fails until a reader has to guess what the column
+holds.
+
+```python
+#: `ck_batch_run_status` — a run is RUNNING or it is one of four endings.
+BatchRunStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "STOPPED", "INTERRUPTED"]
+
+class BatchRunBase(BaseModel):
+    status: BatchRunStatus
+```
+
+A named alias, not an inline `Literal` repeated per class: the same vocabulary is
+declared once and every direction of the row reuses it. The alias also carries no
+`max_length` — a length bound on a closed set is a weaker restatement of it.
+
+This closes a three-layer chain, and each link was already enforced except the
+first: constraint → `Literal[...]` → (`check-frontend-types`, which maps a
+`Literal` to the same TS union) → the union a screen switches on. Measured before
+it existed — `integration_field` kept its four vocabularies through all three
+layers while `batch_run.status`, `batch_run.trigger`, `batch_step.status`,
+`integration_call.method` and `integration_call.outcome` were `str`, and the TS
+side had been narrowed by hand with nothing to answer to.
+
+Model and schema mirror by path (`models/batch/run.py` ↔ `schemas/batch/run.py`),
+which is what keeps one table's `status` from being compared against another's.
+
+A vocabulary is spelled **once**. `TERMINAL_STATUSES` and `TRIGGERS` sat beside
+the constraint as tuples no code read; the alias replaced them. `RUNNING` stayed,
+because code compares against that one value.
 
 ## Repository (`app/repositories/<name>.py`)
 

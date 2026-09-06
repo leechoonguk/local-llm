@@ -20,22 +20,190 @@ alwaysApply: false
 | `batch_step` | which unit inside a run did what — for a paging job, one window |
 | `batch_checkpoint` | where the next run resumes — `NULL` when the job has no row cursor |
 
+## The Configuration A Job Names Must Exist
+
+`PROVIDER_CODE` and `OPERATION_CODE` are resolved at 03:00 against
+`integration_provider` / `integration_operation`. Nothing else in the stack ties
+them to a row: the job type-checks, its tests script the seam and never look the
+codes up, and a planted `search-ghost-material` left every gate green - measured.
+The failure then surfaces once a night, in a scheduler log, as configuration that
+does not exist.
+
+So `check-backend-batch` reads the seeded codes out of `alembic/versions/` (not
+out of the running database, so a fresh clone answers the same) and refuses a
+sync job naming either code that no revision inserts. A maintenance job, which
+calls no operation, is not asked.
+
+**A code arrives two ways, and the check reads both.** Revision 74 renames a
+provider (`mfds-food-nutrition` → `data-go-kr`) through
+`provider.update().values(code=CODE)` with no insert anywhere, and the first
+version of this check called `data-go-kr` unseeded on the nutrition job's very
+first gate — a false positive against a row every migrated database carries. The
+extractor now follows the rename, resolves one constant indirection, and drops
+the code the downgrade restores: that one is no longer in any database, and
+listing it would accept a job naming a provider that stopped existing.
+
+## A PAGE Job Refuses Its Ceiling
+
+A PAGE-family provider has a maximum `num_of_rows`, and exceeding it is silent:
+measured on `search-food-nutrition`, 501 and up answer HTTP 200 with an empty
+list — the same shape as the end of the feed. A job past the ceiling imports
+nothing, stops on its "short" first page and reports success every night, and no
+other gate sees it because the call succeeded.
+
+So a job whose operation takes `num_of_rows` (read off the seeded caller inputs)
+declares `MAX_PAGE_SIZE` and **refuses** a `page_size` above it — never clamps: a
+caller asking for 900 believes it will get 900, and a silent narrowing keeps that
+belief alive. A RANGE job is not asked; its provider refuses out loud (`ERROR-336`).
+
+## The Ledger Reads Exactly What The Operation Answers
+
+`from_record` is a list of `record.get("<key>")` calls over a `Mapping[str,
+object]`, and nothing types the key: a misspelt one reads `None`, the column is
+NULL on every record forever, and the run reports success. The reverse drift is
+quieter — a key added to the seed that the ledger never reads is data the sync
+drops.
+
+`check-backend-batch` reads the operation's seeded `RESPONSE_ROWS` and checks
+the ledger's schema both ways. A key the ledger declines on purpose (`row_no`,
+the record's position inside its page) is declared in an `UNSTORED_KEYS`
+frozenset beside `from_record`, with the reason — so a decline is a decision the
+check can tell from a column that was forgotten. Measured on the first audit: all
+three ledgers matched their contracts, and `row_no` was the only decline.
+
+## A Check Names Things That Exist
+
+`checkResumeContract` greps for `resume_position`, `find_checkpoint` and
+`update_resume_point`. Renaming `next_range_start` left it green while it
+recognised no job as consuming a cursor — every invariant it enforces switched
+off, and only a planted violation showed it. A string check cannot survive a
+rename; it can refuse to run blind, so the hook fails when the model or the
+service no longer declares the names it looks for.
+
+## A Migration Walks Positions, Never A Filter
+
+The increment is the checkpoint's position - a row offset or a page number -
+and nothing else. Every operation here seeds optional caller inputs beside its
+paging keys (`change_date`, `changed_from`, `last_updated_from`, `update_date`,
+a product name, a licence number), and each reads a **subset**. A job that sent
+one would import what matched and call the ledger complete.
+
+The temptation is measured, not hypothetical: `search-food-item-report` caps
+unfiltered calls at 100 an hour and exempts the date filter, and the date
+filter reads 5,800 rows where the feed holds 1,071,979. The answer is to pay the
+quota in runs - which is what the checkpoint exists for - not to narrow the
+walk.
+
+`check-backend-batch` reads the operation's seeded caller inputs and fails a
+sync job whose window carries any key outside the paging family. Audited on the
+day the check landed: all four ledgers sent paging keys only (the nutrition
+job's `type: json` was a seeded literal sent twice, and was dropped).
+
+## A Quota Is Neither The End Nor A Failure
+
+Measured on `search-food-item-report` (2026-09-05): the portal allows **100
+unfiltered calls per hour per key** and answers `INFO-320 CHNG_DT 파라미터를
+사용하지 않으면 1시간당 100회까지만 호출할 수 있습니다` past that. The feed is
+1,072 windows (`total_count` 1,071,979), so a full pass is eleven nightly runs,
+and the code arrives mid-walk on any night that walks past the quota.
+
+Three readings were possible and two are wrong:
+
+| Read as | Consequence |
+|---|---|
+| a failure (raise) | the initial load dies at window 101 every hour and never finishes |
+| the end of the feed | the cursor lands at the tail of a half-imported set, and the next run reads only the increment |
+| **a quota (stop, keep the cursor)** | the run ends where it is, the checkpoint still names the refused window, the next run opens it again |
+
+So a job names its quota codes (`QUOTA_CODES`) beside its end-of-data codes,
+and `DEFAULT_MAX_PAGES` is the quota, not a size guess: a ceiling above it
+would not read more, it would end the run on a refusal instead of on its own
+count. The migration still walks positions - a date filter reads only what
+changed, and a migration is everything.
+
+## Two Archetypes
+
+Every job in `app/batch/` is one of two shapes, and the difference is what it is
+incremental *by*. Both are machine-checked by `check-backend-batch`.
+
+| | **Sync** — fills a ledger from a provider | **Maintenance** — keeps a table bounded |
+|---|---|---|
+| Example | `sync_food_barcode_ledger` | `purge_old_batch_runs`, `purge_expired_refreshes` |
+| Increment | a position in the feed | time |
+| Settings | `PROVIDER_CODE`, `OPERATION_CODE`, `DEFAULT_*PAGE_SIZE*`, `DEFAULT_MAX_*` | a retention/grace constant |
+| Cursor | reads `find_checkpoint`, advances `update_resume_point` | none — a cutoff is recomputed from the clock |
+| Per window | one step (`create_finished_step`) under `current_run_id` | no steps |
+| Ends when | a short page, the end-of-data code, or the ceiling | the cutoff query returns nothing |
+
+### Incremental Settings Are Named, And They Are Parameters
+
+**Every knob is an `UPPER_SNAKE` module constant, and every knob is a parameter
+of the job defaulted to it.** Both halves are checked:
+
+- a parameter defaulting to a literal (`days: int = 30`) is a measurement with
+  nowhere to record what it measured — found by this check in
+  `purge_expired_refreshes`, which had 30 inline while its sibling had
+  `DEFAULT_RETENTION_DAYS = 90`;
+- a `DEFAULT_*` constant that is nobody's default is read directly by the job,
+  which reads like a setting and behaves like a literal: an operator re-syncing
+  one window would have to edit the module.
+
+A sync job additionally states three things it cannot run without:
+
+- **`PROVIDER_CODE` / `OPERATION_CODE`** — the job names configuration, never a
+  URL. The path, the key, the filters and the paging family live in
+  `integration_field`.
+- **A window** (`DEFAULT_*PAGE_SIZE*`) — the provider caps how wide one call may
+  be, and the cap is a measurement (I2570: 1000 rows; 1001 is accepted only
+  because their validator compares `end - start`, so the extra row rides a bug).
+- **A ceiling** (`DEFAULT_MAX_*`) — a provider that ignores a filter answers 200
+  with a full unfiltered page forever, and an unbounded walk follows it until the
+  process dies. It must still exceed the whole feed, because the cursor only
+  advances when a pass reaches the end.
+
+## A Job Names The Ledger It Fills
+
+The identity chain — module = function = `BATCH_JOBS` key = seeded
+`batch_schedule.code` — is self-consistent by construction, so it stays green
+while the thing the job *writes* is renamed underneath it. Measured: the ledger
+became `food_barcode` and `sync_barcode_ledger` kept a noun that named no table,
+with all five names stale together and every gate passing.
+
+So the job's name carries its subject, and `check-backend-batch` reads that
+subject from the job's own imports: a **flat** `from app.services.<domain> import`
+is what a job reaches its data through, while the services every job uses to
+record itself arrive dotted (`app.services.batch.run`) and never match. No domain
+name is listed in the check.
+
+A renamed job code is a data migration, not just a rename: the schedule is a row
+(`batch_schedule.code`), so Python alone would leave every environment running a
+row whose code names a module that no longer exists. `seededBatchCodes()` reads
+updates as well as inserts for the same reason — a renamed code is scheduled, and
+a reader that knew only `bulk_insert` called it unseeded.
+
 ## The Checkpoint Is Optional, And It Stays At The Tail
 
-`batch_checkpoint.next_range_start` is nullable, because a checkpoint is the
+`batch_checkpoint.resume_position` is nullable, because a checkpoint is the
 batch layer's common place to record where a job stopped and not every job stops
-at a *row*:
+at a position:
 
 | Job | Its position | Stored |
 |---|---|---|
-| `sync_barcode_ledger` | a row offset into a paged feed, and the key it was measured from | `next_range_start` + `last_row_key` |
+| `sync_food_barcode_ledger` | a **row** offset into a RANGE feed, and the key of the last row it consumed | `resume_position` + `resume_key` |
+| `sync_food_nutrition_ledger` | the **page** it imported in a PAGE feed, and that page's first record | `resume_position` + `resume_key` |
 | `purge_expired_refreshes` | a cutoff (`now - 30d`) | nothing — recomputed every run |
 | `purge_old_batch_runs` | a cutoff (`now - 90d`) | nothing — recomputed every run |
 
-`NULL` is "this source has no row cursor", which is a different fact from `1`
-("start at the first row") — so the column carries no server default either, and
-`find_checkpoint` hands back the row rather than inventing one job's first
-window for every job. The caller decides what an unknown means for itself.
+**One number, two units, and the column name says neither.** It was
+`next_range_start` while every ledger walked rows; the page ledger then stored
+page numbers under a name that said rows. The unit belongs to the feed, so the
+column is `resume_position` and each job states its own — a second nullable
+column per family would let one row claim both.
+
+`NULL` is "this source has no cursor", which is a different fact from `1`
+("start at the first row or page") — so the column carries no server default
+either, and `find_checkpoint` hands back the row rather than inventing one job's
+first window for every job. The caller decides what an unknown means for itself.
 
 **A finished pass keeps its cursor at the tail**, so the next run asks for the
 increment and a caught-up night costs one call instead of the 54 a restart
@@ -48,16 +216,36 @@ costs. Two rules keep it safe, and neither reads a count:
   end the pass. `total_count` is *not* used: some operations on this portal
   report a fixed `1` whatever the set holds, so a walk that trusted it would
   stop after one page.
-- **The offset is verified before it is trusted.** A run with a cursor re-reads
-  one row it already consumed — the first window starts at `cursor - 1` — and
-  compares that record's natural key with `last_row_key`. Same key, the walk
-  continues; different key or nothing there, rows were removed or re-ordered and
-  the walk restarts at row 1. It costs no extra call (the row rides in a page
-  the run was fetching anyway) and no extra write (the ledger's upsert compares
-  before it writes).
+- **The position is verified before it is trusted.** A run with a cursor
+  re-reads what it already consumed and compares a natural key with
+  `resume_key`. Same key, the walk continues; different key or nothing there,
+  records were removed or re-ordered and the walk restarts at the first
+  position. It costs no extra call (the overlap rides in a window the run was
+  fetching anyway) and no extra write (the ledger's upsert compares before it
+  writes).
+
+  **A mismatch re-anchors before it restarts.** The anchored record is looked
+  for in the overlap window itself (records inserted before the cursor push it
+  a few rows down - it is still there, at no extra call) and then in the one
+  window behind it (records removed pull it up - one more call, one more step);
+  only an anchor found in neither means the feed was re-ordered, and the walk
+  starts over. Measured on I1250 (2026-09-06): three reports inserted somewhere
+  in the first 191k rows moved the anchor from 190999 to 191002, and the
+  restart that followed re-read 99 windows to write three rows. Against a
+  1,072-window feed at 100 windows an hour, a restart on every small shift is an
+  initial load that never finishes; with re-anchoring the next run resumed at
+  99000, verified, and walked 99 windows (7,001 new rows) before the quota.
+  Steps number the calls made, so a probe is a step of its own.
+
+  **Which record proves the position is the paging family's answer, not the
+  table's.** A RANGE walk starts one row early and compares that row: the row it
+  consumed last. A PAGE walk re-reads the page it imported and compares that
+  page's **first** record — new records are appended to the last page, so its
+  last record changes on any ordinary night, and anchoring there would read
+  every normal night as a re-ordered feed and re-import the whole set.
 
 What that still does not catch is stated where it is decided
-(`app/batch/sync_barcode_ledger.py`): an offset walk sees rows appended past the
+(`app/batch/sync_food_barcode_ledger.py`): an offset walk sees rows appended past the
 cursor, never an edit to a record behind it.
 
 A run's ending is one of five, and they are different facts:
@@ -226,7 +414,7 @@ async def purge_expired_refreshes(days: int = 30) -> int:
    checkpoint is every job's common place, so *reading* it proves nothing: a
    cutoff job may read its row, find no cursor, and recompute from the clock.
    What proves a row cursor is what the job does with the row — it consumes
-   `next_range_start`, or it calls `update_resume_point` (an `int`, by
+   `resume_position`, or it calls `update_resume_point` (an `int`, by
    signature). A job that consumes the cursor advances it in the same module,
    and one that advances reads first; a job that pages a feed (a provider
    called from inside a loop) asks its checkpoint at all — a cursor, a NULL
@@ -303,7 +491,7 @@ watching the gate go red:
 | the lifespan reads the table | `main.py` calls `list_enabled_batches` | the process schedules whatever the last deploy hardcoded |
 | the lifespan sweeps orphans | `main.py` calls `update_interrupted_runs` | a killed process's run claims RUNNING forever — `main.py` is outside coverage, so nothing else notices the deleted call |
 | `core/scheduler.py` `add_job` carries `id` / `replace_existing` / `max_instances` / `coalesce` / `misfire_grace_time` | option by option | duplicated, overlapping, or silently skipped runs |
-| a consumed cursor is advanced by the same job | `find_checkpoint` + `.next_range_start` ⇒ `update_resume_point`; `update_resume_point` ⇒ `find_checkpoint` | read-only re-walks the feed from the same position every night; write-only stores a cursor nothing resumes from |
+| a consumed cursor is advanced by the same job | `find_checkpoint` + `.resume_position` ⇒ `update_resume_point`; `update_resume_point` ⇒ `find_checkpoint` | read-only re-walks the feed from the same position every night; write-only stores a cursor nothing resumes from |
 | a paged feed asks its checkpoint | `execute_operation` inside a `for`/`while` ⇒ `find_checkpoint` (a NULL row or no row is a legitimate answer — reading only is fine) | a walk that restarts at row 1 without having decided to |
 | a paging job records its windows | `execute_operation` in a loop, or `update_resume_point` ⇒ `create_finished_step`; `create_finished_step` ⇔ `current_run_id.get()` | a failed run says which job, never which window; a step written without the run in context belongs to none |
 

@@ -16,6 +16,30 @@ without reading the body.
 Machine-checked by `check-backend-router-params.ts`; the "no inline call"
 half is an AST rule (`ast-grep/rules/router/inline-depends.yml`).
 
+## A Filter Parameter Reaches A Predicate
+
+A router parameter typed `TextFilterQuery` or `ExactFilterQuery` must narrow the
+query in the domain's repository, with the match the alias promises: `ilike`
+for text, `==` for exact. The failure is silent in every direction - a filter the
+repository never reads answers the whole collection under a filter label; an
+exact value applied with `ilike` returns `식물성유지` to a reader who picked
+`식물`; a fragment applied with `==` answers nothing. Planted, each left every
+other gate green: the router, the service and the screen were all correct
+about a parameter that did nothing.
+
+`check-backend-router-params` reads every filter-typed parameter of each router
+and looks for it in the repository predicates of **the table the endpoint
+reads** (`/raw-material/` → `repositories/food/raw_material.py`; a flat domain
+has one file) - a direct `.where(col.ilike(f"%{name}%"))`, or a
+`for column, value in (...)` loop whose body says which match it applies - and
+fails a name that is absent or matched by the other kind. Per table, because a
+decoy predicate in a sibling table's repository satisfied a domain-wide search
+while the real one had dropped the filter - measured.
+
+`ExactFilterQuery` exists for closed vocabularies whose value a select offers
+from the column's own distinct values (`facets`); the wire shape is the text
+filter's, and only the match differs.
+
 ## The Four Kinds
 
 | Kind | Spelling | Example |

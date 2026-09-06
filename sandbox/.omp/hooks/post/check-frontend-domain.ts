@@ -9,6 +9,7 @@ import {
   frontendSrc,
   label,
   pascalCase,
+  projectRoot,
   readIfPresent,
 } from "../lib/frontend-source.ts";
 // @ts-expect-error — Node builtin, not project-compiled
@@ -30,6 +31,7 @@ import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
  *   services/<domain>.service.ts   list/detail/create/update/remove
  *   hooks/use<Domain>.ts     list/detail/create/update/delete hooks
  *   sections/<domain>/       <Domain>List.tsx + <Domain>FormDialog.tsx
+ *                            (no dialog when the list creates rows in the grid)
  *   pages/<Domain>Page.tsx   the route component
  *
  * A half-built domain is the failure this prevents: a service with no hook is
@@ -77,9 +79,13 @@ export function checkFrontendDomainSync(): string[] {
 
   for (const domain of domains) {
     const name = pascalCase(domain);
-    issues.push(...checkLayerFiles(domain, name));
-    issues.push(...checkServiceMethods(domain));
-    issues.push(...checkQueryHooks(domain, name));
+    if (isLedgerDomain(domain)) {
+      issues.push(...checkLedgerDomain(domain, name, queryKeys));
+    } else {
+      issues.push(...checkLayerFiles(domain, name));
+      issues.push(...checkServiceMethods(domain));
+      issues.push(...checkQueryHooks(domain, name));
+    }
 
     if (!new RegExp(`${domain.toUpperCase()}_ENDPOINTS\\s*=`).test(endpoints)) {
       issues.push(
@@ -87,7 +93,7 @@ export function checkFrontendDomainSync(): string[] {
           `the ${domain} service would carry its URLs inline`,
       );
     }
-    if (!new RegExp(`${domain}Keys\\s*=\\s*createQueryKeys`).test(queryKeys)) {
+    if (!isLedgerDomain(domain) && !new RegExp(`${domain}Keys\\s*=\\s*createQueryKeys`).test(queryKeys)) {
       issues.push(
         `frontend/src/lib/api/queryKeys.ts: no ${domain}Keys — ` +
           `the ${domain} hooks cannot share an invalidation key`,
@@ -99,14 +105,105 @@ export function checkFrontendDomainSync(): string[] {
   return issues;
 }
 
-/** Every layer that is one file per domain. */
+/**
+ * A domain is a ledger when the backend fills its tables from a provider:
+ * `backend/app/batch/sync_<domain>_*_ledger.py` exists - the same fact
+ * `check-backend-domain` reads to make the router read-only.
+ */
+function isLedgerDomain(domain: string): boolean {
+  const batchDir = join(projectRoot, "backend", "app", "batch");
+  if (!existsSync(batchDir)) return false;
+  return readdirSync(batchDir).some((file: string) =>
+    new RegExp(`^sync_${domain}_[a-z0-9_]+_ledger\\.py$`).test(file),
+  );
+}
+
+/**
+ * The layers of a **ledger domain**: one read surface per table, no write surface.
+ *
+ * The rows belong to a nightly sync, so the CRUD template's form dialog, create/
+ * update/remove service methods and mutation hooks are not merely optional here
+ * - they are refused, because each would edit a copy the next pass overwrites.
+ * Per table rather than per domain: `food` is several ledgers, and each screen
+ * (`<Domain><Table>LedgerList.tsx`) owes its own hook, page and query key.
+ */
+function checkLedgerDomain(domain: string, name: string, queryKeys: string): string[] {
+  const issues: string[] = [];
+  const sectionDir = join(SRC_DIRECTORIES.sections, domain);
+  const screens = existsSync(sectionDir)
+    ? readdirSync(sectionDir).filter((f: string) => f.endsWith("LedgerList.tsx"))
+    : [];
+  if (screens.length === 0) {
+    issues.push(`${label(sectionDir)}: a ledger domain with no <${name}><Table>LedgerList.tsx - nothing shows the rows`);
+  }
+  const typesPath = join(SRC_DIRECTORIES.types, `${domain}.ts`);
+  if (!existsSync(typesPath)) issues.push(`${label(typesPath)}: missing — the ${domain} domain is incomplete`);
+  const hooksPath = join(SRC_DIRECTORIES.queryHooks, `use${name}.ts`);
+  const hooks = readIfPresent(hooksPath) ?? "";
+  if (hooks === "") issues.push(`${label(hooksPath)}: missing — the ${domain} domain is incomplete`);
+  const servicePath = join(SRC_DIRECTORIES.services, `${domain}.service.ts`);
+  const service = readIfPresent(servicePath) ?? "";
+  const types = readIfPresent(typesPath) ?? "";
+
+  for (const screen of screens) {
+    const table = screen.replace(/LedgerList\.tsx$/, "").replace(new RegExp(`^${name}`), "");
+    const page = join(SRC_DIRECTORIES.pages, `${name}${table}Page.tsx`);
+    if (!existsSync(page)) issues.push(`${label(page)}: missing — the ${domain} ledger ${table} has no route component`);
+    if (!new RegExp(`export function use${name}${table}List\\b`).test(hooks)) {
+      issues.push(`${label(hooksPath)}: no exported use${name}${table}List — the ${table} ledger has no query`);
+    }
+    const key = `${domain}${table}Keys`;
+    if (!new RegExp(`${key}\\s*=\\s*createQueryKeys`).test(queryKeys)) {
+      issues.push(`frontend/src/lib/api/queryKeys.ts: no ${key} — the ${table} ledger's hook cannot name its cache`);
+    }
+  }
+  if (!/\blist\w*\s*:/.test(service)) {
+    issues.push(`${label(servicePath)}: no list*() — a ledger service reads pages and nothing else`);
+  }
+  for (const method of ["create", "update", "remove"]) {
+    if (new RegExp(`\\b${method}\\w*\\s*:`).test(service)) {
+      issues.push(`${label(servicePath)}: has ${method}() on a ledger domain — the rows are a nightly sync's, and a write here is overwritten by morning`);
+    }
+  }
+  for (const hook of [`useCreate${name}`, `useUpdate${name}`, `useDelete${name}`]) {
+    if (new RegExp(`export function ${hook}\\w*\\b`).test(hooks)) {
+      issues.push(`${label(hooksPath)}: exports ${hook}* on a ledger domain — no mutation may exist for rows a sync owns`);
+    }
+  }
+  if (/CreateRequest|UpdateRequest/.test(types)) {
+    issues.push(`${label(typesPath)}: declares a CreateRequest/UpdateRequest on a ledger domain — there is no request that writes these rows`);
+  }
+  const dialog = existsSync(sectionDir)
+    ? readdirSync(sectionDir).find((f: string) => f.endsWith("FormDialog.tsx"))
+    : undefined;
+  if (dialog !== undefined) {
+    issues.push(`${label(join(sectionDir, dialog))}: a form dialog on a ledger domain — nothing here may write a row`);
+  }
+  return issues;
+}
+
+/**
+ * Every layer that is one file per domain.
+ *
+ * The form dialog is required *unless* the list creates its rows in the grid. A
+ * screen whose whole record is a row — three scalars on `/user` — makes the row
+ * the form: `+` opens a draft row, saving it is the create, and a dialog beside
+ * that would be a second surface asking for the same fields, drifting in order
+ * and in lengths the moment either side changed. The exemption is read from the
+ * list itself (a draft row that saves through `processRowUpdate`), so deleting
+ * the dialog without moving creation into the grid still fails here.
+ */
 function checkLayerFiles(domain: string, name: string): string[] {
   const issues: string[] = [];
+  const listPath = join(SRC_DIRECTORIES.sections, domain, `${name}List.tsx`);
+  const list = readIfPresent(listPath) ?? "";
+  const createsInGrid = /\bisNew\b/.test(list) && /processRowUpdate/.test(list);
+  issues.push(...checkCreateSurface(domain, name, list, createsInGrid));
   const required = [
     join(SRC_DIRECTORIES.types, `${domain}.ts`),
     join(SRC_DIRECTORIES.queryHooks, `use${name}.ts`),
-    join(SRC_DIRECTORIES.sections, domain, `${name}List.tsx`),
-    join(SRC_DIRECTORIES.sections, domain, `${name}FormDialog.tsx`),
+    listPath,
+    ...(createsInGrid ? [] : [join(SRC_DIRECTORIES.sections, domain, `${name}FormDialog.tsx`)]),
     join(SRC_DIRECTORIES.pages, `${name}Page.tsx`),
   ];
   for (const path of required) {
@@ -117,9 +214,83 @@ function checkLayerFiles(domain: string, name: string): string[] {
   return issues;
 }
 
+/**
+ * Where a record is created is decided by the record, not by taste.
+ *
+ * **Is every field of the create an editable column?** Then the row *is* the
+ * form and the dialog is a second surface asking for the same fields: `/user`
+ * writes `username`, `email`, `password`, and all three are editable columns, so
+ * `+` opens a draft row. When one field cannot be a cell the dialog stays —
+ * `/batch` writes a multiline `description` that is no column, `/integration`
+ * writes nested `secrets`.
+ *
+ * Documented, the criterion was still a matter of opinion: a domain of three
+ * scalars could keep a dialog and nothing would say so. It is read from the two
+ * files that already state it — the create request type and the list's editable
+ * columns — so the answer moves the moment either does.
+ */
+function checkCreateSurface(
+  domain: string,
+  name: string,
+  list: string,
+  createsInGrid: boolean,
+): string[] {
+  const types = readIfPresent(join(SRC_DIRECTORIES.types, `${domain}.ts`));
+  if (types === null || list === "") return [];
+
+  const created = requestFields(types, `${name}CreateRequest`);
+  if (created.length === 0) return [];
+
+  const editable = editableColumns(list);
+  const rowHoldsTheRecord = created.every((field) => editable.has(field));
+  if (rowHoldsTheRecord && !createsInGrid) {
+    return [
+      `frontend/src/sections/${domain}/${name}List.tsx: every field of ${name}CreateRequest ` +
+        `(${created.join(", ")}) is an editable column, so the row is the form — create the ` +
+        "row in the grid instead of in a dialog that asks for what the row already shows",
+    ];
+  }
+  if (!rowHoldsTheRecord && createsInGrid) {
+    const missing = created.filter((field) => !editable.has(field));
+    return [
+      `frontend/src/sections/${domain}/${name}List.tsx: creates rows in the grid, but ` +
+        `${missing.join(", ")} of ${name}CreateRequest is no editable column — a draft row ` +
+        "cannot carry it, so the create belongs in the dialog",
+    ];
+  }
+  return [];
+}
+
+/** The field names of one request interface, as `types/<domain>.ts` declares them. */
+function requestFields(types: string, interfaceName: string): string[] {
+  const start = types.indexOf(`export interface ${interfaceName} {`);
+  if (start === -1) return [];
+  const end = types.indexOf("\n}", start);
+  const body = types.slice(start, end === -1 ? types.length : end);
+  return [...body.matchAll(/^ {2}(\w+)\??:/gm)].map((match: RegExpMatchArray) => match[1]);
+}
+
+/**
+ * The columns a row can be typed into.
+ *
+ * A column the grid renders but never edits does not hold a field: `code` is on
+ * the integration list and is read-only, because the server has no rename.
+ */
+function editableColumns(list: string): Set<string> {
+  const fields = new Set<string>();
+  const columns = [...list.matchAll(/field: '(\w+)'/g)];
+  for (const [index, match] of columns.entries()) {
+    const from = match.index ?? 0;
+    const to = columns[index + 1]?.index ?? list.length;
+    if (/editable: true/.test(list.slice(from, to))) fields.add(match[1]);
+  }
+  return fields;
+}
+
 function checkServiceMethods(domain: string): string[] {
   const issues: string[] = [];
   const path = join(SRC_DIRECTORIES.services, `${domain}.service.ts`);
+  // existence-ok: domains are discovered from this very file, so it exists by construction.
   const content = readIfPresent(path);
   if (content === null) return issues;
 
@@ -137,6 +308,7 @@ function checkServiceMethods(domain: string): string[] {
 function checkQueryHooks(domain: string, name: string): string[] {
   const issues: string[] = [];
   const path = join(SRC_DIRECTORIES.queryHooks, `use${name}.ts`);
+  // existence-ok: the presence loop above reports every missing per-domain file.
   const content = readIfPresent(path);
   if (content === null) return issues;
 

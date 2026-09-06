@@ -63,6 +63,44 @@ The handler emits `exc.code`, and `check-frontend-i18n` fails when a code has no
 `errors.<code>` entry in every locale — so publishing a new failure mode without
 a translation is a gate failure, not a screen that shows `unknown_error`.
 
+### The mechanical form of that rule
+
+**An exception class carrying nothing but `detail` may not be raised for two
+different reasons.** If it is, the only thing separating those failures is the
+string no screen is allowed to render — so they reach the user as one sentence.
+The fix is a `code` parameter with a default, and a named code beside each raise.
+
+The principle above was written before anything enforced it, and two classes were
+violating it:
+
+| Class | Raised for | Reached the client as |
+|---|---|---|
+| `ConflictError` | 8 causes — taken username, taken email, taken provider code, duplicate secret name, secret still referenced, batch already running, unregistered job, no scheduler | `conflict` → `이미 사용 중인 값입니다` |
+| `IntegrationInputError` | 2 causes — wrong type, missing value | `integration_input_invalid` |
+
+The signup form could not put "username taken" on the username input, and
+`BatchFormDialog` had guessed `fieldByCode: { conflict: 'name' }` — putting
+"already running" on a name field, for a failure that is not about any field on
+that form.
+
+A code is a **snake_case identifier** (`^[a-z][a-z0-9_]*$`): it is the locale key
+`errors.<code>` and a client's branch label, so prose there resolves to no key
+and falls back to the generic sentence.
+
+Exempt by construction, never by name:
+
+- a class with no `detail` — `NotFoundError` carries an id and every raise means
+  the same thing;
+- a class that already takes a `code`;
+- a class carrying structured fields beyond `detail` — `IntegrationError` hands
+  back `envelope_key`/`envelope_value`, which is what a caller branches on;
+- a class raised once, which has one cause by construction.
+
+The one code that stays a category is `conflict` itself, and only as
+`ConflictError`'s **default**: it answers the race a service cannot see coming —
+the database's unique constraint refusing a writer that passed the service check
+a moment earlier (`IntegrityError`). A cause a service *can* name, names itself.
+
 ## The Two Documented Exemptions
 
 - **Pydantic validators raise `ValueError`.** `@field_validator` /

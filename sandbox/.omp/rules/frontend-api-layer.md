@@ -56,6 +56,57 @@ export const userService = {
 `undefined` during a fetch, so the grid loses its rows and its `rowCount` on
 every page change and the footer blinks between "1–10 of 240" and nothing.
 
+### A scope nothing invalidates is `REALTIME`
+
+`invalidateQueries` is this application's only cache-refresh path — measured: no
+`setQueryData`, `refetchQueries`, `removeQueries` or `resetQueries` exists in
+`frontend/src`. So if no mutation names a scope, a non-zero `staleTime` is a
+window in which the screen cannot show the truth and nothing on it can ask
+again. The batch run log is the case: the scheduler writes those rows outside
+HTTP, so a `STANDARD` window would report last night's failure as still running.
+
+One-way. A scope that *is* invalidated may still choose `REALTIME` — `useUserList`
+does, because it is read far more often than it is written, and that is a
+judgement the check does not make.
+
+**A child collection gets its own scope**, never a discriminator folded into the
+parent's list key. Invalidation matches by prefix, so `batchKeys.list({scope:
+'runs'})` sat under `batchKeys.lists()` and a schedule's own writes marked the run
+log invalid — a containment the key claimed and the data does not have. It cost a
+marking rather than a request only because `invalidateQueries` defaults to
+`refetchType: 'active'` and that query is mounted only while its dialog is open;
+the first screen that shows a run log beside a schedule write turns it into a
+refetch. The split is also what makes the rule above computable at all: while the
+runs lived under `batchKeys`, "is this scope invalidated" had no answer.
+
+**Every declared scope is read by a query.** `authKeys` sat exported and
+referenced by nothing — a scope with no reader is a screen that was never built,
+or a key waiting to be copied onto the wrong collection.
+
+### An action verb is a state request, and it invalidates nothing
+
+Not machine-checked — whether a mutation *should* invalidate is domain
+knowledge, and a check that guessed would either force a pointless refetch or
+excuse a missing one. Stated because both instances got it right for the same
+reason, and the next one should know it.
+
+Some mutations change no row a screen displays:
+
+| Hook | What it changes | Why no invalidation |
+|---|---|---|
+| `useRunBatch` | one execution | the grid shows `code`/`cron`/`enabled`, none of which a run touches; refetching would flicker for a state it does not draw |
+| `useExecuteOperation` | nothing — it calls a provider | there is no cache entry: the result belongs to the inputs just typed, and a second identical call spends another upstream request |
+
+**The verb pair is one endpoint carrying the wanted end state** (`{running:
+true|false}`), not two endpoints and not a toggle. It mirrors the backend's own
+split: `enabled` is activation — whether the clock starts the job — while
+run/stop act on one execution and never touch the trigger. Collapsing them into
+a single toggle would make "stop this run" silently unschedule a nightly job,
+and a deactivated row could no longer be run by hand.
+
+So the row carries both verbs as separate actions, and the toggle stays on
+`enabled`, where it means what it says.
+
 ## Pagination Reality
 
 The backend paginates with `offset`/`limit` and answers `Page<T>` — `items` plus

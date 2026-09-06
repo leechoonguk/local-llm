@@ -55,9 +55,43 @@ const { t: tNav } = useTranslation('nav')
 `t('nav.dashboard')` under a bare `useTranslation()` looks up
 `common.nav.dashboard` and renders the key. Name the namespace.
 
-A dynamic key (`t(item.titleKey)`) cannot be verified, so the key it builds must
-be a bare key inside a named namespace: `useTranslation('nav')` +
-`titleKey: 'dashboard'`, never a dotted path against the default namespace.
+A key held in a config object (`t(item.titleKey)`) must still be a bare key
+inside a named namespace: `useTranslation('nav')` + `titleKey: 'dashboard'`,
+never a dotted path against the default namespace.
+
+## The Compiler Owns The Keys
+
+`locales/i18next.d.ts` declares the resources to i18next, so **every `t()` call
+is type-checked against `ko`** — the default *and* fallback language, whose key
+set `check-frontend-i18n` proves `en` matches. A key that exists nowhere is a
+build failure, not a string rendered on screen.
+
+This is why the closed vocabularies are unions. A composed key type-checks only
+when *every* value its interpolation can take forms a real key:
+
+```tsx
+t(`runs.status.${run.status}`)        // BatchRunStatus — five keys, all present
+t(`runs.steps_table.${column.key}`)   // string — refused
+```
+
+The second line is not hypothetical: it shipped, and three step columns rendered
+`runs.steps_table.duration` as their header. It type-checked and passed every
+gate, because `t()` took any string and `column.key` was one.
+
+So the chain that ends here starts in the database: a `CheckConstraint`
+(`backend-table-design`) becomes a `Literal` (`backend-domain`), becomes a TS
+union (`check-frontend-types`), and only then can a composed key be proven. A
+field left as `string` anywhere along it breaks the proof at this end.
+
+A key held in a config object is typed the same way — `ParseKeys<'nav'>` on
+`NavItem.titleKey`, not `string`, because the sidebar renders it at a distance
+and no test reads a label.
+
+**Interpolation values are text.** The types infer `{{from}}` as a string, so a
+number is converted at the call site. And `count` is **reserved**: i18next reads
+it as the plural selector, so a sentence that merely displays a total names it
+something else (`{{total}}`) rather than silently asking for plural forms the
+key does not have.
 
 ## Server Failures Are Codes, Not Sentences
 

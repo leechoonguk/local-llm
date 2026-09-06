@@ -310,6 +310,7 @@ function checkDesignModules(): string[] {
     }
   }
 
+  // existence-ok: theme/index.tsx is imported by Providers.tsx — tsc fails loudly without it.
   const theme = readIfPresent(join(frontendSrc, "theme", "index.tsx"));
   if (theme === null) return issues;
   for (const token of ["palette", "typography", "shadows", "customShadows", "componentOverrides"]) {

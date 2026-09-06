@@ -1,5 +1,6 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { layerFiles } from "./backend-layout.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { resolveProjectRoot } from "./hook-project-root.ts";
@@ -97,8 +98,9 @@ function checkServiceDomainExceptions(base: string): string[] {
     [...exceptionsContent.matchAll(/^class\s+(\w+Error)\(Exception\):/gm)].map((m) => m[1]),
   );
 
-  for (const f of readdirSync(servicesDir)) {
-    if (!f.endsWith(".py") || f === "__init__.py") continue;
+  // Folder domains keep their services one level down; a flat scan saw three of
+  // ten. Measured: `raise MadeUpError(...)` passed in `services/batch/run.py`.
+  for (const f of layerFiles(servicesDir)) {
     const content = readFileSync(join(servicesDir, f), "utf-8");
     for (const m of content.matchAll(/\braise\s+(\w+Error)\s*\(/g)) {
       const exc = m[1];

@@ -16,6 +16,7 @@
  * Log issues for the user to address.
  */
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import { layerFiles } from "../lib/backend-layout.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -77,8 +78,12 @@ function checkBackendTableDesignSync(): string[] {
   if (!existsSync(modelsDir)) return ["backend/app/models/ not found"];
 
   const issues: string[] = [];
-  for (const filename of readdirSync(modelsDir).sort()) {
-    if (!filename.endsWith(".py") || filename === "__init__.py") continue;
+  // `listModelFiles` descends one level, which is the whole convention: a domain
+  // that grew into a folder keeps its tables there. A bare `readdirSync` filtered
+  // on `.py` skipped every directory, so nine of thirteen models — every table in
+  // `batch/` and `integration/` — were never checked. Measured: `String` without
+  // a length fired on `user.py` and passed on `batch/step.py`.
+  for (const filename of layerFiles(modelsDir).sort()) {
     const source = readFileSync(join(modelsDir, filename), "utf-8");
     for (const model of splitModels(source)) {
       if (/__tablename__/.test(model.body)) {

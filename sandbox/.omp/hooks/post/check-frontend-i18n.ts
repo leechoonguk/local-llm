@@ -110,6 +110,7 @@ export default function checkFrontendI18n(pi: ExtensionAPI): void {
  * config file a language whose "missing keys" filled the report.
  */
 function discoverLocales(): string[] {
+  // existence-ok: an absent i18n.ts empties LOCALES, and the entry sentinel reports that.
   const config = readIfPresent(join(SRC_DIRECTORIES.locales, "i18n.ts"));
   if (config === null) return [];
   const declared = /SUPPORTED_LANGUAGES\s*=\s*\[([^\]]*)\]/.exec(config);
@@ -127,9 +128,27 @@ function checkLocaleRegistry(): string[] {
   const issues: string[] = [];
   const directory = SRC_DIRECTORIES.locales;
   if (!existsSync(directory)) return issues;
+  // A `.d.ts` carries no resources — `i18next.d.ts` declares the *types* of the
+  // ones beside it, so reading it as a language would demand a locale named
+  // `i18next` and register nothing.
   const files = readdirSync(directory)
-    .filter((f: string) => f.endsWith(".ts") && f !== "i18n.ts" && f !== "index.ts")
+    .filter(
+      (f: string) =>
+        f.endsWith(".ts") && !f.endsWith(".d.ts") && f !== "i18n.ts" && f !== "index.ts",
+    )
     .map((f: string) => f.replace(/\.ts$/, ""));
+  // An empty locale set is never a clean state: the app initialises i18next
+  // from SUPPORTED_LANGUAGES, so either `i18n.ts` moved or the constant was
+  // renamed — and every check below would run against nothing while reporting
+  // PASS (the CLI crashed instead, on `LOCALES[0]!`; the runtime guard would
+  // have swallowed that crash and retired the check silently).
+  if (LOCALES.length === 0) {
+    return [
+      "frontend/src/locales/i18n.ts: SUPPORTED_LANGUAGES not found — every locale " +
+        "check runs against an empty set, so parity, error codes and referenced " +
+        "keys are all unverified",
+    ];
+  }
   const registered = new Set(LOCALES);
   for (const name of files) {
     if (!registered.has(name)) {
@@ -203,6 +222,9 @@ export function checkFrontendI18nSync(): string[] {
   // An unregistered file is reported even when parity cannot run, because that
   // file is exactly the one parity would have skipped.
   issues.push(...checkLocaleRegistry());
+  // With no locales there is nothing below to compare — and `LOCALES[0]!`
+  // further down would crash on it, which the runtime guard swallows.
+  if (LOCALES.length === 0) return issues;
 
   const keysByLocale = new Map<string, Set<string>>();
   for (const locale of LOCALES) {
@@ -361,7 +383,10 @@ function collectErrorCodes(): Set<string> {
   for (const source of backendSources(join(projectRoot, "backend", "app"))) {
     for (const match of source.matchAll(/"code":\s*"([a-z_]+)"/g)) codes.add(match[1]);
     for (const match of source.matchAll(/\bcode="([a-z_]+)"/g)) codes.add(match[1]);
-    for (const match of source.matchAll(/^[A-Z][A-Z0-9_]*_CODE\s*=\s*"([a-z_]+)"$/gm)) {
+    // A trailing comment is part of a line, not part of the code: a `# noqa`
+    // beside a constant used to hide that constant from this reader, and the
+    // locale entry answering it was then reported as dead copy.
+    for (const match of source.matchAll(/^[A-Z][A-Z0-9_]*_CODE\s*=\s*"([a-z_]+)"\s*(?:#.*)?$/gm)) {
       codes.add(match[1]);
     }
   }

@@ -64,6 +64,25 @@ check("S5 표준 디렉터리 통과",
 check("S6 tests 통과",
   !blocked(structure("write", { path: "backend/tests/test_notice.py" })));
 
+// --- strict-frontend-app-structure.ts — 선언된 frontend/src/ 레이아웃(SRC_LAYOUT) 밖 생성 금지 ---
+// 백엔드 쌍둥이(2026-09-06 fas 이식). 재귀 스캔은 낯선 디렉터리를 보긴 하지만 디렉터리 역할에
+// 걸린 규칙(sections=화면·lib/api=전송)이 조용히 적용되지 않는다 — 그래서 write 시점에 막는다.
+const fstructure = await load("strict-frontend-app-structure.ts");
+check("F1 src/ 아래 새 디렉터리 BLOCK",
+  blocked(fstructure("write", { path: "frontend/src/adapters/client.ts" })));
+check("F2 선언된 디렉터리(sections) 통과",
+  !blocked(fstructure("write", { path: "frontend/src/sections/notice/NoticeList.tsx" })));
+check("F3 src 루트의 낯선 파일 BLOCK",
+  blocked(fstructure("write", { path: "frontend/src/stray.ts" })));
+check("F4 src 루트의 선언된 파일(App.tsx) 통과",
+  !blocked(fstructure("edit", { path: "frontend/src/App.tsx" })));
+check("F5 내용 태그가 붙은 허용 경로도 허용으로 읽는다",
+  !blocked(fstructure("write", { path: "frontend/src/types/notice.ts#0D77" })));
+check("F6 src/ 밖(frontend 설정 파일)은 이 가드의 대상이 아니다",
+  !blocked(fstructure("write", { path: "frontend/vite.config.ts" })));
+check("F7 플러그인 편집 툴(replace)의 평문 path 도 같은 경계",
+  blocked(fstructure("replace", { path: "frontend/src/adapters/client.ts" })));
+
 // --- strict-command-routing.ts — make 타깃으로 라우팅 ---
 const routing = await load("strict-command-routing.ts");
 check("R1 bare pytest BLOCK", blocked(routing("bash", { command: "pytest -q" })));

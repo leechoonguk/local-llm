@@ -524,5 +524,30 @@ export function checkIntegrationConfiguration(): string[] {
     );
   }
 
+  // The key pool is a property of the secret and a decision of the operation
+  // service: a provider's grouped secrets answer as one credential, and the
+  // service turns the pool on a quota code. Nothing above the service may know
+  // the pool exists - a batch job or a router that reads `exhausted_until` or
+  // picks a member has re-implemented the rotation once, and the copy that
+  // forgets to mark the spent key sends it again every window.
+  const poolWords = /\b(rotation_group|exhausted_until|list_pool|mark_exhausted)\b/;
+  for (const layer of ["batch", "routers", "dependencies"]) {
+    const layerDir = join(appDir, layer);
+    if (!existsSync(layerDir)) continue;
+    for (const file of readdirSync(layerDir).filter((name: string) => name.endsWith(".py"))) {
+      if (poolWords.test(readFileSync(join(layerDir, file), "utf-8"))) {
+        issues.push(
+          `${layer}/${file}: reads the secret pool - the rotation is the operation service's; ` +
+            "a caller sees one credential and the provider's refusal only when every key is spent",
+        );
+      }
+    }
+  }
+  if (!/quota_codes/.test(serviceSourceText) || !/mark_exhausted/.test(serviceSourceText)) {
+    issues.push(
+      "services/integration: the operation service must turn the pool on a quota code and mark the spent member",
+    );
+  }
+
   return issues;
 }

@@ -8,6 +8,7 @@
  */
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { layerFiles } from "../lib/backend-layout.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
@@ -62,10 +63,13 @@ function checkBackendOwnershipSync(): string[] {
   // does the comparison itself is exactly the case where no service method
   // takes current_user, so returning dormant first would hide it.
   const servicesDir = join(appDir, "services");
+  // The dormancy probe decides whether this hook checks anything at all, so a
+  // flat scan makes it go quiet the day ownership moves into a folder domain.
+  // It works today only because `services/user.py` happens to be top-level.
   const scoped = existsSync(servicesDir)
-    ? readdirSync(servicesDir)
-        .filter((file: string) => file.endsWith(".py"))
-        .some((file: string) => readFileSync(join(servicesDir, file), "utf-8").includes("current_user"))
+    ? layerFiles(servicesDir).some((file: string) =>
+        readFileSync(join(servicesDir, file), "utf-8").includes("current_user"),
+      )
     : false;
   if (!scoped && issues.length === 0) {
     return dormant("check-backend-ownership", "no service method takes current_user");

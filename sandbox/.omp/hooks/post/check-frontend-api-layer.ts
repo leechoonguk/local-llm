@@ -7,6 +7,7 @@ import {
   frontendSrc,
   label,
   projectRoot,
+  readIfPresent,
   readSources,
   walkSources,
 } from "../lib/frontend-source.ts";
@@ -93,6 +94,7 @@ export function checkFrontendApiLayerSync(): string[] {
   issues.push(...checkServices());
   issues.push(...checkQueryHooks());
   issues.push(...checkScreensUseHooks());
+  issues.push(...checkUninvalidatedScopesAreRealtime());
   return issues;
 }
 
@@ -212,6 +214,95 @@ function checkScreensUseHooks(): string[] {
     }
   }
   return issues;
+}
+
+/**
+ * A scope no mutation invalidates has no way back to fresh data but a refetch.
+ *
+ * `invalidateQueries` is this application's only cache-refresh path — measured:
+ * no `setQueryData`, `refetchQueries`, `removeQueries` or `resetQueries` exists
+ * anywhere in `frontend/src`. So for a scope no mutation names, a non-zero
+ * `staleTime` is a window in which the screen cannot show the truth and nothing
+ * on it can ask again: the run log is written by the scheduler, outside HTTP, and
+ * a stale answer reports last night's failure as still running.
+ *
+ * Scopes are **discovered** from the key factory, never listed here — a hook that
+ * writes a domain name into a classifier keeps passing on the day it stops
+ * applying. The direction is one-way: a scope that *is* invalidated may still
+ * choose REALTIME (a list read far more often than it changes is a different
+ * decision), so only the uninvalidated ones are constrained.
+ */
+function checkUninvalidatedScopesAreRealtime(): string[] {
+  const issues: string[] = [];
+  const factories = keyFactories();
+  if (factories.size === 0) return issues;
+
+  const files = readSources(SRC_DIRECTORIES.queryHooks);
+  const invalidated = new Set<string>();
+  for (const file of files) {
+    // One level of indirection is a legitimate shape:
+    // `const runKey = batchRunKeys.lists(); invalidateQueries({ queryKey: runKey })`.
+    // Reading only the call site missed it and demanded REALTIME from a scope a
+    // mutation was in fact refreshing — measured as a false finding.
+    const bindings = new Map<string, string>();
+    for (const bound of file.content.matchAll(/const\s+(\w+)\s*=\s*(\w+Keys)\s*\./g)) {
+      bindings.set(bound[1], bound[2]);
+    }
+    for (const match of file.content.matchAll(/invalidateQueries\(\s*\{\s*queryKey:\s*(\w+)/g)) {
+      invalidated.add(bindings.get(match[1]) ?? match[1]);
+    }
+  }
+
+  const queried = new Set<string>();
+  for (const file of files) {
+    for (const match of file.content.matchAll(/queryKey:\s*(\w+)\s*\./g)) {
+      queried.add(match[1]);
+    }
+  }
+  for (const factory of factories) {
+    if (queried.has(factory)) continue;
+    issues.push(
+      `frontend/src/lib/api/queryKeys.ts: ${factory} is declared and no query reads ` +
+        "it — either the screen was never built or the scope is a key waiting to be " +
+        "copied onto the wrong collection",
+    );
+  }
+
+  for (const file of files) {
+    for (const [hookName, body] of exportedFunctions(file.content)) {
+      if (!/useQuery\(/.test(body)) continue;
+      const key = /queryKey:\s*(\w+)\s*\./.exec(body);
+      if (key === null || !factories.has(key[1])) continue;
+      if (invalidated.has(key[1])) continue;
+      const stale = /staleTime:\s*QUERY_STALE_TIME\.(\w+)/.exec(body);
+      if (stale === null || stale[1] === "REALTIME") continue;
+      issues.push(
+        `${file.label}: ${hookName} caches ${key[1]} for ${stale[1]}, but no mutation ` +
+          `invalidates that scope — nothing can refresh the rows before the window ` +
+          "expires, so use QUERY_STALE_TIME.REALTIME or give a write the invalidation",
+      );
+    }
+  }
+  return issues;
+}
+
+/**
+ * Every `<name>Keys = createQueryKeys('<scope>')` in the key factory module.
+ *
+ * A factory declared and used by no query is reported here rather than left to a
+ * reader: `authKeys` sat exported and referenced by nothing, and an unused scope
+ * is either a screen that was never built or a key someone will copy for the
+ * wrong collection.
+ */
+function keyFactories(): Set<string> {
+  // existence-ok: queryKeys.ts is imported by every hook module — tsc fails loudly without it.
+  const source = readIfPresent(join(SRC_DIRECTORIES.lib, "queryKeys.ts"));
+  if (source === null) return new Set();
+  return new Set(
+    [...source.matchAll(/export const (\w+)\s*=\s*createQueryKeys\(/g)].map(
+      (match: RegExpMatchArray) => match[1],
+    ),
+  );
 }
 
 /**

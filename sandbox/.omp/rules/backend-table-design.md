@@ -89,7 +89,24 @@ slower commit matches zero rows and raises `StaleDataError`, which
 it, the second write silently discards the first one's columns.
 
 `version` is part of every Read response so a client can observe which
-revision it holds.
+revision it holds (`check-backend-domain`, every `*ReadResponse` in every
+layout), and `StaleDataError` must have its handler (`check-backend-exceptions`)
+- deleting it turned every concurrent write into a stack-traced 500 while every
+gate stayed green, measured.
+
+**Every `AuditMixin` table carries the lock, including the ones that do not need
+it - and that is the criterion, not an oversight.** Where a second writer
+exists the lock is load-bearing: two admins on one `user` form, the job
+finishing a `batch_run` while the UI stops it, a scheduled and a manual run
+storing one `batch_checkpoint`, a refresh token rotated and revoked at once.
+Where there is one writer (`food_*` ledgers) it is evidence - `max(version) = 1`
+after a re-read is the proof that nothing was rewritten - and where a table is
+append-only (`integration_call`) it is inert. The alternative, a second mixin
+for tables that opt out, creates a decision on every new table, and that
+decision fails in one direction only: a table that gains an editor later and
+lacks the lock loses updates silently, and no check can see a lock that is
+absent. An integer column and one `WHERE version =` clause is the price of
+never making that decision.
 
 ## Audit Trail
 

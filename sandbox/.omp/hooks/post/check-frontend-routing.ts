@@ -76,6 +76,23 @@ export function checkFrontendRoutingSync(): string[] {
   const routed = referencedLeaves(routes);
   const navigated = referencedLeaves(navigation);
 
+  // All three loops below compare these sets, so a consistent rename of the
+  // registry (`PATHS` -> anything) empties every side at once and the whole
+  // contract passes vacuously. An existing file the parser reads as empty is
+  // the parser's blindness, and that is the finding.
+  if (registry.size === 0) {
+    return [
+      "frontend/src/routes/paths.ts: no PATHS leaves parsed — the registry exists but " +
+        "the check cannot read it, so every route/navigation comparison is vacuous",
+    ];
+  }
+  if (routed.size === 0) {
+    return [
+      "frontend/src/App.tsx: no PATHS references parsed from the route table — either " +
+        "no route reads the registry or the parser was defeated; both retire this check",
+    ];
+  }
+
   for (const leaf of registry) {
     if (!routed.has(leaf)) {
       issues.push(

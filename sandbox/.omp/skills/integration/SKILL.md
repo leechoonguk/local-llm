@@ -1,6 +1,6 @@
 ---
 name: integration
-description: Add or change a database-managed external API integration end to end - measure the provider, seed the configuration, prove it with a request file and a recorded contract fixture. Use when the user asks to integrate an external API, add a provider or operation, or change an existing integration's fields, paging, or response contract.
+description: Add or change a database-managed external API integration end to end - resolve the dataset name to the portal's official spec page, measure the provider, seed the configuration, prove it with a request file and a recorded contract fixture. Use when the user names a public dataset to integrate, asks to add a provider or operation, or changes an existing integration's fields, paging, or response contract.
 ---
 
 # External API Integration
@@ -11,6 +11,53 @@ measured on the way. **Measure the provider before designing anything** — ever
 rule below exists because a guess was wrong once.
 
 ## Workflow
+
+### 0. Resolve the name to the official spec
+
+The user names a dataset, not a service code. Before any call, find the portal's
+own page for it and read the contract there - the code, the path, the envelope,
+the columns with their meanings. A probe confirms a shape; it cannot tell you
+what a column *means* (`RAWMTRL_ORDNO` was guessed as "ordinal" and the page
+says 원재료표시순서 - right by luck). Two portals, two procedures, both measured
+2026-09-06 without a login:
+
+**공공데이터포털 (`data.go.kr`) - name search, then an inline Swagger.**
+
+1. Search by name, APIs only:
+   `https://www.data.go.kr/tcs/dss/selectDataSetList.do?keyword=<명칭>&dType=API`
+   ("식품의약품안전처 식품영양성분DB" answered one hit, `/data/15127578/openapi.do`).
+2. Open `/data/<id>/openapi.do`. The page embeds the whole Swagger 2.0 document in
+   an inline script - `const swaggerJson = \`{...}\`` - so read it with the browser
+   and `JSON.parse` the template literal. It carries `host` (`apis.data.go.kr/1471000/
+   FoodNtrCpntDbInfo02`), the operation path (`/getFoodNtrCpntDbInq02`), and the
+   response schema down to every record column with a Korean description
+   (193 on that dataset), plus the paging envelope (`body.pageNo/numOfRows/
+   totalCount`, `header.resultCode/resultMsg`).
+3. What the Swagger does **not** carry: `parameters` is empty on these gateway
+   specs. `serviceKey`, `pageNo`, `numOfRows` and the search filters come from the
+   linked 참고문서 (`출력메세지_*.xlsx`) or from the probe. Error codes are the
+   portal-wide "오픈API 에러코드 안내", not per operation.
+
+**식품안전나라 (`openapi.foodsafetykorea.go.kr`) - no search; the page is keyed by
+service code.**
+
+1. Find the code: `web_search` for `식품안전나라 OpenAPI <명칭>` returns the page
+   `openApiInfo.do?...&svc_no=<CODE>` whose title is the dataset's official name -
+   that title match is the confirmation, not memory (`C002` = 식품(첨가물)품목제조
+   보고(원재료) was confirmed this way).
+2. Read the page in the browser (`document.body.innerText`; no login). It carries
+   the URL shape (`/api/keyId/serviceId/dataType/startIdx/endIdx`, filters as a
+   trailing path segment `변수명=값&변수명=값2`), the 요청인자 table (required
+   five plus optional filters) and the 출력항목 table - column, meaning, and
+   value legend (`ETQTY_XPORT_PRDLST_YN`: N 내수, O 겸용).
+3. What the page does **not** carry: the envelope verdict codes (a normal page has
+   no `RESULT`), and whether a filter filters. Both are step 1.
+
+Then cross the page against one measured record, column by column, and paste the
+table into the seed docstring: 10 documented, 10 measured, none missing, none
+extra - or the difference, which is a finding. A page that cannot be read (login,
+JS-only) is written down as such, and the seed then carries only what the probe
+measured, with the column meanings marked unknown rather than guessed.
 
 ### 1. Measure the provider first
 
@@ -273,6 +320,9 @@ landed. Check these when a new provider joins:
 
 - Design from the provider's documentation alone — the docs said the filters
   were parameters, and the wire said otherwise.
+- Name a service code or a column's meaning from memory. The code comes from the
+  portal page whose title is the dataset's name; the meaning from its 출력항목
+  table or the Swagger description. A probe proves a shape, not a name.
 - Model a path-carried query string as `QUERY`; it is accepted and ignored.
 - Leave a provider that answers HTTP 200 for failures without `ENVELOPE` rows —
   an invalid key then reads as an empty page.

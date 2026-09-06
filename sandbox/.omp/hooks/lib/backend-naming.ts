@@ -1,5 +1,6 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { layerFiles } from "./backend-layout.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { resolveProjectRoot } from "./hook-project-root.ts";
@@ -86,7 +87,19 @@ function checkPrivateMethods(base: string): string[] {
  */
 function checkSectionDividers(base: string): string[] {
   const issues: string[] = [];
-  const CANONICAL_ORDER = [
+  /**
+   * The vocabulary only. **Order is `check-code-layout`'s**, and used to be
+   * declared here too — in a different order.
+   *
+   * The two disagreed about where a router's private helpers go: this file put
+   * `Functions` before `Router`, `check-code-layout` after it. A router with one
+   * helper could satisfy neither, which is how the contradiction surfaced. Order
+   * belongs to the check whose rule states the principle it follows — a file
+   * reads top-down from its entry point to its details — so the copy here is
+   * gone rather than kept in sync by hand (`omp-hooks.md`: one invariant, one
+   * owner).
+   */
+  const SECTION_VOCABULARY = [
     "Imports",
     "Constants",
     "Classes",
@@ -145,18 +158,10 @@ function checkSectionDividers(base: string): string[] {
       }
     });
     for (const name of names) {
-      if (!CANONICAL_ORDER.includes(name)) {
-        issues.push(`${fileName}: unknown section "${name}" — use one of ${CANONICAL_ORDER.join(", ")}`);
-      }
-    }
-    const orderIndexes = names.map((n) => CANONICAL_ORDER.indexOf(n));
-    for (let i = 1; i < orderIndexes.length; i++) {
-      if (orderIndexes[i] <= orderIndexes[i - 1]) {
+      if (!SECTION_VOCABULARY.includes(name)) {
         issues.push(
-          `${fileName}: section "${names[i]}" is out of order — canonical order is ` +
-            CANONICAL_ORDER.join(" → "),
+          `${fileName}: unknown section "${name}" — use one of ${SECTION_VOCABULARY.join(", ")}`,
         );
-        break;
       }
     }
   }
@@ -305,9 +310,14 @@ function checkConftestModelImports(base: string): string[] {
   if (!existsSync(modelDir) || !existsSync(conftestPath)) return issues;
 
   const conftestContent = readFileSync(conftestPath, "utf-8");
-  for (const f of readdirSync(modelDir)) {
-    if (!f.endsWith(".py") || f === "__init__.py" || f === "base.py") continue;
-    const name = f.replace(/\.py$/, "");
+  // A nested model is imported as `app.models.batch.run`, so the module path is
+  // the file path with separators swapped — and a flat scan never reached those
+  // files at all. Measured: deleting the `batch.run` import from conftest passed
+  // while deleting `refresh` failed, so nine tables could vanish from the test
+  // database without a word.
+  for (const f of layerFiles(modelDir)) {
+    if (f === "base.py") continue;
+    const name = f.replace(/\.py$/, "").split("/").join(".");
     if (!new RegExp(`from app\\.models\\.${name} import(?:\\s+\\w+|\\s*\\()`).test(conftestContent)) {
       issues.push(
         `conftest.py: model "${name}" not imported — Base.metadata.create_all() ` +

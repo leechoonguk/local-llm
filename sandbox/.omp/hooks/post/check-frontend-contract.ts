@@ -8,6 +8,8 @@ import {
   pascalCase,
   projectRoot,
   readIfPresent,
+  readSources,
+  stripComments,
 } from "../lib/frontend-source.ts";
 import type { FieldConstraints, TypeShape } from "../lib/frontend-contract.ts";
 import {
@@ -29,7 +31,7 @@ import {
   collectServiceCalls,
 } from "../lib/frontend-routes.ts";
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
@@ -133,6 +135,7 @@ export function checkFrontendContractSync(): string[] {
     issues.push(...checkDomainFields(domain, shared));
     issues.push(...checkValidationParity(domain));
   }
+  issues.push(...checkPanelValidationParity());
   return issues;
 }
 
@@ -312,11 +315,14 @@ function checkRouteCoverage(): string[] {
  */
 function checkValidationParity(domain: string): string[] {
   const issues: string[] = [];
+  // existence-ok: a discovered domain with no schema module fails the 5-layer
+  // check (check-backend-domain) — absence is its finding, parity is ours.
   const backendSource = readBackendModule(projectRoot, "schemas", `${domain}.py`);
   if (backendSource === null) return issues;
 
   const name = pascalCase(domain);
   const dialogPath = join(SRC_DIRECTORIES.sections, domain, `${name}FormDialog.tsx`);
+  // existence-ok: check-frontend-domain requires <Domain>FormDialog.tsx per domain.
   const dialogSource = readIfPresent(dialogPath);
   if (dialogSource === null) return issues;
 
@@ -325,6 +331,17 @@ function checkValidationParity(domain: string): string[] {
 
   const rules = parseYupRules(dialogSource);
   const label = `frontend/src/sections/${domain}/${name}FormDialog.tsx`;
+
+  // A dialog with a resolver and no readable rules is not a dialog without
+  // validation — it is a schema the parser cannot see, and every comparison
+  // below would silently vanish for this domain. Say so instead.
+  if (rules.size === 0 && /Resolver\(/.test(dialogSource)) {
+    return [
+      `${label}: has a resolver but the parity check cannot read its yup schema — ` +
+        "keep `yup.object({...})` fields at the standard indent, or the length/" +
+        "pattern/required comparisons all silently stop applying",
+    ];
+  }
 
   const serviceSource = readBackendModule(projectRoot, "services", `${domain}.py`);
   const shaped = serviceSource === null ? new Set<string>() : parseServiceShapeRules(serviceSource);
@@ -347,6 +364,22 @@ function checkValidationParity(domain: string): string[] {
           `${name}CreateRequest requires ${declared.min}`,
       );
     }
+    // Required-ness, both ways. A boolean is exempt: a checkbox always submits
+    // a value, so `.required()` would ask the form to refuse something the
+    // control cannot produce — yup spells that state `.defined()`.
+    if (!rule.boolean && declared.required && !rule.required) {
+      issues.push(
+        `${label}: ${field} is not marked required but ${name}CreateRequest has no ` +
+          "default for it — an empty submit reaches the server and returns a 422 that " +
+          "names no field",
+      );
+    }
+    if (!rule.boolean && !declared.required && rule.required) {
+      issues.push(
+        `${label}: ${field} is marked required but ${name}CreateRequest gives it a ` +
+          "default — the form is refusing a submit the API accepts",
+      );
+    }
     if (rule.matches && !serverShapes) {
       issues.push(
         `${label}: ${field} enforces a character pattern neither ${name}CreateRequest nor ` +
@@ -364,6 +397,108 @@ function checkValidationParity(domain: string): string[] {
     }
   }
   return issues;
+}
+
+/**
+ * The same parity, one layer down: a **panel** edits a nested record.
+ *
+ * `checkValidationParity` above reads `<Domain>FormDialog.tsx`, and the three
+ * dialogs in this app hold only strings and booleans. Every numeric bound the
+ * backend declares — timeouts, retry counts, an ordinal — belongs to a nested
+ * record edited through a panel, which that check never opens. Measured on one
+ * panel: `path_template` (capped at 2048) and `response_root` (512) declared no
+ * `maxLength`, and three `NumberField`s declared no bound at all against
+ * `gt=0`/`ge=0`. `NumberField` strips non-digits, so a negative is impossible —
+ * but `0` is not, and a zero connect timeout is a 422 the form could have
+ * refused.
+ *
+ * The schema is **discovered**, never listed: `<Name>Panel.tsx` looks for a
+ * Pydantic `<Name>CreateRequest`, the naming the record-dialog standard already
+ * uses. A panel with no such class (`IntegrationRunPanel` is a console, not a
+ * record) is skipped rather than guessed at.
+ *
+ * A control is only asked for a bound its field actually has, and only when the
+ * panel renders that field — not every column is editable, and a check that
+ * demanded a control for `retry_base_ms` would be inventing a screen.
+ */
+function checkPanelValidationParity(): string[] {
+  const issues: string[] = [];
+  const requests = requestConstraintsByClass();
+  if (requests.size === 0) return issues;
+
+  for (const file of readSources(SRC_DIRECTORIES.sections)) {
+    const base = (file.label.split("/").pop() ?? "").replace(/\.tsx$/, "");
+    if (!base.endsWith("Panel") || base.endsWith("DeletePanel")) continue;
+    const constraints = requests.get(`${base.replace(/Panel$/, "")}CreateRequest`);
+    if (constraints === undefined) continue;
+
+    // Comments first: a JSX comment between props pushed `value=` past the scan
+    // window and the missing bound became invisible — measured with a padded
+    // doc comment inside a NumberField. 600 leaves room for many-prop controls.
+    const code = stripComments(file.content);
+    for (const control of code.matchAll(/<(NumberField|ScalarField)\b([\s\S]{0,600}?)\/>/g)) {
+      const [, kind, props] = control;
+      const bound = /value=\{form\.(\w+)\}/.exec(props);
+      if (bound === null) continue;
+      const field = bound[1];
+      const declared = constraints.get(field);
+      if (declared === undefined) continue;
+
+      if (kind === "ScalarField" && declared.max !== undefined && !/\bmaxLength=/.test(props)) {
+        issues.push(
+          `${file.label}: ${field} declares no maxLength but the server caps it at ` +
+            `${declared.max} — the value reaches the API and comes back a 422`,
+        );
+      }
+      if (kind !== "NumberField") continue;
+      // `NumberField` strips non-digits, so the control cannot produce a negative
+      // and `ge=0` needs no restating. `gt=0` is a different bound: zero is
+      // exactly what the widget hands back for an emptied input.
+      const lower =
+        declared.greaterThan !== undefined ? declared.greaterThan + 1 : declared.atLeast;
+      const upper = declared.atMost ?? declared.lessThan;
+      if (lower !== undefined && lower > 0 && !/\bmin=/.test(props)) {
+        issues.push(
+          `${file.label}: ${field} declares no min but the server refuses anything below ` +
+            `${lower} — the control hands back 0 for an emptied input, so that value ` +
+            "submits and comes back a 422",
+        );
+      }
+      if (upper !== undefined && !/\bmax=/.test(props)) {
+        issues.push(`${file.label}: ${field} declares no max but the server caps it at ${upper}`);
+      }
+    }
+  }
+  return issues;
+}
+
+/** Constraints of every `*CreateRequest` in `app/schemas/`, keyed by class name. */
+function requestConstraintsByClass(): Map<string, Map<string, FieldConstraints>> {
+  const merged = new Map<string, Map<string, FieldConstraints>>();
+  const schemasDir = join(projectRoot, "backend", "app", "schemas");
+  if (!existsSync(schemasDir)) return merged;
+  for (const path of pythonModules(schemasDir)) {
+    for (const [name, fields] of parsePydanticConstraints(readFileSync(path, "utf-8"))) {
+      if (name.endsWith("CreateRequest")) merged.set(name, fields);
+    }
+  }
+  return merged;
+}
+
+/** Every `.py` under a directory, one level of nesting deep. */
+function pythonModules(directory: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) {
+      for (const inner of readdirSync(path)) {
+        if (inner.endsWith(".py")) found.push(join(path, inner));
+      }
+    } else if (entry.name.endsWith(".py")) {
+      found.push(path);
+    }
+  }
+  return found;
 }
 
 // Direct execution (make check-frontend-contract): run the check and print results.

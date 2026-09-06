@@ -5,7 +5,8 @@ import { existsSync, readdirSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { runAstRules } from "../lib/ast-rules.ts";
-import { aggregateDomains, belongsToAggregateDomain, checkDomainStructure, checkNoGenericStaleFinder, checkRelationshipLoading, checkSchemaSurface } from "../lib/backend-domain-structure.ts";
+import { aggregateDomains, belongsToAggregateDomain, checkClosedVocabularyExposed, checkColumnLengthParity, checkDomainStructure, checkNoGenericStaleFinder, checkRelationshipLoading, checkSchemaSurface } from "../lib/backend-domain-structure.ts";
+import { layerFiles } from "../lib/backend-layout.ts";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
@@ -71,8 +72,13 @@ function checkBackendDomainSync(): string[] {
   const modelsDir = join(base, "models");
   if (existsSync(modelRules) && existsSync(modelsDir)) {
     const aggregates = aggregateDomains();
-    const modelPaths = readdirSync(modelsDir)
-      .filter((file: string) => file.endsWith(".py") && !belongsToAggregateDomain(file.replace(/\.py$/, ""), aggregates))
+    // The structural model rules (`id-standard`, `field-mapped-pattern`) are
+    // per-table, so they apply to a folder domain's tables too — a flat scan
+    // never handed them a single file under `models/batch/` or
+    // `models/integration/`. The aggregate exemption stays: it excludes the
+    // *flat* multi-table file the CRUD template cannot read, by name.
+    const modelPaths = layerFiles(modelsDir)
+      .filter((file: string) => !belongsToAggregateDomain(stemOf(file), aggregates))
       .map((file: string) => join(modelsDir, file));
     issues.push(...runAstRules(modelRules, modelPaths));
   }
@@ -90,12 +96,19 @@ function checkBackendDomainSync(): string[] {
 
   issues.push(...checkRelationshipLoading(base));
   issues.push(...checkSchemaSurface(base));
+  issues.push(...checkClosedVocabularyExposed(base));
+  issues.push(...checkColumnLengthParity(base));
   issues.push(...checkNoGenericStaleFinder(base));
 
   // lib — 5-layer structure.
   issues.push(...checkDomainStructure());
 
   return issues;
+}
+
+/** `batch/run.py` -> `batch/run`; the aggregate test reads the stem, not the suffix. */
+function stemOf(file: string): string {
+  return file.replace(/\.py$/, "");
 }
 
 // Direct execution (make check-backend-domain): run the check and print results.

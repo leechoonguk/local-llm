@@ -63,6 +63,9 @@ const PROVIDER_TABLE = "integration_provider";
 /** A provider `_replace_` deletes its row first; operations cascade with it. */
 const PROVIDER_DELETE = /\.delete\(\)|DELETE\s+FROM\s+integration_provider/i;
 
+/** `provider.update()…values(code=…)` - a rename, which is how a code can arrive without an insert. */
+const PROVIDER_CODE_UPDATE = /\.update\(\)[\s\S]{0,600}?values\([^)]*\bcode\s*=/;
+
 /**
  * The canonical paging inputs an operation may declare, by family.
  *
@@ -415,6 +418,12 @@ function upgradeBody(content: string): string {
   return match?.[1] ?? "";
 }
 
+/** The reverse half, read for what a revision *stopped* writing. */
+function downgradeBody(content: string): string {
+  const match = /\ndef downgrade\(\)[^:]*:\n([\s\S]*?)(?=\ndef |$)/.exec(content);
+  return match?.[1] ?? "";
+}
+
 /**
  * The body of every function the rows blob calls, and of the functions those call.
  *
@@ -506,6 +515,103 @@ export function listIntegrationOperations(): IntegrationOperation[] {
       pathTemplate: templateOf.get(code) ?? null,
     }))
     .sort((left, right) => left.code.localeCompare(right.code));
+}
+
+/**
+ * The provider codes a migrated database actually carries.
+ *
+ * A sync job names its provider and its operation by code, and both are
+ * resolved at 03:00 against rows a revision inserted - so the pair is a
+ * reference the type system cannot see. Read from the inserts rather than from
+ * the running database, because a check that needed Postgres would pass on the
+ * machine that already had the row and fail on a fresh clone.
+ */
+export function listIntegrationProviderCodes(): string[] {
+  if (!existsSync(versionsDir)) return [];
+  const codes = new Set<string>();
+  for (const filename of readdirSync(versionsDir).filter((f: string) => f.endsWith(".py")).sort()) {
+    const content = readFileSync(join(versionsDir, filename), "utf-8");
+    const bindings = tableBindings(content);
+    if (!bindings.tables.has(PROVIDER_TABLE)) continue;
+    for (const insert of bulkInserts(content)) {
+      if (insertTarget(insert, bindings) !== PROVIDER_TABLE) continue;
+      const scope = `${insert.rows}${calledHelperBodies(content, insert.rows)}`;
+      for (const code of scope.matchAll(CODE_LITERAL)) codes.add(code[1]);
+    }
+    // A code also arrives by rename, and only the upgrade's value survives:
+    // revision 74 renames `mfds-food-nutrition` to `data-go-kr` through
+    // `provider.update().values(code=CODE)`, with the old code named by the
+    // downgrade. Reading inserts alone called `data-go-kr` unseeded while every
+    // migrated database carried it - measured, on the nutrition job's first gate.
+    const upgrade = upgradeBody(content);
+    const renames = `${upgrade}${calledHelperBodies(content, upgrade)}`;
+    if (!PROVIDER_CODE_UPDATE.test(renames)) continue;
+    const previous = new Set(resolvedCodes(content, downgradeBody(content)));
+    for (const code of resolvedCodes(content, upgrade)) {
+      codes.add(code);
+      previous.delete(code);
+    }
+    // The code the downgrade restores is the one this revision replaced: it is
+    // no longer in any migrated database, and leaving it listed would accept a
+    // job naming a provider that stopped existing.
+    for (const stale of previous) codes.delete(stale);
+  }
+  return [...codes].sort();
+}
+
+/**
+ * Code-shaped strings a body names, following one constant indirection.
+ *
+ * `_set_identity(CODE, DISPLAY_NAME)` carries its value in a module constant, so
+ * the literal is not at the call site. `DISPLAY_NAME` resolves to `공공데이터포털`,
+ * which is not code-shaped and is dropped - the shape is what separates the two.
+ */
+function resolvedCodes(content: string, body: string): string[] {
+  const codes: string[] = [];
+  for (const literal of body.matchAll(/"([a-z0-9-]+)"/g)) codes.push(literal[1]);
+  for (const name of body.matchAll(/\b([A-Z][A-Z0-9_]{2,})\b/g)) {
+    const value = new RegExp(`^${name[1]}\\s*(?::\\s*str)?\\s*=\\s*"([^"]*)"`, "m").exec(content);
+    if (value !== null && /^[a-z0-9-]+$/.test(value[1])) codes.push(value[1]);
+  }
+  return codes;
+}
+
+/**
+ * Record keys per operation code - the RESPONSE rows relative to one element of
+ * the response root, from the newest field seed. Envelope rows (`result_code`,
+ * `total_count`) live in a separate `ENVELOPE_ROWS` list and are not records.
+ *
+ * A ledger fed by an operation stores these keys, and this is the list a ledger's
+ * `from_record` is checked against in both directions: a key it reads that the
+ * seed never answers is a column that stays NULL forever, and a key the seed
+ * answers that it neither reads nor declines is data dropped on the floor.
+ */
+export function listIntegrationResponseKeys(): Map<string, string[]> {
+  const bySeed = new Map<string, { revision: number; keys: string[] }>();
+  if (existsSync(versionsDir)) {
+    for (const filename of readdirSync(versionsDir).filter((f: string) => f.endsWith(".py")).sort()) {
+      const content = readFileSync(join(versionsDir, filename), "utf-8");
+      const { tables } = tableBindings(content);
+      const seed = OPERATION_SEED.exec(content)?.[1] ?? null;
+      if (!tables.has(FIELD_TABLE) || seed === null) continue;
+      const block = /^RESPONSE_ROWS\s*=\s*\[([\s\S]*?)^\]/m.exec(content)?.[1];
+      if (block === undefined) continue;
+      const revision = Number.parseInt(filename.split("_")[0], 10);
+      if (Number.isNaN(revision)) continue;
+      const previous = bySeed.get(seed);
+      if (previous !== undefined && previous.revision > revision) continue;
+      const keys: string[] = [];
+      for (const tuple of block.matchAll(/\(\s*'([a-z0-9_]+)'\s*,\s*'\/[^']+'/g)) keys.push(tuple[1]);
+      bySeed.set(seed, { revision, keys });
+    }
+  }
+  const byCode = new Map<string, string[]>();
+  for (const operation of listIntegrationOperations()) {
+    if (operation.seed === null) continue;
+    const seeded = bySeed.get(operation.seed);
+    if (seeded !== undefined) byCode.set(operation.code, seeded.keys);
+  }
+  return byCode;
 }
 
 export function listIntegrationOperationCodes(): string[] {
@@ -791,6 +897,14 @@ const TABLE_PATTERNS = [
  */
 const RENAME_PATTERN = /op\.rename_table\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/g;
 
+/**
+ * `op.execute` with a SQL string, which is what the ban is about.
+ *
+ * A string (or `sa.text(...)`) hides its target from every reader here; a
+ * SQLAlchemy statement names a table object this file declared.
+ */
+const RAW_EXECUTE_PATTERN = /op\.execute\(\s*(?:f?["']|(?:sa\.)?text\()/;
+
 /** The metadata block alembic generates, in the order it generates it. */
 const METADATA_FIELDS = ["revision", "down_revision", "branch_labels", "depends_on"];
 
@@ -949,7 +1063,14 @@ export function checkMigrationPolicy(): string[] {
     // binds the revisions still being written.
     issues.push(...checkMigrationLayout(filename, content));
 
-    if (/\bop\.execute\b/.test(content)) {
+    // Raw SQL only. The ban exists because a SQL string cannot be read for its
+    // scope — but `op.execute(schedules.update()...)` is a statement over a
+    // `sa.table(...)` declared in this same file, which `TABLE_PATTERNS` already
+    // counts, so it is exactly as verifiable as `bulk_insert`. Without the
+    // distinction there was no way at all to *change* a seeded row: inserting
+    // one is allowed, correcting one was not, and a renamed job code had to
+    // choose between the seed and the policy.
+    if (RAW_EXECUTE_PATTERN.test(content)) {
       issues.push(`${filename}: unpushed migration uses unscoped raw operations`);
       continue;
     }

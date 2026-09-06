@@ -135,7 +135,129 @@ export function checkBackendRouterParamsSync(): string[] {
   }
 
   issues.push(...checkQueryAliases(readLimitCap()));
+  issues.push(...checkFiltersAreApplied());
   return issues;
+}
+
+/**
+ * A filter parameter the router accepts must narrow the query, with the match its
+ * alias promises.
+ *
+ * The failure is silent in every direction: a `TextFilterQuery` the repository
+ * never reads answers the whole collection under a filter label; an
+ * `ExactFilterQuery` applied with `ilike` returns `식물성유지` to a reader who
+ * picked `식물`; a `TextFilterQuery` applied with `==` answers nothing to a
+ * fragment. Planted - a parameter dropped from `_apply_filters` - every gate
+ * stayed green, because the router, the service and the screen were all still
+ * correct about a parameter that did nothing.
+ *
+ * Read per router: each filter-typed parameter is looked for in the domain's
+ * repository files, inside a predicate loop, and the loop's operator is the kind.
+ */
+function checkFiltersAreApplied(): string[] {
+  const issues: string[] = [];
+  const repoRoot = join(projectRoot, "backend", "app", "repositories");
+  if (!existsSync(routerDir) || !existsSync(repoRoot)) return issues;
+  for (const file of readdirSync(routerDir).sort()) {
+    if (!file.endsWith(".py") || file === "__init__.py") continue;
+    const domain = file.replace(/\.py$/, "");
+    const source = readFileSync(join(routerDir, file), "utf-8");
+    // Per endpoint, and per table: on a folder domain the predicate must live in
+    // the repository of the table the endpoint reads (`/raw-material/` ->
+    // `raw_material.py`), not anywhere in the domain. Measured: a decoy loop in
+    // the sibling `barcode.py` satisfied a domain-wide search while the real
+    // repository had dropped the filter.
+    const wanted = new Map<string, { kind: "contains" | "equals"; table: string | null }>();
+    for (const endpoint of parseEndpoints(source)) {
+      const leaf = endpoint.path.split("/").filter((p: string) => p !== "" && !p.startsWith("{"))[0];
+      const table = leaf === undefined ? null : leaf.replace(/-/g, "_");
+      for (const p of endpoint.parameters) {
+        if (p.annotation !== "TextFilterQuery" && p.annotation !== "ExactFilterQuery") continue;
+        wanted.set(p.name, { kind: p.annotation === "TextFilterQuery" ? "contains" : "equals", table });
+      }
+    }
+    if (wanted.size === 0) continue;
+    const allRepos = repositorySources(repoRoot, domain);
+    if (allRepos.size === 0) continue;
+    // name -> repo file -> kinds
+    const applied = new Map<string, Map<string, Set<"contains" | "equals">>>();
+    let current = "";
+    const note = (name: string, kind: "contains" | "equals") => {
+      const perFile = applied.get(name) ?? new Map<string, Set<"contains" | "equals">>();
+      const set = perFile.get(current) ?? new Set<"contains" | "equals">();
+      set.add(kind);
+      perFile.set(current, set);
+      applied.set(name, perFile);
+    };
+    for (const [file, repo] of allRepos) {
+      current = file;
+      // Direct predicates: `.where(Model.col.ilike(f"%{name}%"))`.
+      for (const m of repo.matchAll(/\.ilike\(f"%\{(\w+)\}%"\)/g)) note(m[1], "contains");
+      // Loops: `for column, value in (...)` with a body that says ilike or ==.
+      // The header may span lines; the body is every line indented deeper than
+      // the `for`, and stops at the first that is not - a second loop in the
+      // same function is its own block, not this one's tail.
+      const lines = repo.split("\n");
+      for (let i = 0; i < lines.length; i += 1) {
+        const head = /^(\s*)for column, value in \(/.exec(lines[i]);
+        if (head === null) continue;
+        const indent = head[1].length;
+        let j = i;
+        let header = "";
+        while (j < lines.length) {
+          header += `${lines[j]}\n`;
+          if (/\):\s*$/.test(lines[j])) break;
+          j += 1;
+        }
+        let body = "";
+        for (let k = j + 1; k < lines.length; k += 1) {
+          const line = lines[k];
+          if (line.trim() !== "" && line.search(/\S/) <= indent) break;
+          body += `${line}\n`;
+        }
+        const kind = /\.ilike\(/.test(body) ? "contains" : /==\s*value/.test(body) ? "equals" : null;
+        if (kind === null) continue;
+        // The second element of every tuple: `(Model.col, name)` or
+        // `(\n Model.col,\n filters.name,\n )`.
+        for (const m of header.matchAll(/,\s*(?:filters\.)?([a-z_]+)\s*,?\s*\)/g)) note(m[1], kind);
+        i = j;
+      }
+    }
+    for (const [name, { kind, table }] of wanted) {
+      const perFile = applied.get(name);
+      // A flat domain has one file; a folder domain is held to the endpoint's table.
+      const owning = table !== null && allRepos.has(`${table}.py`) ? `${table}.py` : null;
+      const kinds = perFile === undefined ? undefined : owning === null
+        ? new Set([...perFile.values()].flatMap((set) => [...set]))
+        : perFile.get(owning);
+      if (kinds === undefined || kinds.size === 0) {
+        issues.push(
+          `${file}: ${name} is accepted as a filter but no repository predicate reads it - ` +
+            "the whole collection answers under a filter label",
+        );
+      } else if (!kinds.has(kind)) {
+        const expected = kind === "contains" ? "ilike (TextFilterQuery)" : "== (ExactFilterQuery)";
+        issues.push(
+          `${file}: ${name} is declared ${kind === "contains" ? "TextFilterQuery" : "ExactFilterQuery"} ` +
+            `but the repository matches it as ${[...kinds].join("/")} - the alias promises ${expected}`,
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+/** The repository sources one router's domain owns, by file: `<domain>.py` or `<domain>/*.py`. */
+function repositorySources(repoRoot: string, domain: string): Map<string, string> {
+  const flat = join(repoRoot, `${domain}.py`);
+  if (existsSync(flat)) return new Map([[`${domain}.py`, readFileSync(flat, "utf-8")]]);
+  const folder = join(repoRoot, domain);
+  if (!existsSync(folder)) return new Map();
+  return new Map(
+    readdirSync(folder)
+      .filter((f: string) => f.endsWith(".py") && f !== "__init__.py")
+      .map((f: string): [string, string] => [f, readFileSync(join(folder, f), "utf-8")]),
+  );
 }
 
 /** Path template ↔ signature, both ways, and id parameters typed `UUID`. */

@@ -1,5 +1,6 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { layerFiles } from "./backend-layout.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { resolveProjectRoot } from "./hook-project-root.ts";
@@ -46,12 +47,64 @@ const SCHEMA_PUBLIC_FUNCTIONS = new Set(["to_read", "to_read_list"]);
  * The fix a violation names is therefore concrete: put a constructor on the
  * class (`<Class>.from_record`), and keep a caller's detail in the caller.
  */
+/**
+ * `user` → `User`, `food_barcode` → `FoodBarcode`.
+ *
+ * Capitalising the first letter alone was enough while every flat domain was one
+ * word: the first two-word table (`food_barcode`, the first of five sibling
+ * ledgers from one provider) made this check demand a class called
+ * `Food_barcode`, which no Python file would ever be allowed to declare.
+ */
+/**
+ * One entry per schema file: `[leaf, source]`, with `null` for a flat domain.
+ *
+ * The families a file may declare depend on which leaf it is, so the check
+ * reads the files apart rather than through `readLayerSource`'s concatenation.
+ */
+function schemaLeafSources(schemaDir: string, name: string): [string | null, string][] {
+  const flat = join(schemaDir, `${name}.py`);
+  if (existsSync(flat)) return [[null, readFileSync(flat, "utf-8")]];
+  const folder = join(schemaDir, name);
+  if (!existsSync(folder)) return [];
+  return readdirSync(folder)
+    .filter((file: string) => file.endsWith(".py") && file !== "__init__.py")
+    .sort()
+    .map((file: string): [string | null, string] => [
+      file.replace(/\.py$/, ""),
+      readFileSync(join(folder, file), "utf-8"),
+    ]);
+}
+
+/**
+ * The tables of a domain that a batch job fills from a provider - one per
+ * `app/batch/sync_<name>_<table>_ledger.py`. The job's name carries the table
+ * it fills (`check-backend-batch`), so the file is the fact, not a marker; a
+ * domain with none is not a ledger domain.
+ */
+function ledgerTablesOf(base: string, name: string): string[] {
+  const batchDir = join(base, "batch");
+  if (!existsSync(batchDir)) return [];
+  const tables: string[] = [];
+  for (const file of readdirSync(batchDir)) {
+    const m = new RegExp(`^sync_${name}_([a-z0-9_]+)_ledger\\.py$`).exec(file);
+    if (m !== null) tables.push(m[1]);
+  }
+  return tables;
+}
+
+function pascalCase(domain: string): string {
+  return domain
+    .split("_")
+    .map((part: string) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
+
 export function checkSchemaSurface(base: string): string[] {
   const issues: string[] = [];
   const schemaDir = join(base, "schemas");
   if (!existsSync(schemaDir)) return issues;
 
-  for (const file of listModelFiles(schemaDir)) {
+  for (const file of layerFiles(schemaDir)) {
     const source = readFileSync(join(schemaDir, file), "utf-8");
     for (const declaration of source.matchAll(/^(?:async )?def (\w+)\(/gm)) {
       const name = declaration[1];
@@ -94,7 +147,7 @@ export function checkNoGenericStaleFinder(base: string): string[] {
   for (const layer of ["repositories", "services"]) {
     const layerDir = join(base, layer);
     if (!existsSync(layerDir)) continue;
-    for (const file of listModelFiles(layerDir)) {
+    for (const file of layerFiles(layerDir)) {
       const source = readFileSync(join(layerDir, file), "utf-8");
       const line = source.split("\n").findIndex((text: string) => text.includes("def find_stale("));
       if (line === -1) continue;
@@ -113,8 +166,10 @@ export function checkRelationshipLoading(base: string): string[] {
   const modelsDir = join(base, "models");
   if (!existsSync(modelsDir)) return issues;
 
-  for (const file of readdirSync(modelsDir)) {
-    if (!file.endsWith(".py")) continue;
+  // A folder domain's tables are one level down, and a relationship declared
+  // there needs its `lazy=` policy just as much — under asyncio a forgotten
+  // eager load is a MissingGreenlet in production, not a slow query.
+  for (const file of layerFiles(modelsDir)) {
     const source = readFileSync(join(modelsDir, file), "utf-8");
     const lines = source.split("\n");
     lines.forEach((line: string, index: number) => {
@@ -134,6 +189,266 @@ export function checkRelationshipLoading(base: string): string[] {
     });
   }
   return issues;
+}
+
+/**
+ * A column's closed vocabulary survives into the schema that exposes it.
+ *
+ * `check-backend-table-design` already requires a short type/status/mode column
+ * to carry `CheckConstraint("<col> IN (...)")`. That is where the vocabulary is
+ * *decided*; this is where it is **kept**. A schema field that widens the column
+ * back to `str` throws the set away at the only layer a client can read, and the
+ * loss is silent in both directions — the server still refuses a bad value, so
+ * nothing fails until a reader has to guess what the column can hold.
+ *
+ * The chain this closes: constraint → `Literal[...]` → (`check-frontend-types`,
+ * which already maps a `Literal` to the same TS union) → the union a screen
+ * switches on. Measured before it existed: `integration_field` kept its four
+ * vocabularies through all three layers while `batch_run.status`,
+ * `batch_run.trigger`, `batch_step.status`, `integration_call.method` and
+ * `integration_call.outcome` were `str` in their schemas — and the TS side had
+ * been narrowed by hand, answerable to nothing.
+ *
+ * Model file and schema file mirror by path (`models/batch/run.py` ↔
+ * `schemas/batch/run.py`), which is what keeps a `status` on one table from being
+ * compared against another table's.
+ */
+export function checkClosedVocabularyExposed(base: string): string[] {
+  const issues: string[] = [];
+  const modelsDir = join(base, "models");
+  const schemasDir = join(base, "schemas");
+  if (!existsSync(modelsDir) || !existsSync(schemasDir)) return issues;
+
+  for (const relative of layerFiles(modelsDir)) {
+    const source = readFileSync(join(modelsDir, relative), "utf-8");
+    const schemaPath = join(schemasDir, relative);
+    for (const [column, values] of closedValueSets(source)) {
+      if (!existsSync(schemaPath)) continue;
+      const schema = readFileSync(schemaPath, "utf-8");
+      for (const annotation of fieldAnnotations(schema, column)) {
+        const declared = literalValues(schema, annotation, base);
+        if (declared === null) {
+          issues.push(
+            `schemas/${relative}: ${column}: ${annotation} widens a closed set back to a ` +
+              `free string — the column accepts only ${values.join(", ")}, so declare a ` +
+              "Literal alias and let the reader switch on it",
+          );
+          continue;
+        }
+        const missing = values.filter((value: string) => !declared.has(value));
+        const extra = [...declared].filter((value: string) => !values.includes(value));
+        if (missing.length === 0 && extra.length === 0) continue;
+        issues.push(
+          `schemas/${relative}: ${column} declares a Literal the constraint does not ` +
+            `match — ${missing.length > 0 ? `missing ${missing.join(", ")}` : ""}` +
+            `${missing.length > 0 && extra.length > 0 ? "; " : ""}` +
+            `${extra.length > 0 ? `not in the constraint: ${extra.join(", ")}` : ""}`,
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+/**
+ * An input the API accepts must fit the column that stores it.
+ *
+ * The frontend/backend length parity (`check-frontend-contract`) compares a form
+ * against the schema. This is the layer below it, and its failure is worse: a
+ * value the schema admits and the column cannot hold is not a 422, it is an
+ * `IntegrityError` from the database — a 500 the user cannot act on and the log
+ * reports as a server fault rather than bad input.
+ *
+ * Two ways to get there, and both are checked:
+ *
+ * - the schema caps higher than the column (`max_length=200` into `String(120)`);
+ * - the schema does not cap at all, so any string reaches a bounded column.
+ *
+ * Only `*CreateRequest` / `*UpdateRequest` matter: those are the inputs. A read
+ * response carries what the row already holds, so a bound there proves nothing.
+ *
+ * Model and schema mirror by path, the same correspondence the closed-vocabulary
+ * check uses, which is what keeps one table's `code` from being measured against
+ * another table's column.
+ */
+export function checkColumnLengthParity(base: string): string[] {
+  // A field declared by both the create and the update request produces the
+  // same sentence twice, and the fix is the one constant both read.
+  const issues = new Set<string>();
+  const modelsDir = join(base, "models");
+  const schemasDir = join(base, "schemas");
+  if (!existsSync(modelsDir) || !existsSync(schemasDir)) return [];
+
+  for (const relative of layerFiles(modelsDir)) {
+    const schemaPath = join(schemasDir, relative);
+    if (!existsSync(schemaPath)) continue;
+    const columns = stringColumns(readFileSync(join(modelsDir, relative), "utf-8"));
+    if (columns.size === 0) continue;
+
+    const schema = readFileSync(schemaPath, "utf-8");
+    const constants = moduleConstants(schema);
+    for (const [field, declaration] of requestStringFields(schema)) {
+      const column = columns.get(field);
+      if (column === undefined) continue;
+
+      const capped = /\bmax_length\s*=\s*(\w+)/.exec(declaration);
+      if (capped === null) {
+        issues.add(
+          `schemas/${relative}: ${field} accepts any length but the column is ` +
+            `String(${column}) — an over-long value is refused by the database as a 500, ` +
+            "not by the schema as a 422",
+        );
+        continue;
+      }
+      const declared = /^\d+$/.test(capped[1]) ? Number(capped[1]) : constants.get(capped[1]);
+      if (declared === undefined || declared <= column) continue;
+      issues.add(
+        `schemas/${relative}: ${field} caps at ${declared} but the column is ` +
+          `String(${column}) — the schema admits a value the database then refuses`,
+      );
+    }
+  }
+  return [...issues];
+}
+
+/** `<column> -> n` for every `mapped_column(String(n))`, module constants resolved. */
+function stringColumns(model: string): Map<string, number> {
+  const constants = moduleConstants(model);
+  const found = new Map<string, number>();
+  for (const match of model.matchAll(
+    /^\s+(\w+):\s*Mapped\[[^\]]*\]\s*=\s*mapped_column\(([\s\S]{0,220}?)\)\n/gm,
+  )) {
+    const sized = /String\((\w+)\)/.exec(match[2]);
+    if (sized === null) continue;
+    const length = /^\d+$/.test(sized[1]) ? Number(sized[1]) : constants.get(sized[1]);
+    if (length !== undefined) found.set(match[1], length);
+  }
+  return found;
+}
+
+/** `NAME = 120` module constants, the form `code-layout` requires for a literal. */
+function moduleConstants(source: string): Map<string, number> {
+  const found = new Map<string, number>();
+  for (const match of source.matchAll(/^(\w+) = (\d+)$/gm)) {
+    found.set(match[1], Number(match[2]));
+  }
+  return found;
+}
+
+/** Every string field of every request class, with the declaration it carries. */
+function requestStringFields(schema: string): Array<[string, string]> {
+  const found: Array<[string, string]> = [];
+  for (const block of schema.matchAll(
+    /class \w+(?:Create|Update)Request\([^)]*\):([\s\S]*?)(?=\nclass |\Z)/g,
+  )) {
+    let pending = "";
+    for (const line of block[1].split("\n")) {
+      if (/^\S/.test(line) && line.trim() !== "") break;
+      pending = pending === "" ? line : `${pending} ${line.trim()}`;
+      if (countParens(pending) > 0) continue;
+      const declaration = pending;
+      pending = "";
+      const field = /^\s{4}(\w+)\s*:\s*([^\n=]+)/.exec(declaration);
+      if (field === null || field[1] === "model_config") continue;
+      if (!/\bstr\b/.test(field[2])) continue;
+      found.push([field[1], declaration]);
+    }
+  }
+  return found;
+}
+
+/** Unclosed parentheses in an accumulated declaration. */
+function countParens(text: string): number {
+  return (text.match(/\(/g) ?? []).length - (text.match(/\)/g) ?? []).length;
+}
+
+/** `<column> IN ('A', 'B')` check constraints, as `[column, values]`. */
+function closedValueSets(source: string): Array<[string, string[]]> {
+  const sets: Array<[string, string[]]> = [];
+  for (const match of source.matchAll(/CheckConstraint\s*\(/g)) {
+    const argument = parenthesized(source, match[0].length + match.index - 1);
+    if (argument === null) continue;
+    // The expression may be split across adjacent string literals.
+    const expression = [...argument.matchAll(/"([^"]*)"/g)].map((part) => part[1]).join(" ");
+    const column = /^\s*(\w+)\s+IN\s*\(/.exec(expression);
+    if (column === null) continue;
+    sets.push([column[1], [...expression.matchAll(/'([^']+)'/g)].map((value) => value[1])]);
+  }
+  return sets;
+}
+
+/** From an opening `(` to its match. */
+function parenthesized(source: string, open: number): string | null {
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === "(") depth += 1;
+    else if (source[index] === ")") {
+      depth -= 1;
+      if (depth === 0) return source.slice(open, index + 1);
+    }
+  }
+  return null;
+}
+
+/** Every `<column>: <annotation>` declared as a class field in the schema. */
+function fieldAnnotations(schema: string, column: string): string[] {
+  return [...schema.matchAll(new RegExp(`^\\s+${column}\\s*:\\s*([^\n=]+)`, "gm"))].map(
+    (match) => match[1].trim().replace(/,$/, ""),
+  );
+}
+
+/**
+ * The values an annotation admits, or `null` when it admits any string.
+ *
+ * Resolves the three forms this repository uses: an inline `Literal[...]`, a
+ * module-level alias assigned to one (`ResponseFormat = Literal["JSON", "XML"]`),
+ * and an alias **imported** from the module that produces the values.
+ *
+ * The import form is not a loophole, it is the point: a vocabulary is spelled
+ * once. `integration_call`'s verbs and outcomes are decided in
+ * `core/integration.py`, where the literals are actually written, so the schema
+ * imports them instead of restating them — and a check that only looked in the
+ * schema file would have called that correct code a violation and pushed the
+ * author into duplicating the set.
+ */
+function literalValues(schema: string, annotation: string, appBase: string): Set<string> | null {
+  const bare = annotation.replace(/\|\s*None/, "").trim();
+  const inline = /^Literal\[([\s\S]*)\]$/.exec(bare);
+  if (inline !== null) return literalMembers(inline[1]);
+  if (!/^[A-Z]\w*$/.test(bare)) return null;
+
+  const local = new RegExp(`^${bare}\\s*=\\s*Literal\\[([\\s\\S]*?)\\]`, "m").exec(schema);
+  if (local !== null) return literalMembers(local[1]);
+
+  const imported = importedFrom(schema, bare);
+  if (imported === null) return null;
+  const module = join(appBase, `${imported.module.split(".").join("/")}.py`);
+  if (!existsSync(module)) return null;
+  const source = readFileSync(module, "utf-8");
+  const alias = new RegExp(`^${imported.remoteName}\\s*=\\s*Literal\\[([\\s\\S]*?)\\]`, "m").exec(source);
+  return alias === null ? null : literalMembers(alias[1]);
+}
+
+/** The quoted members of a `Literal[...]` body. */
+function literalMembers(body: string): Set<string> {
+  return new Set([...body.matchAll(/"([^"]+)"/g)].map((match) => match[1]));
+}
+
+/**
+ * The `app.`-relative module a name is imported from, and the name it had
+ * there — `import CallOutcome as OutcomeVocabulary` binds the local name to a
+ * remote one, and resolving the local name in the remote module finds nothing.
+ * Measured: the rename alone turned a correct schema into a "widens" report.
+ */
+function importedFrom(schema: string, name: string): { module: string; remoteName: string } | null {
+  for (const match of schema.matchAll(/^from\s+app\.([\w.]+)\s+import\s+([^\n(]*)/gm)) {
+    for (const item of match[2].split(",")) {
+      const bound = /^\s*(\w+)(?:\s+as\s+(\w+))?\s*$/.exec(item);
+      if (bound === null) continue;
+      if ((bound[2] ?? bound[1]) === name) return { module: match[1], remoteName: bound[1] };
+    }
+  }
+  return null;
 }
 
 /**
@@ -196,6 +511,8 @@ export function ownedModelFiles(domain: string): string[] {
       .map((f: string) => `${domain}/${f}`);
   }
 
+  // layer-flat-ok: the folder shape is handled above; this is the flat fallback,
+  // matching `<domain>.py` and `<domain>_*.py` at the layer root by construction.
   return readdirSync(modelDir).filter(
     (f: string) => f === `${domain}.py` || (f.startsWith(`${domain}_`) && f.endsWith(".py")),
   );
@@ -237,26 +554,6 @@ export function belongsToAggregateDomain(stem: string, aggregates: Set<string>):
   return false;
 }
 
-/**
- * Every `.py` under a layer directory, one level deep, as paths relative to
- * it: `user.py`, `integration/provider.py`. One level is the whole convention -
- * a domain folder holds table files, never more folders.
- */
-export function listModelFiles(layerDir: string): string[] {
-  if (!existsSync(layerDir)) return [];
-  const files: string[] = [];
-  for (const entry of readdirSync(layerDir, { withFileTypes: true })) {
-    if (entry.name === "__pycache__" || entry.name === "__init__.py") continue;
-    if (entry.isDirectory()) {
-      for (const inner of readdirSync(join(layerDir, entry.name))) {
-        if (inner.endsWith(".py") && inner !== "__init__.py") files.push(`${entry.name}/${inner}`);
-      }
-    } else if (entry.name.endsWith(".py")) {
-      files.push(entry.name);
-    }
-  }
-  return files;
-}
 
 /**
  * One domain's source in a layer, as a single string: the file when the layer
@@ -363,7 +660,7 @@ export function checkDomainStructure(): string[] {
   // shapes are read through `ownedModelFiles()` so this checker, the aggregate
   // predicate, and the file-shape hooks cannot disagree about what a domain
   // owns - they disagreed once already, and the answer was silence.
-  const modelFiles: string[] = listModelFiles(modelDir);
+  const modelFiles: string[] = layerFiles(modelDir);
 
   // File naming: lower snake case, because a model file is named after its
   // table (minus the domain prefix when it sits in the domain's folder).
@@ -379,10 +676,10 @@ export function checkDomainStructure(): string[] {
 
   const domains: string[] = listDomains(serviceDir);
 
-  const repoFiles: string[] = existsSync(repoDir) ? listModelFiles(repoDir) : [];
+  const repoFiles: string[] = existsSync(repoDir) ? layerFiles(repoDir) : [];
 
   for (const name of domains) {
-    const cls = name.charAt(0).toUpperCase() + name.slice(1);
+    const cls = pascalCase(name);
 
     const owned = ownedModelFiles(name);
     if (owned.length === 0) {
@@ -478,17 +775,86 @@ export function checkDomainStructure(): string[] {
     // XUpdateRequest, XUpdateInternal (Request/Response suffixes).
     if (schemaSource !== null) {
       const schemaContent = schemaSource;
-      const expected = [
-        `${cls}Base`,
-        `${cls}CreateRequest`,
-        `${cls}CreateInternal`,
-        `${cls}ReadResponse`,
-        `${cls}UpdateRequest`,
-        `${cls}UpdateInternal`,
+      /**
+       * The class family, which is the domain's own name **or a leaf's**.
+       *
+       * A single-file domain has one entity, so the family is `<Domain>*`. A
+       * folder domain need not: `food` is two sibling ledgers with no root
+       * between them (`FoodBarcode*`, `FoodRawMaterial*`), and demanding
+       * `FoodBase` would invent an entity nothing stores. `integration` passes
+       * either way — its aggregate root happens to carry the domain's own name
+       * while `IntegrationSecret*` and `IntegrationOperation*` are leaves — and
+       * that coincidence is what made "one domain, one root" look like a rule.
+       *
+       * The domain's own name stays in the list for the root that may exist —
+       * `integration/provider.py` declares `IntegrationCreateRequest`, not
+       * `IntegrationProviderCreateRequest` — so both shapes pass and neither is
+       * mandatory.
+       */
+      /**
+       * A `<Family>Base` is the promise of a CRUD family, and the other five
+       * are the rest of it.
+       *
+       * The family's name is the domain's own or a leaf's: `integration/
+       * provider.py` declares `Integration*` while `food` — two sibling ledgers
+       * with no root between them — declares `FoodBarcode*` and
+       * `FoodRawMaterial*` and no `Food*` at all. Nested aggregates carry only
+       * what they need (`IntegrationSecretCreateRequest` with no `Base`), and
+       * the `Base` is exactly what tells the two apart.
+       *
+       * Checked per file, because a family is complete or it is not: against the
+       * folder's concatenated text a sibling's `FoodBarcodeUpdateInternal`
+       * answered for the `raw_material` leaf that had lost its own - measured,
+       * on a planted deletion this check reported nothing.
+       */
+      const suffixes = [
+        "CreateRequest",
+        "CreateInternal",
+        "ReadResponse",
+        "UpdateRequest",
+        "UpdateInternal",
       ];
-      for (const c of expected) {
-        if (!new RegExp(`class\\s+${c}\\b`).test(schemaContent)) {
-          issues.push(`${name}: schema missing class ${c}`);
+      let complete = 0;
+      for (const [leaf, source] of schemaLeafSources(schemaDir, name)) {
+        const families = leaf === null ? [cls] : [cls, `${cls}${pascalCase(leaf)}`];
+        const where = leaf === null ? `schemas/${name}.py` : `schemas/${name}/${leaf}.py`;
+        for (const family of families) {
+          if (!new RegExp(`class\\s+${family}Base\\b`).test(source)) continue;
+          const missing = suffixes.filter(
+            (suffix) => !new RegExp(`class\\s+${family}${suffix}\\b`).test(source),
+          );
+          if (missing.length === 0) complete += 1;
+          else {
+            issues.push(
+              `${name}: ${where} declares ${family}Base but not ` +
+                missing.map((suffix) => `${family}${suffix}`).join(", "),
+            );
+          }
+        }
+      }
+      if (complete === 0) {
+        issues.push(
+          `${name}: no schema declares a complete class family - one file owes ` +
+            `${cls}Base plus ${suffixes.map((suffix) => cls + suffix).join(", ")}, ` +
+            "under the domain's name or a leaf's",
+        );
+      }
+
+      // Every Read response exposes the optimistic-lock revision its caller holds:
+      // a client that cannot see `version` cannot know which row it edited, and
+      // its next write is either a blind overwrite or a 409 it cannot explain.
+      // Stated for every table in backend-table-design.md; enforced only for
+      // `integration` until a planted omission on a food ledger stayed green.
+      for (const [leaf, source] of schemaLeafSources(schemaDir, name)) {
+        for (const declaration of source.matchAll(
+          /^class\s+(\w+ReadResponse)\((?:BaseModel|\w+)\):\n((?:[ \t].*\n|\n)*)/gm,
+        )) {
+          if (/^\s+version:\s*int\b/m.test(declaration[2])) continue;
+          const where = leaf === null ? `schemas/${name}.py` : `schemas/${name}/${leaf}.py`;
+          issues.push(
+            `${name}: ${where}: ${declaration[1]} does not expose version: int - the ` +
+              "optimistic-lock revision is part of every Read response (backend-table-design.md)",
+          );
         }
       }
 
@@ -511,13 +877,6 @@ export function checkDomainStructure(): string[] {
       }
       if (!schemaContent.includes("id: UUID")) {
         issues.push(`${name}: schema Read missing id: UUID`);
-      }
-      // The optimistic-lock counter is only usable by a client that can read it.
-      if (!/^\s+version:\s*int/m.test(schemaContent)) {
-        issues.push(
-          `${name}: schema Read missing version: int — clients cannot observe the ` +
-            "optimistic-lock revision they hold",
-        );
       }
     }
 
@@ -565,25 +924,59 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Router: should have 5 endpoints, UUID path params
+    // Router: the CRUD template has 5 endpoints and UUID path params. A
+    // **ledger domain** - one whose tables a batch job fills from a provider
+    // (`app/batch/sync_<name>_*_ledger.py`) - is read-only instead: a row
+    // written by hand is compared against the provider's record on the next
+    // pass and overwritten, so a write endpoint there is a lie the sync corrects
+    // nightly. The check refuses the write verbs rather than requiring them.
     if (hasRouter) {
       const routerContent = readFileSync(routerPath, "utf-8");
-      if (!routerContent.includes("@router.post")) {
-        issues.push(`${name}: router missing POST endpoint`);
+      const ledgerTables = ledgerTablesOf(base, name);
+      const ledger = ledgerTables.length > 0;
+      if (ledger) {
+        // Per table, not per domain: a domain may hold a ledger beside a table
+        // people edit, and only the ledger's paths refuse the write verbs. A
+        // write route is held to the table its first path segment names
+        // (`/raw-material/` -> `raw_material`); on a flat ledger domain every
+        // route is the ledger's.
+        for (const route of routerContent.matchAll(/@router\.(post|patch|put|delete)\("([^"]*)"/g)) {
+          const leaf = route[2].split("/").filter((p: string) => p !== "" && !p.startsWith("{"))[0];
+          const table = leaf === undefined ? name : leaf.replace(/-/g, "_");
+          if (!ledgerTables.includes(table) && leaf !== undefined) continue;
+          issues.push(
+            `${name}: ${route[1].toUpperCase()} ${route[2]} writes the ${table} ledger - a batch ` +
+              "job fills it from the provider and overwrites a hand-written row on its next pass",
+          );
+        }
+      } else {
+        if (!routerContent.includes("@router.post")) {
+          issues.push(`${name}: router missing POST endpoint`);
+        }
+        // update 메서드는 스키마 의미가 정한다(PATCH=부분 갱신 / PUT=전체 교체) — 어느 쪽인지의
+        // 판정은 check-backend-api-http 의 expectedUpdateMethod 소관이고, 여기서는 존재만 본다.
+        if (!routerContent.includes("@router.patch") && !routerContent.includes("@router.put")) {
+          issues.push(`${name}: router missing update endpoint (PATCH or PUT — the verb follows the update schema, rule://backend-api-http)`);
+        }
+        if (!routerContent.includes("@router.delete")) {
+          issues.push(`${name}: router missing DELETE endpoint`);
+        }
       }
       if (!routerContent.includes("@router.get")) {
         issues.push(`${name}: router missing GET endpoint`);
       }
-      // update 메서드는 스키마 의미가 정한다(PATCH=부분 갱신 / PUT=전체 교체) — 어느 쪽인지의
-      // 판정은 check-backend-api-http 의 expectedUpdateMethod 소관이고, 여기서는 존재만 본다.
-      if (!routerContent.includes("@router.patch") && !routerContent.includes("@router.put")) {
-        issues.push(`${name}: router missing update endpoint (PATCH or PUT — the verb follows the update schema, rule://backend-api-http)`);
-      }
-      if (!routerContent.includes("@router.delete")) {
-        issues.push(`${name}: router missing DELETE endpoint`);
-      }
-      if (!routerContent.includes(`${name}_id: UUID`)) {
-        issues.push(`${name}: router path params must be typed UUID (${name}_id: UUID)`);
+      // A flat domain's row is `<name>_id`; a folder domain's row belongs to a
+      // leaf, and `food_id` would name none of `food`'s four tables. The service
+      // already spells it `food_raw_material_id`, so the router matches.
+      const idParam = new RegExp(`\\b${name}(?:_[a-z0-9_]+)?_id: UUID`);
+      // Only where a path carries an id: a ledger that publishes its page and
+      // nothing by id has no parameter to type.
+      const hasIdPath = /@router\.\w+\("[^"]*\{/.test(routerContent);
+      if (hasIdPath && !idParam.test(routerContent)) {
+        issues.push(
+          `${name}: router path params must be typed UUID (${name}_id: UUID, or ` +
+            `${name}_<leaf>_id: UUID on a folder domain)`,
+        );
       }
       if (!routerContent.includes(`prefix="/${name}"`)) {
         issues.push(`${name}: router prefix must be "/${name}" (lowercase domain name)`);
@@ -637,7 +1030,7 @@ export function checkDomainStructure(): string[] {
       const parts = isFolder
         ? serviceFiles.map((file) => {
             const leaf = (file.split("/").pop() ?? "").replace(/\.py$/, "");
-            const leafCls = leaf.charAt(0).toUpperCase() + leaf.slice(1);
+            const leafCls = pascalCase(leaf);
             return { factory: `get_${name}_${leaf}_service`, cls: `${cls}${leafCls}Service` };
           })
         : [{ factory: `get_${name}_service`, cls: `${cls}Service` }];

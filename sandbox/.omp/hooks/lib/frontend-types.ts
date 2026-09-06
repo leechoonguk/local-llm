@@ -167,6 +167,13 @@ export function expectedTsType(
     return inner === null ? null : `${inner}[]`;
   }
 
+  // A typed value (`dict[str, int]`) mirrors as a typed record; a value this
+  // parser cannot read (`dict[str, Any]`, nested generics) stays `unknown`.
+  const record = /^dict\[\s*str\s*,\s*(.+)\]$/.exec(base);
+  if (record !== null) {
+    const value = expectedTsType(record[1].trim(), pyAliases, modelToInterface);
+    return value === null ? "Record<string, unknown>" : `Record<string, ${value}>`;
+  }
   if (/^dict\[/.test(base)) return "Record<string, unknown>";
   if (base === "JsonObject") return "Record<string, unknown>";
 
