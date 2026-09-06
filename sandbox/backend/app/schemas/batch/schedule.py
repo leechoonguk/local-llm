@@ -2,6 +2,7 @@
 # Imports
 # ============================================================
 
+from collections.abc import Container
 from datetime import datetime
 from uuid import UUID
 
@@ -88,6 +89,11 @@ class BatchCreateInternal(BatchBase):
 class BatchReadResponse(BatchBase):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
+    #: Whether an execution is in flight right now. Not a column: it is the
+    #: scheduler's task map, read per response, so a cached page never reports
+    #: last minute's run as still going.
+    running: bool = False
+
     id: UUID
     created_by: str | None = None
     updated_by: str | None = None
@@ -153,9 +159,11 @@ class BatchRunResponse(BaseModel):
 # ============================================================
 
 
-def to_read(batch: BatchSchedule) -> BatchReadResponse:
-    return BatchReadResponse.model_validate(batch)
+def to_read(batch: BatchSchedule, running: bool = False) -> BatchReadResponse:
+    return BatchReadResponse.model_validate(batch).model_copy(update={"running": running})
 
 
-def to_read_list(batches: list[BatchSchedule]) -> list[BatchReadResponse]:
-    return [BatchReadResponse.model_validate(i) for i in batches]
+def to_read_list(
+    batches: list[BatchSchedule], running_ids: Container[UUID] = frozenset()
+) -> list[BatchReadResponse]:
+    return [to_read(batch, batch.id in running_ids) for batch in batches]

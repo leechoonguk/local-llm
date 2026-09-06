@@ -4,18 +4,33 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+import secrets as random_secrets
+from collections.abc import Iterable, Mapping
+from datetime import UTC, datetime, timedelta
+from itertools import count
 from uuid import UUID
 
 import httpx2
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import IntegrationConfigurationError
+from app.core.exceptions import IntegrationConfigurationError, IntegrationError
 from app.core.integration import IntegrationClient, IntegrationExecutionResult
 from app.models.integration.operation import IntegrationOperation
+from app.models.integration.secret import IntegrationSecret
 from app.repositories.integration.call import IntegrationCallRepository
 from app.repositories.integration.operation import IntegrationOperationRepository
+from app.repositories.integration.secret import IntegrationSecretRepository
 from app.schemas.integration.call import IntegrationCallCreateInternal
+
+
+# ============================================================
+# Constants
+# ============================================================
+
+#: Where this process starts its round-robin. Random per process, then
+#: advancing per call: the scheduler and a manual run spread across the pool
+#: instead of both wearing the first key first, without a row write per call.
+_rotation_offset = count(random_secrets.randbelow(1 << 16))
 
 
 # ============================================================
@@ -38,6 +53,7 @@ class IntegrationOperationService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.operation_repository = IntegrationOperationRepository(session)
+        self.secret_repository = IntegrationSecretRepository(session)
         self._last_call_id: UUID | None = None
 
     async def get_operation(self, provider_code: str, operation_code: str) -> IntegrationOperation:
@@ -69,20 +85,64 @@ class IntegrationOperationService:
         the `finally`: a log written only on the happy path is missing exactly
         the calls anyone would open it for. This is the one place both callers
         pass through — the endpoint and the batch job — so neither can forget.
+
+        **The key pool is invisible from here up.** A provider whose secrets
+        share a `rotation_group` is one credential to the caller: each try
+        sends the next member, and an answer carrying one of the operation's
+        `quota_codes` sits that member out for the code's seconds and sends
+        the same request with the next one. Every try is its own call log row (the
+        log answers "which key hit the quota"). The caller sees the provider's
+        refusal only when every member is spent - the batch job's "leave the
+        cursor and stop" is then the right ending, and it did not change.
         """
-        integration_client = await IntegrationClient.from_database(
-            session=self.session,
-            provider_code=provider_code,
-            operation_code=operation_code,
-            client=client,
-        )
         self._last_call_id = None
-        try:
-            result = await integration_client.execute(inputs)
-        finally:
-            self._last_call_id = await self._create_call_log(integration_client, actor)
-            await integration_client.aclose()
-        return result, self._last_call_id
+        pool = await self.secret_repository.list_pool(provider_code, datetime.now(UTC))
+        offset = next(_rotation_offset)
+        tries = max((len(members) for members in pool.values()), default=1)
+        attempt = 0
+        # The last try is the one that lets a quota refusal through - there
+        # is no member left to send it with - so the loop has no fall-through.
+        while True:
+            choice = {
+                group: members[(offset + attempt) % len(members)] for group, members in pool.items()
+            }
+            integration_client = await IntegrationClient.from_database(
+                session=self.session,
+                provider_code=provider_code,
+                operation_code=operation_code,
+                client=client,
+                secrets=choice,
+            )
+            try:
+                result = await integration_client.execute(inputs)
+            except IntegrationError as exc:
+                sit_out = integration_client.operation.quota_codes.get(str(exc.envelope_value))
+                if sit_out is None or attempt == tries - 1:
+                    raise
+                await self._mark_exhausted(choice.values(), timedelta(seconds=sit_out), actor)
+                result = None
+            finally:
+                self._last_call_id = await self._create_call_log(integration_client, actor)
+                await integration_client.aclose()
+            if result is not None:
+                return result, self._last_call_id
+            attempt += 1
+
+    async def _mark_exhausted(
+        self, members: Iterable[IntegrationSecret], window: timedelta, actor: str
+    ) -> None:
+        """Sit the members of this try out for the window, on their own session.
+
+        Own session for the reason `_create_call_log` gives: the caller's may
+        be mid-transaction, and a mark that rolls back with the caller's
+        failure would send the spent key again on the next try.
+        """
+        until = datetime.now(UTC) + window
+        async with AsyncSession(self.session.bind, expire_on_commit=False) as session:
+            secret_repository = IntegrationSecretRepository(session)
+            async with session.begin():
+                for member in members:
+                    await secret_repository.mark_exhausted(member.id, until, actor)
 
     async def _create_call_log(
         self, integration_client: IntegrationClient, actor: str

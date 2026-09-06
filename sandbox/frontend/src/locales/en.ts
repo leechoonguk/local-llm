@@ -4,6 +4,9 @@
 
 export const en = {
   common: {
+    filters: {
+      all: 'All',
+    },
     actions: {
       add: 'Add',
       view: 'Detail',
@@ -21,6 +24,7 @@ export const en = {
     },
     messages: {
       no_data: 'No data',
+      unknown_actor: 'Unknown',
       cannot_undo: 'This action cannot be undone.',
       created: 'Created',
       updated: 'Updated',
@@ -32,7 +36,7 @@ export const en = {
     },
     pagination: {
       rows_per_page: 'Rows per page:',
-      displayed_rows: '{{from}}–{{to}} of {{count}}',
+      displayed_rows: '{{from}}–{{to}} of {{total}}',
       displayed_rows_unknown: '{{from}}–{{to}}',
     },
     fields: {
@@ -56,6 +60,16 @@ export const en = {
       unknown: 'The request could not be completed',
       not_found: 'Not found',
       conflict: 'That value is already in use',
+      username_taken: 'That username is already taken',
+      email_taken: 'That email is already taken',
+      provider_code_taken: 'That provider code is already taken',
+      secret_name_taken: 'That credential name is already taken',
+      secret_in_use: 'A request field still references this credential — clear the field first',
+      batch_already_running: 'Already running',
+      batch_job_unregistered: 'No batch job is registered for this code',
+      scheduler_unavailable: 'No scheduler is running in this process',
+      integration_input_type_invalid: 'That input has the wrong format',
+      integration_input_required: 'A required input is missing',
       stale_version: 'Another request changed this first — reload and try again',
       authentication_failed: 'Incorrect username or password',
       service_unavailable: 'The service is temporarily unavailable',
@@ -73,6 +87,7 @@ export const en = {
     user: 'Users',
     batch: 'Batches',
     integration: 'Integrations',
+    food_raw_material: 'Raw material codes',
     logout: 'Log out',
     language: {
       ko: 'Korean',
@@ -80,8 +95,8 @@ export const en = {
     },
     brand: 'Fast API Standard',
     group: {
-      overview: 'Overview',
       admin: 'Administration',
+      food: 'Food',
     },
   },
   auth: {
@@ -112,24 +127,33 @@ export const en = {
     title: 'Users',
     description: 'Create, edit and delete accounts',
     list_title: 'User list',
-    create_title: 'New user',
-    edit_title: 'Edit user',
     delete_title: 'Delete user',
     table: {
       username: 'Username',
       email: 'Email',
+      password: 'Password',
     },
     form: {
       username: 'Username',
       email: 'Email',
       password: 'Password',
-      password_keep: 'Leave empty to keep the current password',
+    },
+    validation: {
+      username_required: 'Enter a username',
+      username_max: 'Username must be {{count}} characters or fewer',
+      email_required: 'Enter an email address',
+      email_invalid: 'Enter a valid email address',
+      email_max: 'Email must be {{count}} characters or fewer',
+      password_required: 'Enter a password',
+      password_min: 'Password must be at least {{count}} characters',
+      password_max: 'Password must be {{count}} characters or fewer',
     },
     filter: {
-      search_placeholder: 'Search username or email',
+      username: 'Username',
+      email: 'Email',
     },
     messages: {
-      delete_confirm: 'The account {{name}} will be deleted.',
+      delete_confirm: 'Deleting the account {{name}} cannot be undone.',
     },
   },
   batch: {
@@ -139,12 +163,17 @@ export const en = {
     create_title: 'New schedule',
     edit_title: 'Edit schedule',
     delete_title: 'Delete schedule',
+    status: {
+      running: 'Running',
+      idle: 'Idle',
+    },
     table: {
       name: 'Name',
       code: 'Job code',
       cron: 'Cron',
       enabled: 'State',
       description: 'Description',
+      running: 'Run state',
     },
     form: {
       name: 'Name',
@@ -156,7 +185,7 @@ export const en = {
       description: 'Description',
     },
     filter: {
-      search_placeholder: 'Search name',
+      name: 'Name',
     },
     actions: {
       run: 'Run now',
@@ -164,7 +193,7 @@ export const en = {
       history: 'Run history',
     },
     messages: {
-      delete_confirm: 'The schedule {{name}} will be deleted.',
+      delete_confirm: 'Deleting the schedule {{name}} cannot be undone.',
       run_started: 'Run started',
       run_stopped: 'Run stopped',
     },
@@ -206,9 +235,20 @@ export const en = {
     list_title: 'Provider list',
     create_title: 'New provider',
     edit_title: 'Edit provider',
-    delete_title: 'Delete provider',
     detail_title: 'Provider detail',
     detail_audit: 'Updated by {{user}} at {{at}} · v{{version}}',
+    delete_title: 'Delete provider',
+    filter: {
+      code: 'Code',
+      display_name: 'Display name',
+    },
+    validation: {
+      display_name_required: 'Enter a display name',
+      display_name_max: 'Display name must be {{count}} characters or fewer',
+      base_url_required: 'Enter a base URL',
+      base_url_max: 'Base URL must be {{count}} characters or fewer',
+      base_url_invalid: 'Base URL must be an https:// origin',
+    },
     table: {
       code: 'Code',
       display_name: 'Display name',
@@ -221,9 +261,6 @@ export const en = {
       display_name: 'Display name',
       base_url: 'Base URL',
       enabled: 'Enabled',
-    },
-    filter: {
-      search_placeholder: 'Search code or display name',
     },
     tabs: {
       operations: 'Operations',
@@ -242,12 +279,14 @@ export const en = {
     operation: {
       field_count: 'Fields',
       create_title: 'New operation',
-      edit_title: 'Edit operation',
       delete_title: 'Delete operation',
+      edit_title: 'Edit operation',
       delete_warning: 'This operation and its {{count}} wire field(s) are removed together',
       duplicate_code: 'That code is already used',
       code_hint: 'Lowercase letters, digits and hyphens',
       path_hint: 'Write path placeholders in braces',
+      quota_codes: 'Quota codes',
+      quota_codes_hint: 'CODE=seconds, comma-separated. On one of these the key sits out that long and the next key is tried',
       response_root: 'Response root',
       response_root_hint: 'Where the page starts in the response (JSON pointer)',
       connect_timeout: 'Connect timeout (ms)',
@@ -296,13 +335,52 @@ export const en = {
       never_read: 'A stored key is never shown again',
       value: 'API key',
       value_keep: 'Leave empty to keep the stored key',
+      rotation_group: 'Rotation group',
+      rotation_group_hint: 'Keys in one group act as one. A key past its quota is skipped for the next',
+      exhausted_until: 'Quota state',
+      spent_until: 'Spent until {{time}}',
+      fresh: 'Available',
       create_title: 'Add credential',
       delete_title: 'Delete credential',
       duplicate_name: 'That name is already used',
       referenced_by: 'Request fields still reference this credential: {{fields}}',
     },
     messages: {
-      delete_confirm: 'The provider {{name}} will be deleted.',
+      delete_confirm: 'Deleting the provider {{name}} cannot be undone.',
+    },
+  },
+  food: {
+    raw_material: {
+      title: 'Raw material codes',
+      description: 'Food Safety Korea raw material ledger · synced nightly (read-only)',
+      list_title: 'Raw material codes',
+      table: {
+        code: 'Code',
+        name: 'Representative name',
+        alias: 'Aliases',
+        large_class: 'Major class',
+        medium_class: 'Medium class',
+        status: 'Status',
+        valid_start: 'Valid from',
+        valid_end: 'Valid to',
+        use_yn: 'In use',
+        source_updated_at: 'Source updated',
+        english_name: 'English name',
+        scientific_name: 'Scientific name',
+        region_code: 'Region code',
+        region: 'Region',
+        process_code: 'Process code',
+        process: 'Process',
+        status_code: 'Status code',
+      },
+      filter: {
+        code: 'Code',
+        name: 'Representative name',
+        alias: 'Alias',
+        large_class: 'Major class',
+        medium_class: 'Medium class',
+        status: 'Status',
+      },
     },
   },
 } as const

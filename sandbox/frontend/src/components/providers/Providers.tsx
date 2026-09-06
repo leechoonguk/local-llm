@@ -47,6 +47,17 @@ export default function Providers({ children }: { children: ReactNode }) {
           maxSnack={3}
           autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
           anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          /**
+           * The countdown runs whether or not the window is focused.
+           *
+           * notistack pauses it on window blur, which is meant for "the user was
+           * away, so show them what they missed" — but this app's toasts report
+           * an action the user just took, and a reader who clicks to their editor
+           * and back finds yesterday's `삭제했습니다` still on screen (measured:
+           * still there 8s after a blur, with no way to tell it from a message
+           * about the row they are looking at now).
+           */
+          disableWindowBlurListener
         >
           <AuthProvider>{children}</AuthProvider>
         </SnackbarProvider>

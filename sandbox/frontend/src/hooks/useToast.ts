@@ -1,9 +1,10 @@
 /**
- * The app's only way to report the outcome of a mutation.
+ * The app's one notification surface — every outcome a screen reports.
  *
- * Every screen reports success and failure the same way, so the wording and
- * the placement are decided once. Screens never call `enqueueSnackbar`
- * directly — that is how three different variants for "saved" appear.
+ * A mutation reports through it directly; a failed read reports through
+ * `useQueryErrorToast`, which wraps this. Wording and placement are decided
+ * once, and screens never call `enqueueSnackbar` directly — that is how three
+ * different variants for "saved" appear.
  */
 
 import { useMemo } from 'react'

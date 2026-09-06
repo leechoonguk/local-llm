@@ -22,6 +22,7 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 
 const UserPage = lazy(() => import('@/pages/UserPage'))
+const FoodRawMaterialPage = lazy(() => import('@/pages/FoodRawMaterialPage'))
 
 const BatchPage = lazy(() => import('@/pages/BatchPage'))
 
@@ -41,6 +42,7 @@ export default function App() {
           <Route path={PATHS.root} element={<Navigate to={PATHS.dashboard} replace />} />
           <Route path={PATHS.dashboard} element={<DashboardPage />} />
           <Route path={PATHS.user} element={<UserPage />} />
+          <Route path={PATHS.food.rawMaterial} element={<FoodRawMaterialPage />} />
           <Route path={PATHS.batch} element={<BatchPage />} />
           <Route path={PATHS.integration} element={<IntegrationPage />} />
         </Route>

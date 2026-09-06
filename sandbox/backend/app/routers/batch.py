@@ -10,10 +10,11 @@ from fastapi import APIRouter, status
 
 from app.core.cache import scoped_cache_key
 from app.core.exceptions import ConflictError, NotFoundError
+from app.core.scheduler import SCHEDULER_UNAVAILABLE_CODE, BatchScheduler
 from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
 from app.dependencies.core import CacheDep, SchedulerDep
-from app.dependencies.query import LimitQuery, OffsetQuery
+from app.dependencies.query import LimitQuery, OffsetQuery, TextFilterQuery
 from app.dependencies.services import (
     BatchRunServiceDep,
     BatchScheduleServiceDep,
@@ -76,19 +77,25 @@ async def list_batches(
     batch_schedule_service: BatchScheduleServiceDep,
     current_user: CurrentUserDep,
     cache: CacheDep,
+    scheduler: SchedulerDep,
     offset: OffsetQuery = 0,
     limit: LimitQuery = settings.items_per_user,
+    name: TextFilterQuery = None,
 ) -> Page[BatchReadResponse]:
-    cache_key = scoped_cache_key(BATCH_CACHE_PREFIX, str(current_user.id), f"list:{offset}:{limit}")
+    # The filter is part of the key, or the first filtered page would be served
+    # to every later caller as if it were the whole collection.
+    cache_key = scoped_cache_key(
+        BATCH_CACHE_PREFIX, str(current_user.id), f"list:{offset}:{limit}:{name or ''}"
+    )
     cached = await cache.get_json(cache_key) if cache is not None else None
     # The cached value is the whole answer, total included: caching the rows
     # alone would have made every cache hit cost the count query it saved.
     if isinstance(cached, dict):
-        return Page[BatchReadResponse].model_validate(cached)
+        return _with_running(Page[BatchReadResponse].model_validate(cached), scheduler)
 
     response = Page(
-        items=to_read_list(await batch_schedule_service.list_batches(offset, limit)),
-        total=await batch_schedule_service.count_batches(),
+        items=to_read_list(await batch_schedule_service.list_batches(offset, limit, name)),
+        total=await batch_schedule_service.count_batches(name),
     )
     if cache is not None:
         await cache.set_json(
@@ -96,7 +103,7 @@ async def list_batches(
             response.model_dump(mode="json"),
             ttl_seconds=BATCH_CACHE_TTL_SECONDS,
         )
-    return response
+    return _with_running(response, scheduler)
 
 
 @router.get("/{batch_id}")
@@ -105,18 +112,20 @@ async def get_batch(
     batch_schedule_service: BatchScheduleServiceDep,
     current_user: CurrentUserDep,
     cache: CacheDep,
+    scheduler: SchedulerDep,
 ) -> BatchReadResponse:
     cache_key = scoped_cache_key(BATCH_CACHE_PREFIX, str(current_user.id), f"detail:{batch_id}")
     cached = await cache.get_json(cache_key) if cache is not None else None
     if isinstance(cached, dict):
-        return BatchReadResponse.model_validate(cached)
+        row = BatchReadResponse.model_validate(cached)
+        return row.model_copy(update={"running": _running(scheduler, row.id)})
 
     response = to_read(await batch_schedule_service.get_batch(batch_id))
     if cache is not None:
         await cache.set_json(
             cache_key, response.model_dump(mode="json"), ttl_seconds=BATCH_CACHE_TTL_SECONDS
         )
-    return response
+    return response.model_copy(update={"running": _running(scheduler, response.id)})
 
 
 @router.patch("/{batch_id}")
@@ -131,7 +140,7 @@ async def update_batch(
     batch = await batch_schedule_service.update_batch(
         batch_id, data, updated_by=current_user.username
     )
-    response = to_read(batch)
+    response = to_read(batch, _running(scheduler, batch.id))
     # The row is the schedule, so the write is not finished until the running
     # process agrees with it: a cron edit or `enabled=false` that only landed in
     # the table would keep firing the old trigger until the next restart.
@@ -179,7 +188,7 @@ async def run_batch(
     """
     batch = await batch_schedule_service.get_batch(batch_id)
     if scheduler is None:
-        raise ConflictError("No scheduler is running in this process")
+        raise ConflictError("No scheduler is running in this process", SCHEDULER_UNAVAILABLE_CODE)
     if data.running:
         scheduler.run_now(batch.id, batch.code, current_user.username)
     else:
@@ -234,4 +243,35 @@ async def list_batch_run_steps(
     return Page(
         items=to_step_read_list(await batch_step_service.list_run_steps(run_id, offset, limit)),
         total=await batch_step_service.count_run_steps(run_id),
+    )
+
+
+# ============================================================
+# Functions
+# ============================================================
+
+
+def _running(scheduler: BatchScheduler | None, batch_id: UUID) -> bool:
+    """Whether this process is executing that schedule right now.
+
+    A process without a scheduler (a web-only replica) reports `False` rather
+    than guessing: it executes nothing, so it knows of no run.
+    """
+    return scheduler is not None and scheduler.is_running(batch_id)
+
+
+def _with_running(
+    page: Page[BatchReadResponse], scheduler: BatchScheduler | None
+) -> Page[BatchReadResponse]:
+    """Stamp the live run state onto a page that may have come from the cache.
+
+    The rows are cached for a minute; a run lasts seconds. Cached together, the
+    screen would show a finished run as still going, and the stop button beside
+    it would cancel nothing.
+    """
+    return Page(
+        items=[
+            row.model_copy(update={"running": _running(scheduler, row.id)}) for row in page.items
+        ],
+        total=page.total,
     )

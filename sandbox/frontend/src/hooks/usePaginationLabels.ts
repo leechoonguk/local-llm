@@ -34,8 +34,12 @@ export function usePaginationLabels() {
       labelRowsPerPage: t('pagination.rows_per_page'),
       labelDisplayedRows: ({ from, to, count }: DisplayedRowsInfo) =>
         count < 0
-          ? t('pagination.displayed_rows_unknown', { from, to })
-          : t('pagination.displayed_rows', { from, to, count }),
+          ? t('pagination.displayed_rows_unknown', { from: String(from), to: String(to) })
+          : t('pagination.displayed_rows', {
+              from: String(from),
+              to: String(to),
+              total: String(count),
+            }),
     }),
     [t],
   )

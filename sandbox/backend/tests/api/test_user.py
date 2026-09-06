@@ -63,6 +63,44 @@ def test_list_users(client: TestClient, auth_headers: dict[str, str]) -> None:
     assert body["total"] == len(body["items"])
 
 
+def test_list_users_field_filters(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """Each field is its own query parameter, and an empty value is refused.
+
+    The empty string is a 422 rather than "no filter": two spellings of the same
+    request is how a client ends up sending `username=` forever and believing
+    the filter is off.
+    """
+    client.post(
+        "/api/v1/user/",
+        json={
+            "username": "filterable",
+            "email": "filterable@example.com",
+            "password": "secret-pass",
+        },
+    )
+
+    by_name = client.get("/api/v1/user/", params={"username": "FILTER"}, headers=auth_headers)
+    assert by_name.status_code == 200
+    assert [user["username"] for user in by_name.json()["items"]] == ["filterable"]
+    assert by_name.json()["total"] == 1
+
+    by_email = client.get(
+        "/api/v1/user/", params={"email": "filterable@example.com"}, headers=auth_headers
+    )
+    assert [user["username"] for user in by_email.json()["items"]] == ["filterable"]
+
+    # The two filters narrow together: this username never had that email.
+    both = client.get(
+        "/api/v1/user/",
+        params={"username": "filterable", "email": "tester@example.com"},
+        headers=auth_headers,
+    )
+    assert both.json() == {"items": [], "total": 0}
+
+    empty = client.get("/api/v1/user/", params={"username": ""}, headers=auth_headers)
+    assert empty.status_code == 422
+
+
 def test_get_user(client: TestClient, auth_headers: dict[str, str]) -> None:
     """A row created through the API is addressable by the id the API returned.
 

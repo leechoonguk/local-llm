@@ -10,10 +10,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QUERY_STALE_TIME } from '@/lib/api/queryDefaults'
 import { userKeys } from '@/lib/api/queryKeys'
 import { userService } from '@/lib/api/services/user.service'
-import type { OffsetLimitParams } from '@/types/api'
-import type { UserCreateRequest, UserUpdateRequest } from '@/types/user'
+import type { UserCreateRequest, UserListParams, UserUpdateRequest } from '@/types/user'
 
-export function useUserList(params: OffsetLimitParams) {
+export function useUserList(params: UserListParams) {
   return useQuery({
     queryKey: userKeys.list(params),
     queryFn: () => userService.list(params),

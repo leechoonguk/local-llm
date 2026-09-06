@@ -19,8 +19,15 @@ from app.models.base import AuditMixin, Base
 # ============================================================
 
 
-class Barcode(Base, AuditMixin):
-    """바코드 품목정보 원장 — our own copy of the I2570 records, one row per item.
+class FoodBarcode(Base, AuditMixin):
+    """식품 바코드 품목정보 원장 — our own copy of the I2570 records, one row per item.
+
+    The name carries the portal, not just the record: four sibling ledgers are
+    coming from the same 식품안전나라 services (`food_report`,
+    `food_classification`, `food_material`, `food_test_item`), and a bare
+    `barcode` would have been the only one of them that did not say where it came
+    from. The prefix is this repository's grouping convention — `integration_*`,
+    `batch_*` — so a listing keeps one provider's ledgers together.
 
     **One ledger per external operation, never one generic ledger.** The portal
     behind `mfds-food-safety-korea` carries five services and each one has its
@@ -54,12 +61,12 @@ class Barcode(Base, AuditMixin):
       leaves the column empty on sparse records.
     """
 
-    __tablename__ = "barcode"
+    __tablename__ = "food_barcode"
     __table_args__ = (
         # 같은 바코드가 여러 품목제조번호로 등록될 수 있다 — 원장의 정체성은 그 쌍이다.
-        UniqueConstraint("barcode_no", "report_no", name="uq_barcode_barcode_no_report_no"),
-        Index("ix_barcode_report_no", "report_no"),
-        Index("ix_barcode_source_updated_at", "source_updated_at"),
+        UniqueConstraint("barcode_no", "report_no", name="uq_food_barcode_barcode_no_report_no"),
+        Index("ix_food_barcode_report_no", "report_no"),
+        Index("ix_food_barcode_source_updated_at", "source_updated_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)

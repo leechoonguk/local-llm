@@ -6,9 +6,36 @@
  * request on purpose — the server refuses to repoint a schedule at another job.
  */
 
-import type { AuditedResource } from '@/types/api'
+import type { AuditedResource, BatchFilterParams, OffsetLimitParams } from '@/types/api'
+
+/**
+ * A run's five endings — `ck_batch_run_status`, verbatim.
+ *
+ * Narrowed rather than `string` because the vocabulary is closed by a CHECK
+ * constraint: widening it here is what forced the status→colour map to be
+ * keyed by `string` and to carry an unreachable `?? 'default'`. As a union the
+ * compiler owns exhaustiveness, so a sixth ending added to the constraint
+ * fails the build instead of rendering as a grey badge nobody notices.
+ */
+export type BatchRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'STOPPED' | 'INTERRUPTED'
+
+/** What started a run — `ck_batch_run_trigger`, verbatim. */
+export type BatchTrigger = 'CRON' | 'MANUAL'
+
+/**
+ * A step's two endings — `ck_batch_step_status`, verbatim.
+ *
+ * A narrower set than a run's, and deliberately its own type: rows are written
+ * **after** the unit ends, so a step is never `RUNNING`.
+ */
+export type BatchStepStatus = 'SUCCEEDED' | 'FAILED'
 
 export interface Batch extends AuditedResource {
+  /**
+   * Whether an execution is in flight right now, as the scheduler answers at
+   * read time. Not a stored column: the list is cached and a run lasts seconds.
+   */
+  running: boolean
   code: string
   name: string
   description: string | null
@@ -45,8 +72,8 @@ export interface BatchRunResponse {
 export interface BatchRun extends AuditedResource {
   batch_id: string | null
   code: string
-  status: string
-  trigger: string
+  status: BatchRunStatus
+  trigger: BatchTrigger
   triggered_by: string
   stopped_by: string | null
   started_at: string
@@ -61,7 +88,7 @@ export interface BatchRun extends AuditedResource {
 export interface BatchStep extends AuditedResource {
   run_id: string
   sequence: number
-  status: string
+  status: BatchStepStatus
   range_start: number | null
   range_end: number | null
   received: number | null
@@ -71,3 +98,11 @@ export interface BatchStep extends AuditedResource {
   error_code: string | null
   error_detail: string | null
 }
+
+/**
+ * What `GET /batch/` accepts: the page plus one filter per filterable column.
+ *
+ * The intersection lives with the domain rather than in the shared params type,
+ * so an endpoint that takes no filter keeps a params type that matches it.
+ */
+export type BatchListParams = OffsetLimitParams & BatchFilterParams

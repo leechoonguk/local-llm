@@ -133,7 +133,9 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
         t: tCommon,
         setError: methods.setError,
         toastError: toast.error,
-        fieldByCode: { conflict: 'name' },
+        // No field mapping: a batch conflict is `already running`, `unregistered
+        // job` or `no scheduler`, none of which is about a value in this form.
+        // `conflict: 'name'` put those sentences on the name input.
       })
     }
   }

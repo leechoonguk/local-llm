@@ -4,9 +4,10 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -49,19 +50,23 @@ class IntegrationProviderRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list(self, offset: int = 0, limit: int = 100) -> list[Integration]:
+    async def list(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        code: str | None = None,
+        display_name: str | None = None,
+    ) -> list[Integration]:
+        query = _apply_filters(select(Integration), code, display_name)
         result = await self.session.execute(
-            select(Integration)
-            .order_by(Integration.code)
-            .offset(offset)
-            .limit(limit)
-            .options(*self._options())
+            query.order_by(Integration.code).offset(offset).limit(limit).options(*self._options())
         )
         return list(result.scalars().unique().all())
 
-    async def count(self) -> int:
-        """How many rows the unwindowed `list` would return."""
-        result = await self.session.execute(select(func.count()).select_from(Integration))
+    async def count(self, code: str | None = None, display_name: str | None = None) -> int:
+        """How many rows the unwindowed `list` would return, under the same filters."""
+        query = _apply_filters(select(func.count()).select_from(Integration), code, display_name)
+        result = await self.session.execute(query)
         return result.scalar_one()
 
     async def create(self, data: IntegrationCreateInternal) -> Integration:
@@ -143,6 +148,7 @@ class IntegrationProviderRepository:
             retry_max_ms=data.retry_max_ms,
             idempotent=data.idempotent,
             request_schema=data.request_schema,
+            quota_codes=dict(data.quota_codes),
             enabled=data.enabled,
             created_by=actor,
             updated_by=actor,
@@ -156,3 +162,24 @@ class IntegrationProviderRepository:
         values = data.model_dump(exclude={"secret_name"})
         secret = None if data.secret_name is None else secrets[data.secret_name]
         return IntegrationField(**values, secret=secret, created_by=actor, updated_by=actor)
+
+
+# ============================================================
+# Functions
+# ============================================================
+
+
+def _apply_filters(query: Select[Any], code: str | None, display_name: str | None) -> Select[Any]:
+    """Narrow a provider query by each field the caller named.
+
+    One builder for the page and its count: two spellings of the same predicate
+    is how a filtered list and its total start disagreeing. The filters are
+    combined with AND — each one is a separate box on the screen, so filling
+    both must narrow, never widen. `ilike` (never `like`) so the match is
+    case-insensitive on every backend, and the wildcards are added here so a
+    caller never sends SQL syntax.
+    """
+    for column, value in ((Integration.code, code), (Integration.display_name, display_name)):
+        if value is not None:
+            query = query.where(column.ilike(f"%{value}%"))
+    return query

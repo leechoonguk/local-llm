@@ -20,6 +20,17 @@ from app.schemas.user import (
 
 
 # ============================================================
+# Constants
+# ============================================================
+
+#: A form puts each of these on the field that owns it, which one shared
+#: `conflict` code could not do.
+USERNAME_TAKEN_CODE = "username_taken"
+
+EMAIL_TAKEN_CODE = "email_taken"
+
+
+# ============================================================
 # Classes
 # ============================================================
 
@@ -56,12 +67,18 @@ class UserService:
         await self.session.rollback()
         return user
 
-    async def list_users(self, offset: int = 0, limit: int = 100) -> list[User]:
-        return await self.user_repository.list(offset, limit)
+    async def list_users(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        username: str | None = None,
+        email: str | None = None,
+    ) -> list[User]:
+        return await self.user_repository.list(offset, limit, username, email)
 
-    async def count_users(self) -> int:
-        """The collection's size, for the page the caller just read."""
-        return await self.user_repository.count()
+    async def count_users(self, username: str | None = None, email: str | None = None) -> int:
+        """The collection's size under the filters the caller just applied."""
+        return await self.user_repository.count(username, email)
 
     async def create_user(self, data: UserCreateRequest, created_by: str) -> User:
         internal = UserCreateInternal(
@@ -72,9 +89,11 @@ class UserService:
         )
         async with self.session.begin():
             if await self.user_repository.get_by_username(data.username) is not None:
-                raise ConflictError(f"Username '{data.username}' already exists")
+                raise ConflictError(
+                    f"Username '{data.username}' already exists", USERNAME_TAKEN_CODE
+                )
             if await self.user_repository.get_by_email(data.email) is not None:
-                raise ConflictError(f"Email '{data.email}' already exists")
+                raise ConflictError(f"Email '{data.email}' already exists", EMAIL_TAKEN_CODE)
             return await self.user_repository.create(internal)
 
     async def update_user(self, user_id: UUID, data: UserUpdateRequest, updated_by: str) -> User:

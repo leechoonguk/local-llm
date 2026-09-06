@@ -12,6 +12,7 @@ from app.dependencies.core import SessionDep
 from app.services.batch.run import BatchRunService
 from app.services.batch.schedule import BatchScheduleService
 from app.services.batch.step import BatchStepService
+from app.services.food.raw_material import FoodRawMaterialService
 from app.services.integration.operation import IntegrationOperationService
 from app.services.integration.provider import IntegrationProviderService
 from app.services.integration.secret import IntegrationSecretService
@@ -34,6 +35,10 @@ def get_batch_run_service(session: SessionDep) -> BatchRunService:
 
 def get_batch_schedule_service(session: SessionDep) -> BatchScheduleService:
     return BatchScheduleService(session)
+
+
+def get_food_raw_material_service(session: SessionDep) -> FoodRawMaterialService:
+    return FoodRawMaterialService(session)
 
 
 def get_integration_provider_service(session: SessionDep) -> IntegrationProviderService:
@@ -74,3 +79,6 @@ IntegrationOperationServiceDep = Annotated[
 ]
 RefreshServiceDep = Annotated[RefreshService, Depends(get_refresh_service)]
 UserServiceDep = Annotated[UserService, Depends(get_user_service)]
+FoodRawMaterialServiceDep = Annotated[
+    FoodRawMaterialService, Depends(get_food_raw_material_service)
+]

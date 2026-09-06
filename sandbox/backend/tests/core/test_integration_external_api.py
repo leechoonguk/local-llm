@@ -633,6 +633,7 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
     assert set(seed_of) == {
         "search-food-nutrition",
         "search-food-item-report",
+        "search-food-item-report-raw-material",
         "search-product-classification",
         "search-food-raw-material",
         "search-barcode-item-info",

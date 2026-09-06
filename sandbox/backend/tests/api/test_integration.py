@@ -180,6 +180,40 @@ def test_integration_configuration_crud(client: TestClient, auth_headers: dict[s
     )
 
 
+def test_list_integrations_field_filters(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """Each field is its own query parameter, they narrow together, and `''` is refused.
+
+    Two providers, so a filter that matched everything would still pass on one
+    row; the AND case is asserted because two boxes on one screen must narrow
+    when both are filled, never widen.
+    """
+    client.post("/api/v1/integration/", json=integration_payload(), headers=auth_headers)
+    second = integration_payload()
+    second["code"] = "otherplate"
+    second["display_name"] = "OtherPlate API"
+    client.post("/api/v1/integration/", json=second, headers=auth_headers)
+
+    by_code = client.get("/api/v1/integration/", params={"code": "FRESH"}, headers=auth_headers)
+    assert by_code.status_code == 200
+    assert [row["code"] for row in by_code.json()["items"]] == ["freshplate"]
+    assert by_code.json()["total"] == 1
+
+    by_name = client.get(
+        "/api/v1/integration/", params={"display_name": "OtherPlate"}, headers=auth_headers
+    )
+    assert [row["code"] for row in by_name.json()["items"]] == ["otherplate"]
+
+    both = client.get(
+        "/api/v1/integration/",
+        params={"code": "freshplate", "display_name": "OtherPlate"},
+        headers=auth_headers,
+    )
+    assert both.json() == {"items": [], "total": 0}
+
+    empty = client.get("/api/v1/integration/", params={"code": ""}, headers=auth_headers)
+    assert empty.status_code == 422
+
+
 def test_integration_configuration_rejects_invalid_values(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
@@ -329,7 +363,11 @@ def test_integration_execute_operation_unknown_operation(
 def test_integration_execute_operation_missing_required_input(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:
-    """An omitted required CALLER input is 422 `integration_input_invalid`.
+    """An omitted required CALLER input is 422 `integration_input_required`.
+
+    Not the generic `integration_input_invalid`: a value of the wrong shape and
+    a value that was never sent are fixed differently, so they are different
+    codes and the client can say which one happened.
 
     Its own code, not the configuration one: the configuration is fine and
     nothing upstream was called — the caller has to send the field. A CALLER
@@ -345,7 +383,7 @@ def test_integration_execute_operation_missing_required_input(
         headers=auth_headers,
     )
     assert response.status_code == 422
-    assert response.json()["code"] == "integration_input_invalid"
+    assert response.json()["code"] == "integration_input_required"
     assert "menu_id" in response.json()["detail"]
 
 

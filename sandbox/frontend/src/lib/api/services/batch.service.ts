@@ -8,6 +8,7 @@ import type { OffsetLimitParams, OkResponse, Page } from '@/types/api'
 import type {
   Batch,
   BatchCreateRequest,
+  BatchListParams,
   BatchRun,
   BatchRunRequest,
   BatchRunResponse,
@@ -16,7 +17,7 @@ import type {
 } from '@/types/batch'
 
 export const batchService = {
-  list: (params: OffsetLimitParams) => api.get<Page<Batch>>(BATCH_ENDPOINTS.LIST, { params }),
+  list: (params: BatchListParams) => api.get<Page<Batch>>(BATCH_ENDPOINTS.LIST, { params }),
 
   detail: (id: string) => api.get<Batch>(BATCH_ENDPOINTS.DETAIL(id)),
 

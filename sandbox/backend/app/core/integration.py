@@ -11,12 +11,14 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from email.utils import parsedate_to_datetime
 from time import perf_counter
-from typing import Any
+from typing import Any, Literal, cast, get_args
 from urllib.parse import quote
 from xml.etree import ElementTree
 
 import httpx2
 import structlog
+from defusedxml import ElementTree as DefusedElementTree
+from defusedxml.common import DefusedXmlException
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,12 +32,18 @@ from app.core.exceptions import (
 )
 from app.models.integration.field import IntegrationField
 from app.models.integration.operation import IntegrationOperation
+from app.models.integration.secret import IntegrationSecret
 from app.repositories.integration.operation import IntegrationOperationRepository
 
 
 # ============================================================
 # Constants
 # ============================================================
+#: A caller sent the wrong shape, or sent nothing at all. Two codes because the
+#: answer differs: fix the value, or supply it.
+INPUT_TYPE_INVALID_CODE = "integration_input_type_invalid"
+
+INPUT_REQUIRED_CODE = "integration_input_required"
 
 logger = structlog.get_logger(__name__)
 
@@ -78,11 +86,37 @@ class IntegrationExecutionResult:
     status_code: int
 
 
+#: `ck_integration_call_method` — the verbs this client can issue.
+CallMethod = Literal["GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"]
+
+
+#: `ck_integration_call_outcome` — how the exchange ended. `REFUSED` is the
+#: provider answering no; the other three are it not answering at all.
+CallOutcome = Literal["SUCCESS", "REFUSED", "TIMEOUT", "UNREACHABLE", "RATE_LIMITED"]
+
+
+def _call_method(configured: str) -> CallMethod:
+    """The verb a stored operation declares, proved against the log's vocabulary.
+
+    `integration_operation.method` carries no check constraint while
+    `integration_call.method` does, so a hand-edited row can hold a verb the log
+    cannot store. Refusing here names the misconfigured operation; letting it
+    through fails later as a constraint violation on the *log*, which reports
+    the wrong table and hides which operation caused it.
+    """
+    if configured not in get_args(CallMethod):
+        raise IntegrationConfigurationError(
+            f"operation declares method {configured!r}, "
+            f"not one of {', '.join(get_args(CallMethod))}"
+        )
+    return cast(CallMethod, configured)
+
+
 @dataclass(frozen=True)
 class _SentRequest:
     """What left the process, kept so the record can be written after the answer."""
 
-    method: str
+    method: CallMethod
     url: str
     headers: dict[str, str]
     params: dict[str, str]
@@ -99,19 +133,20 @@ class IntegrationExchange:
     for these providers, so a raw URL in a log is the key in a log.
     """
 
-    method: str
+    method: CallMethod
     url: str
     request_headers: dict[str, str]
     request_body: object
     status_code: int | None
     response_headers: dict[str, str] | None
     response_body: str | None
-    outcome: str
+    outcome: CallOutcome
     duration_ms: int
     attempts: int
     request_id: str | None
     error_code: str | None
     error_detail: str | None
+    secret_name: str | None
 
 
 class IntegrationClient:
@@ -127,11 +162,20 @@ class IntegrationClient:
         *,
         operation: IntegrationOperation,
         client: httpx2.AsyncClient | None = None,
+        secrets: Mapping[str, IntegrationSecret] | None = None,
     ) -> None:
         self.operation = operation
         self.provider = operation.provider.code
         self._owns_client = client is None
         self._client = client or httpx2.AsyncClient()
+        # The pool member chosen for each rotation group, by group name. A field
+        # bound to a grouped secret is sent with the chosen member; a field bound
+        # to an ungrouped secret, or a group nobody chose for, sends its own.
+        # The choice is the service's - it owns the session that remembers
+        # which member is spent - so this client stays one request wide.
+        self._secrets: Mapping[str, IntegrationSecret] = secrets or {}
+        # The names of the secrets this execute sent, for the call log.
+        self._secret_names: list[str] = []
         # The secret values this client has sent, so a failing provider's body can
         # be handed back without the credential it echoed. Per client, cleared at
         # the start of every execute.
@@ -147,27 +191,37 @@ class IntegrationClient:
         provider_code: str,
         operation_code: str,
         client: httpx2.AsyncClient | None = None,
+        secrets: Mapping[str, IntegrationSecret] | None = None,
     ) -> IntegrationClient:
         operation = await IntegrationOperationRepository(session).get_operation(
             provider_code, operation_code
         )
         if operation is None or not operation.provider.enabled or not operation.enabled:
             raise IntegrationConfigurationError("Integration operation is unavailable")
-        return cls(operation=operation, client=client)
+        return cls(operation=operation, client=client, secrets=secrets)
 
     async def aclose(self) -> None:
         """Close a client owned by this integration instance."""
         if self._owns_client:
             await self._client.aclose()
 
-    async def execute(
+    async def execute(  # noqa: C901, PLR0912, PLR0915
         self,
         inputs: Mapping[str, object],
         *,
         context: Mapping[str, object] | None = None,
     ) -> IntegrationExecutionResult:
-        """Render, execute, validate, and normalize a configured operation."""
+        """Render, execute, validate, and normalize a configured operation.
+
+        One frame on purpose. The size is the retry loop's five endings — refused
+        contract, 429, 5xx, timeout, unreachable — and each of them records the
+        same attempt bookkeeping (`sent`, `call_started`, `attempt`, the
+        response) before it raises. Split, that bookkeeping becomes six
+        signatures threading the same four values, and the ending that forgets
+        one is a silent hole in the call log.
+        """
         self._sent_secrets.clear()
+        self._secret_names.clear()
         self._exchange = None
         request_context = dict(context or {})
         request_id = structlog.contextvars.get_contextvars().get("request_id")
@@ -187,7 +241,7 @@ class IntegrationClient:
         # and the log is read to answer "why was that request slow".
         call_started = perf_counter()
         sent = _SentRequest(
-            method=self.operation.method,
+            method=_call_method(self.operation.method),
             url=url,
             headers=headers,
             params=params,
@@ -311,7 +365,7 @@ class IntegrationClient:
         sent: _SentRequest,
         started: float,
         attempt: int,
-        outcome: str,
+        outcome: CallOutcome,
         response: httpx2.Response | None,
         *,
         error_code: str | None = None,
@@ -342,6 +396,7 @@ class IntegrationClient:
             request_id=sent.request_id,
             error_code=error_code,
             error_detail=None if error_detail is None else error_detail[:ERROR_DETAIL_LIMIT],
+            secret_name=None if not self._secret_names else ",".join(self._secret_names),
         )
 
     def _scrub(self, text: str) -> str:
@@ -444,7 +499,8 @@ class IntegrationClient:
             if field.value_source != "CALLER":
                 raise
             raise IntegrationInputError(
-                f"Input is not a valid {field.value_type.lower()}: {field.key}"
+                f"Input is not a valid {field.value_type.lower()}: {field.key}",
+                INPUT_TYPE_INVALID_CODE,
             ) from None
 
     def _resolve_value(
@@ -464,11 +520,14 @@ class IntegrationClient:
             value = field.value
         elif field.value_source == "SECRET":
             secret = field.secret
+            if secret is not None and secret.rotation_group is not None:
+                secret = self._secrets.get(secret.rotation_group, secret)
             if secret is None or secret.enabled is False:
                 raise IntegrationConfigurationError(
                     f"Configured integration secret is unavailable: {field.key}"
                 )
             value = secret.value
+            self._secret_names.append(secret.name)
             # Remembered for one purpose: scrubbing it back out of a failing
             # provider's body before that body reaches the caller. The key travels
             # as a path segment, and providers echo their request.
@@ -480,15 +539,21 @@ class IntegrationClient:
             # the configuration's. The status follows: 422 caller vs 422
             # configuration, never 502 — nothing upstream has been called yet.
             if field.value_source == "CALLER":
-                raise IntegrationInputError(f"Required input is missing: {field.key}")
+                raise IntegrationInputError(
+                    f"Required input is missing: {field.key}", INPUT_REQUIRED_CODE
+                )
             raise IntegrationConfigurationError(
                 f"Required configured value is missing: {field.key}"
             )
         return value
 
     @staticmethod
-    def _serialize(value: object, value_type: str, format_value: str | None) -> object:
+    def _serialize(value: object, value_type: str, format_value: str | None) -> object:  # noqa: C901
         """Render one value in the wire form its configured `value_type` declares.
+
+        The branches are the vocabulary of `value_type`, one per wire form, flat
+        and exhaustive. Five one-line functions behind a dispatch table would be
+        more code and would hide that the list is complete.
 
         A mismatch is a caller/configuration disagreement, not an upstream
         failure, so it raises the 422 core exception. The response direction
@@ -547,8 +612,16 @@ class IntegrationClient:
         """
         if self.operation.response_format == "XML":
             try:
-                root = ElementTree.fromstring(response.text)
-            except ElementTree.ParseError as exc:
+                # `defusedxml`, not the stdlib parser: measured on this Python
+                # (3.14.7), `xml.etree` expands internal entities — three levels
+                # of the classic nesting turned 3 tokens into 300 characters, and
+                # the growth is exponential in the depth a provider chooses. A
+                # compromised or careless provider could answer with a body that
+                # expands to gigabytes inside this process. External SYSTEM
+                # entities were already refused, so file reads were never the
+                # exposure; the memory bomb was.
+                root = DefusedElementTree.fromstring(response.text)
+            except (ElementTree.ParseError, DefusedXmlException) as exc:
                 raise IntegrationError(
                     self.provider, self.operation.code, "External API response is not valid XML"
                 ) from exc
@@ -764,7 +837,10 @@ class IntegrationClient:
                 self.operation.retry_base_ms / 1000 * (2**attempt),
                 self.operation.retry_max_ms / 1000,
             )
-        delay += random.uniform(0, delay * 0.1)
+        # Jitter, not a key: `random` spreads retries of concurrent callers so
+        # they stop arriving in lockstep. Nothing here is a secret, so the cost
+        # of `secrets` (a syscall per retry) buys nothing.
+        delay += random.uniform(0, delay * 0.1)  # noqa: S311
         await asyncio.sleep(delay)
 
     @staticmethod

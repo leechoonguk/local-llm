@@ -24,6 +24,9 @@ class IntegrationSecretCreateRequest(BaseModel):
     value: str = Field(min_length=1, max_length=2048)
     description: str | None = Field(default=None, max_length=512)
     enabled: bool = True
+    # Secrets of one provider sharing a group are interchangeable - the client
+    # sends whichever member is not spent. Absent: this secret stands alone.
+    rotation_group: str | None = Field(default=None, min_length=1, max_length=64)
 
 
 class IntegrationSecretReadResponse(BaseModel):
@@ -35,6 +38,8 @@ class IntegrationSecretReadResponse(BaseModel):
     name: str
     description: str | None = None
     enabled: bool
+    rotation_group: str | None = None
+    exhausted_until: datetime | None = None
     created_by: str | None = None
     updated_by: str | None = None
     created_at: datetime
@@ -55,3 +60,4 @@ class IntegrationSecretUpdateRequest(BaseModel):
     value: str | None = Field(default=None, min_length=1, max_length=2048)
     description: str | None = Field(default=None, max_length=512)
     enabled: bool | None = None
+    rotation_group: str | None = Field(default=None, min_length=1, max_length=64)

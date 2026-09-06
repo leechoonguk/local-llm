@@ -17,9 +17,11 @@
  */
 
 import { useCallback, useMemo } from 'react'
+import type { RefObject } from 'react'
 import { alpha } from '@mui/material/styles'
 import type { Theme } from '@mui/material/styles'
-import { DataGrid } from '@mui/x-data-grid'
+import { DataGrid, GridRowEditStopReasons } from '@mui/x-data-grid'
+import type { GridApiCommunity } from '@mui/x-data-grid/internals'
 import type {
   GridColDef,
   GridDensity,
@@ -84,6 +86,31 @@ const BASE_SX = {
   '& .MuiDataGrid-row--editing, & .MuiDataGrid-row--editing:hover': EDITING_ROW_SX,
   // MUI's editing style is a white cell with a shadow, invisible on a white table.
   '& .MuiDataGrid-row--editing .MuiDataGrid-cell': { bgcolor: 'transparent', boxShadow: 'none' },
+  /**
+   * Every editable cell carries the same underline, drawn here rather than by
+   * each column's editor.
+   *
+   * A cell has no border of its own to say "type here", and MUI's default input
+   * has none either: the row wash said the *row* was open while nothing said
+   * which cells took a value. Per-column editors would each redraw it and drift
+   * — the user list's password cell already had an underline the columns beside
+   * it did not.
+   *
+   * Three states, all from the palette: resting is the table's own divider,
+   * focus is the primary that marks the row, invalid is the error colour the
+   * blocked save names in words.
+   */
+  '& .MuiDataGrid-cell--editing .MuiInputBase-input': {
+    borderBottom: '1px solid',
+    borderColor: 'divider',
+    transition: (theme: Theme) => theme.transitions.create('border-color'),
+  },
+  '& .MuiDataGrid-cell--editing .MuiInputBase-root.Mui-focused .MuiInputBase-input': {
+    borderColor: 'primary.main',
+  },
+  '& .MuiDataGrid-cell--editing .MuiInputBase-root.Mui-error .MuiInputBase-input': {
+    borderColor: 'error.main',
+  },
   '& .MuiDataGrid-columnSeparator': { display: 'none' },
   '& .MuiDataGrid-footerContainer': { borderTop: '1px solid', borderColor: 'divider' },
 } as const
@@ -108,6 +135,13 @@ interface ServerDataGridProps<R extends GridValidRowModel> {
    */
   rowModesModel?: GridRowModesModel
   onRowModesModelChange?: (model: GridRowModesModel) => void
+  /**
+   * The grid's own api, for a screen that has to read a row *while* it is being
+   * edited — validating on save is the case: the pending values live in the
+   * grid's edit state, not in `rows`, so a screen without this can only watch
+   * the commit silently fail.
+   */
+  apiRef?: RefObject<GridApiCommunity | null>
   processRowUpdate?: (updated: R, original: R) => Promise<R> | R
   onProcessRowUpdateError?: (error: unknown) => void
 }
@@ -126,6 +160,7 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
   onColumnVisibilityModelChange,
   rowModesModel,
   onRowModesModelChange,
+  apiRef,
   processRowUpdate,
   onProcessRowUpdateError,
 }: ServerDataGridProps<R>) {
@@ -180,7 +215,21 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
       density={density}
       columnVisibilityModel={columnVisibilityModel}
       onColumnVisibilityModelChange={onColumnVisibilityModelChange}
+      apiRef={apiRef}
       editMode="row"
+      /**
+       * A row saves when someone says save, never when focus leaves it.
+       *
+       * MUI's default stops row editing on `rowFocusOut` and **commits**, so
+       * clicking the row's own cancel button first blurred the cell and sent the
+       * write the click was there to abort: measured on the user list, where
+       * cancelling a new row POSTed the empty draft and answered 422.
+       */
+      onRowEditStop={(params, event) => {
+        if (params.reason === GridRowEditStopReasons.rowFocusOut) {
+          event.defaultMuiPrevented = true
+        }
+      }}
       rowModesModel={rowModesModel}
       onRowModesModelChange={onRowModesModelChange}
       processRowUpdate={processRowUpdate}

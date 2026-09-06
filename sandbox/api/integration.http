@@ -1,6 +1,6 @@
 ### Integration API — 외부 API 설정(4테이블)과 실행
 ### 전제: backend 서버 실행 중 + `make db-init` (시드 provider + 시드 계정)
-### 순차 실행: 2번이 만든 임시 provider는 10번이, 6번이 만든 시크릿은 8번이 지운다.
+### 순차 실행: 2번이 만든 임시 provider는 15번이, 9번이 만든 시크릿은 13번이 지운다.
 ###           계정은 만들지 않는다 — 행위자 계정의 생성·삭제는 api/auth.http 하나가 담당한다.
 ###           시드 provider({{seededProviderId}})는 이 파일이 절대 지우지 않는다.
 ###           실행이 끝나면 DB는 실행 전과 같다 (make db-init 상태 유지).
@@ -44,7 +44,8 @@ Content-Type: application/json
     {
       "name": "partner-api-key",
       "value": "issued-key",
-      "description": "파트너 발급 인증키"
+      "description": "파트너 발급 인증키",
+      "rotation_group": "partner-api-key"
     }
   ],
   "operations": [
@@ -58,6 +59,7 @@ Content-Type: application/json
       "retry_base_ms": 100,
       "retry_max_ms": 500,
       "idempotent": true,
+      "quota_codes": {"QUOTA-EXCEEDED": 3600},
       "fields": [
         {
           "direction": "REQUEST",
@@ -168,11 +170,23 @@ Content-Type: application/json
 GET {{base}}/integration/?offset=0&limit=100
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 4. provider 단건 조회 — 200 (secrets[]에 value가 없고, fields[]가 통합 필드다)
+### 4. provider 목록 필터 — 200 (code 부분일치 — 2번이 만든 provider만 남는다)
+GET {{base}}/integration/?offset=0&limit=100&code={{createIntegration.response.body.code}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 5. provider 목록 필터 — 200 (display_name 부분일치 — 필드마다 별도 파라미터다)
+GET {{base}}/integration/?offset=0&limit=100&display_name={{createIntegration.response.body.display_name}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 6. provider 목록 필터 — 422 (code=빈 문자열 — 필터 없음은 파라미터 생략으로 표현한다)
+GET {{base}}/integration/?offset=0&limit=100&code=
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 7. provider 단건 조회 — 200 (secrets[]에 value가 없고, fields[]가 통합 필드다)
 GET {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 5. provider 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
+### 8. provider 수정 — 200 (version=2 — 낙관적 락 카운터가 1 증가한다)
 PATCH {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -182,7 +196,9 @@ Content-Type: application/json
   "enabled": true
 }
 
-### 6. 시크릿 등록 — 201 (value는 write-only — 응답에 포함되지 않는다)
+### 9. 시크릿 등록 — 201 (value는 write-only — 응답에 포함되지 않는다)
+###           rotation_group을 2번의 키와 같게 주면 두 키가 하나처럼 동작한다 — 실행 시
+###           한도 코드(quota_codes)를 받은 키는 exhausted_until 동안 건너뛰고 다음 키로 보낸다.
 POST {{base}}/integration/{{integrationId}}/secrets
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -190,10 +206,11 @@ Content-Type: application/json
 {
   "name": "reporting-key",
   "value": "second-key",
-  "description": "리포팅 전용 키"
+  "description": "리포팅 전용 키",
+  "rotation_group": "partner-api-key"
 }
 
-### 7. 시크릿 수정 — 200 (value 교체 — 응답에는 그대로 value가 없다)
+### 10. 시크릿 수정 — 200 (value 교체 — 응답에는 그대로 value가 없다)
 PUT {{base}}/integration/{{integrationId}}/secrets/reporting-key
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -203,7 +220,7 @@ Content-Type: application/json
   "description": "리포팅 전용 키 (교체)"
 }
 
-### 8. 시크릿 수정 — 200 (value 생략 — 저장된 키는 그대로, description만 바뀐다)
+### 11. 시크릿 수정 — 200 (value 생략 — 저장된 키는 그대로, description만 바뀐다)
 PUT {{base}}/integration/{{integrationId}}/secrets/reporting-key
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -212,27 +229,27 @@ Content-Type: application/json
   "description": "리포팅 전용 키 (설명만 수정)"
 }
 
-### 9. 시크릿 목록 — 200 (name/description/enabled만 — value 없음, 페이지네이션 적용)
+### 12. 시크릿 목록 — 200 (name/description/enabled/rotation_group/exhausted_until — value 없음, 페이지네이션 적용)
 GET {{base}}/integration/{{integrationId}}/secrets?offset=0&limit=100
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 10. 시크릿 삭제 — 200 (6번이 만든 미참조 시크릿)
+### 13. 시크릿 삭제 — 200 (9번이 만든 미참조 시크릿)
 DELETE {{base}}/integration/{{integrationId}}/secrets/reporting-key
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 11. 시크릿 삭제 — 409 (2번 REQUEST 필드가 참조 중 — FK ON DELETE RESTRICT)
+### 14. 시크릿 삭제 — 409 (2번 REQUEST 필드가 참조 중 — FK ON DELETE RESTRICT)
 DELETE {{base}}/integration/{{integrationId}}/secrets/partner-api-key
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 12. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
+### 15. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
 DELETE {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 13. provider 단건 조회 — 404 (12번 삭제가 실제로 반영됐음을 증명한다)
+### 16. provider 단건 조회 — 404 (15번 삭제가 실제로 반영됐음을 증명한다)
 GET {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 14. 시크릿 수정 — 404 (provider가 사라졌으므로 하위 컬렉션도 주소가 없다)
+### 17. 시크릿 수정 — 404 (provider가 사라졌으므로 하위 컬렉션도 주소가 없다)
 PUT {{base}}/integration/{{integrationId}}/secrets/partner-api-key
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -241,7 +258,7 @@ Content-Type: application/json
   "value": "no-such-provider"
 }
 
-### 15. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
+### 18. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
 POST {{base}}/integration/
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -253,10 +270,10 @@ Content-Type: application/json
   "operations": []
 }
 
-### 16. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+### 19. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
 GET {{base}}/integration/?offset=0&limit=100
 
-### 17. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
+### 20. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
 POST {{base}}/integration/{{seededProviderId}}/operations/missing-operation/execute
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json

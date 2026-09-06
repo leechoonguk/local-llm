@@ -25,7 +25,7 @@ from app.core.exceptions import setup_exception_handler
 from app.core.logging import configure_logging
 from app.core.scheduler import SCHEDULER_ACTOR, BatchScheduler
 from app.core.settings import settings
-from app.routers import auth, batch, health, integration, user
+from app.routers import auth, batch, food, health, integration, user
 from app.services.batch.run import BatchRunService
 from app.services.batch.schedule import BatchScheduleService
 
@@ -233,6 +233,7 @@ app.include_router(health.router)
 
 api_router = APIRouter(prefix=API_V1_PREFIX)
 api_router.include_router(batch.router)
+api_router.include_router(food.router)
 api_router.include_router(integration.router)
 api_router.include_router(user.router)
 api_router.include_router(auth.router)

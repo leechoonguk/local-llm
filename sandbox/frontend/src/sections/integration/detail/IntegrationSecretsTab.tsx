@@ -40,8 +40,9 @@ export default function IntegrationSecretsTab({
   const { t: tCommon } = useTranslation('common')
 
   const columns: TableColumn[] = [
-    { key: 'name', label: t('secret.name'), width: '24%' },
-    { key: 'description', label: t('secret.description'), width: '40%' },
+    { key: 'name', label: t('secret.name'), width: '20%' },
+    { key: 'description', label: t('secret.description'), width: '28%' },
+    { key: 'rotationGroup', label: t('secret.rotation_group'), width: '16%' },
     { key: 'enabled', label: t('table.enabled'), width: '11%', align: 'center' },
     { key: 'createdAt', label: tCommon('fields.created_at'), width: '15%' },
   ]
@@ -62,6 +63,23 @@ export default function IntegrationSecretsTab({
           </TableCell>
           <TableCell>
             <ClippedText text={secret.description ?? '-'} />
+          </TableCell>
+          {/* The pool is read off the list: which keys act as one, and which is sitting out. */}
+          <TableCell>
+            {secret.rotation_group === null ? (
+              <ClippedText text="-" />
+            ) : (
+              <Label
+                variant="soft"
+                color={
+                  secret.exhausted_until !== null && new Date(secret.exhausted_until) > new Date()
+                    ? 'warning'
+                    : 'info'
+                }
+              >
+                {secret.rotation_group}
+              </Label>
+            )}
           </TableCell>
           <TableCell align="center">
             <Label variant="soft" color={secret.enabled ? 'success' : 'default'}>

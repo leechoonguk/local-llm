@@ -1,0 +1,85 @@
+{
+  "why": "One measured page of the 품목제조보고(원재료) service (C002): the key and the window travel in the path, a rare raw-material filter is a trailing segment, and the envelope states the real outcome.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2,
+    "raw_material_name": "가시오갈피분말"
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "C002": {
+        "total_count": "81",
+        "row": [
+          {
+            "RAWMTRL_ORDNO": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23",
+            "PRDLST_REPORT_NO": "202306092021",
+            "PRMS_DT": "20230630",
+            "LCNS_NO": "20230609202",
+            "PRDLST_NM": "확깨수",
+            "ETQTY_XPORT_PRDLST_YN": "O",
+            "BSSH_NM": "베리컴Bio",
+            "PRDLST_DCNM": "액상차",
+            "CHNG_DT": "20230705",
+            "RAWMTRL_NM": "가시오갈피분말, 칡가루, 감초, 구기자나무열매, 동충하초 발효 추출물(기능성원료인정제2011-16호), 민들레, 밀크씨슬, 건조보검선인장열매, 산겨릅나무가지, 시금치, 쑥가루, 약모밀분말, 우슬 등 복합물(HL-Joint100)(기능성원료인정제2018-13호), 헛개나무과병추출분말, 갯실새삼씨앗, 황기분말, 검정깨(흑임자), 맥문동뿌리, 작약 등 복합추출물, 서양산사자열매, 스테비아잎, 대추, 미네랄혼합제제"
+          },
+          {
+            "RAWMTRL_ORDNO": "1,2,3,4,5,6,7,8,9,10,11",
+            "PRDLST_REPORT_NO": "2014048452811",
+            "PRMS_DT": "20190923",
+            "LCNS_NO": "20140484528",
+            "PRDLST_NM": "그대로 백봉오골계",
+            "ETQTY_XPORT_PRDLST_YN": "N",
+            "BSSH_NM": "농업회사법인 아케다바이오㈜",
+            "PRDLST_DCNM": "기타 농산가공품",
+            "CHNG_DT": "20190926",
+            "RAWMTRL_NM": "오골계추출물, 가시오갈피분말, 두릅, 느릅나무껍질, 강황가루, 강력쌀가루, 뽕나무뿌리껍질, 톳, 한련초잎, 퉁퉁마디, 까마중"
+          }
+        ],
+        "RESULT": {
+          "MSG": "정상처리되었습니다.",
+          "CODE": "INFO-000"
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/C002/json/1/2/RAWMTRL_NM=가시오갈피분말",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "license_no": "20230609202",
+        "business_name": "베리컴Bio",
+        "item_report_no": "202306092021",
+        "permit_date": "20230630",
+        "product_name": "확깨수",
+        "product_type_name": "액상차",
+        "raw_material_names": "가시오갈피분말, 칡가루, 감초, 구기자나무열매, 동충하초 발효 추출물(기능성원료인정제2011-16호), 민들레, 밀크씨슬, 건조보검선인장열매, 산겨릅나무가지, 시금치, 쑥가루, 약모밀분말, 우슬 등 복합물(HL-Joint100)(기능성원료인정제2018-13호), 헛개나무과병추출분말, 갯실새삼씨앗, 황기분말, 검정깨(흑임자), 맥문동뿌리, 작약 등 복합추출물, 서양산사자열매, 스테비아잎, 대추, 미네랄혼합제제",
+        "raw_material_ordinals": "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23",
+        "changed_date": "20230705",
+        "domestic_export_type": "O"
+      },
+      {
+        "license_no": "20140484528",
+        "business_name": "농업회사법인 아케다바이오㈜",
+        "item_report_no": "2014048452811",
+        "permit_date": "20190923",
+        "product_name": "그대로 백봉오골계",
+        "product_type_name": "기타 농산가공품",
+        "raw_material_names": "오골계추출물, 가시오갈피분말, 두릅, 느릅나무껍질, 강황가루, 강력쌀가루, 뽕나무뿌리껍질, 톳, 한련초잎, 퉁퉁마디, 까마중",
+        "raw_material_ordinals": "1,2,3,4,5,6,7,8,9,10,11",
+        "changed_date": "20190926",
+        "domestic_export_type": "N"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "81"
+    }
+  }
+}

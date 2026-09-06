@@ -21,6 +21,14 @@ REQUEST_ID_KEY = "request_id"
 # reads a translation keyed by the code.
 CONFIGURATION_INVALID_CODE = "integration_configuration_invalid"
 
+# The conflict a service did not name: two writers raced and the database's own
+# unique constraint refused the loser. A cause a service *can* name declares its
+# own code beside the raise.
+CONFLICT_CODE = "conflict"
+
+# A caller sent a value of the wrong shape; the narrower causes name themselves.
+INTEGRATION_INPUT_INVALID_CODE = "integration_input_invalid"
+
 
 # ============================================================
 # Classes
@@ -39,15 +47,23 @@ class NotFoundError(Exception):
 
 
 class ConflictError(Exception):
-    """Raised when a resource conflicts with existing data (e.g. unique
-    constraint violation like a duplicate username/email).
+    """Raised when a resource conflicts with existing data.
+
+    `code` is the contract, not `detail`: a taken username and a taken email are
+    different failures to someone filling a form, and the form puts each on the
+    field that owns it. `detail` is a log line no screen may render, so a cause
+    that lives only there reaches the user as the generic sentence.
+
+    The default is for the race the service cannot see coming — the database's
+    unique constraint refusing a writer that passed the check a moment earlier.
 
     Handled by setup_exception_handler — no need for HTTPException in routers.
     """
 
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str, code: str = CONFLICT_CODE) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.code = code
 
 
 class IntegrationConfigurationError(Exception):
@@ -72,9 +88,10 @@ class IntegrationInputError(Exception):
     the field. Maps to HTTP 422.
     """
 
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str, code: str = INTEGRATION_INPUT_INVALID_CODE) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.code = code
 
 
 class AuthenticationError(Exception):
@@ -172,8 +189,16 @@ def _request_id(request: Request) -> str:
     return getattr(request.state, REQUEST_ID_KEY, request.headers.get("X-Request-ID", "unknown"))
 
 
-def setup_exception_handler(app: FastAPI) -> None:
-    """Register domain exception handlers to return uniform JSON responses."""
+def setup_exception_handler(app: FastAPI) -> None:  # noqa: C901
+    """Register domain exception handlers to return uniform JSON responses.
+
+    Complexity here is the *number of handlers*, not tangled logic: eleven flat
+    six-line registrations with no branching between them. The obvious collapse —
+    one table of `(exception, status, detail, code)` — was tried and rejected,
+    and the reason is two files down: `check-backend-exceptions` reads the body
+    of the handler it governs and `check-frontend-i18n` discovers the server's
+    error codes from these literals, so a shared builder made both blind.
+    """
 
     @app.exception_handler(NotFoundError)
     async def _not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
@@ -192,7 +217,7 @@ def setup_exception_handler(app: FastAPI) -> None:
             status_code=409,
             content={
                 "detail": exc.detail,
-                "code": "conflict",
+                "code": exc.code,
                 REQUEST_ID_KEY: _request_id(request),
             },
         )
@@ -248,7 +273,7 @@ def setup_exception_handler(app: FastAPI) -> None:
             status_code=422,
             content={
                 "detail": exc.detail,
-                "code": "integration_input_invalid",
+                "code": exc.code,
                 REQUEST_ID_KEY: _request_id(request),
             },
         )

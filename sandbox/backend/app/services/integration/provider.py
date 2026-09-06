@@ -41,6 +41,10 @@ PROVIDER_CODE_INVALID_CODE = "provider_code_invalid"
 
 BASE_URL_INVALID_CODE = "provider_base_url_invalid"
 
+#: The code is taken. Distinct from `provider_code_invalid`, which is about the
+#: *shape* of the value the form sent.
+PROVIDER_CODE_TAKEN_CODE = "provider_code_taken"
+
 CONTEXT_KEYS = frozenset({"request_id", "correlation_id", "tenant_id", "actor_id"})
 
 HEADER_NAME_PATTERN = re.compile(r"^[!#$%&'*+.^_`|~0-9A-Za-z-]+$")
@@ -77,12 +81,20 @@ class IntegrationProviderService:
             raise NotFoundError(integration_id)
         return provider
 
-    async def count_integrations(self) -> int:
-        """The collection's size, for the page the caller just read."""
-        return await self.provider_repository.count()
+    async def count_integrations(
+        self, code: str | None = None, display_name: str | None = None
+    ) -> int:
+        """The collection's size under the filters the caller just applied."""
+        return await self.provider_repository.count(code, display_name)
 
-    async def list_integrations(self, offset: int = 0, limit: int = 100) -> list[Integration]:
-        return await self.provider_repository.list(offset, limit)
+    async def list_integrations(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        code: str | None = None,
+        display_name: str | None = None,
+    ) -> list[Integration]:
+        return await self.provider_repository.list(offset, limit, code, display_name)
 
     async def create_integration(
         self, data: IntegrationCreateRequest, created_by: str
@@ -91,7 +103,9 @@ class IntegrationProviderService:
         internal = IntegrationCreateInternal(**data.model_dump(), created_by=created_by)
         async with self.session.begin():
             if await self.provider_repository.get_by_code(data.code) is not None:
-                raise ConflictError("Integration provider code already exists")
+                raise ConflictError(
+                    "Integration provider code already exists", PROVIDER_CODE_TAKEN_CODE
+                )
             provider = await self.provider_repository.create(internal)
         return await self.get_integration(provider.id)
 
@@ -184,6 +198,32 @@ class IntegrationProviderService:
             self._validate_schema(operation.request_schema, "Request schema")
         self._validate_response_root(operation)
         self._validate_fields(operation, secret_names)
+        self._validate_quota_codes(operation)
+
+    @staticmethod
+    def _validate_quota_codes(operation: IntegrationOperationCreateRequest) -> None:
+        """A quota code is a refusal, so it cannot also be an accepted verdict.
+
+        The client rotates keys on a quota code *after* the envelope check has
+        refused the answer. A code the ENVELOPE row accepts never reaches that
+        branch - it would be "success" and "this key is spent" at once, and the
+        pool would never turn.
+        """
+        accepted = {
+            value
+            for field in operation.fields
+            if field.direction == "RESPONSE" and field.location == "ENVELOPE"
+            for value in field.expected_values or []
+        }
+        overlap = sorted(accepted & set(operation.quota_codes))
+        if overlap:
+            raise IntegrationConfigurationError(
+                f"Quota codes cannot also be accepted envelope values: {', '.join(overlap)}"
+            )
+        if any(seconds <= 0 for seconds in operation.quota_codes.values()):
+            raise IntegrationConfigurationError(
+                "A quota code's sit-out must be a positive number of seconds"
+            )
 
     @staticmethod
     def _validate_response_root(operation: IntegrationOperationCreateRequest) -> None:

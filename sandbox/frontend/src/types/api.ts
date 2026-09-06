@@ -64,6 +64,47 @@ export interface OffsetLimitParams {
   limit: number
 }
 
+/**
+ * A list's field filters, one interface per domain, kept apart from
+ * `OffsetLimitParams` on purpose.
+ *
+ * One optional field per filterable column, named exactly as the query
+ * parameter (`TextFilterQuery` in `app/dependencies/query.py`) — so a reader
+ * sees which column each box narrows instead of guessing what a combined
+ * keyword covers. Folding them into the pagination params would put every
+ * domain's fields on every list call, including the endpoints that answer 422
+ * for them.
+ *
+ * They live here rather than in `types/<domain>.ts` because
+ * `check-frontend-types` reads this file to prove every query parameter the
+ * routers declare has a field a caller can send.
+ *
+ * Every field is omitted rather than sent empty — the backend declares
+ * `min_length=1`, so `field=` is a 422, not "no filter".
+ */
+export interface UserFilterParams {
+  username?: string
+  email?: string
+}
+
+export interface BatchFilterParams {
+  name?: string
+}
+
+export interface IntegrationFilterParams {
+  code?: string
+  display_name?: string
+}
+
+export interface FoodRawMaterialFilterParams {
+  raw_material_code?: string
+  representative_raw_material_name?: string
+  raw_material_alias?: string
+  raw_material_large_class?: string
+  raw_material_medium_class?: string
+  raw_material_status_code_name?: string
+}
+
 /** `DELETE` endpoints answer `{"ok": true}` rather than 204. */
 export interface OkResponse {
   ok: boolean

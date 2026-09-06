@@ -17,8 +17,10 @@ from app.schemas.batch.run import (
     RUNNING,
     BatchRunCreateInternal,
     BatchRunCreateRequest,
+    BatchRunStatus,
     BatchRunUpdateInternal,
     BatchRunUpdateRequest,
+    BatchTrigger,
 )
 
 
@@ -76,7 +78,7 @@ class BatchRunService:
         return await self.batch_run_repository.find_finished_before(older_than)
 
     async def create_started_run(
-        self, batch_id: UUID | None, code: str, trigger: str, triggered_by: str
+        self, batch_id: UUID | None, code: str, trigger: BatchTrigger, triggered_by: str
     ) -> BatchRun:
         """Open a run at the moment the job starts.
 
@@ -111,7 +113,7 @@ class BatchRunService:
     async def update_finished_run(
         self,
         run_id: UUID,
-        status: str,
+        status: BatchRunStatus,
         updated_by: str,
         *,
         result: int | None = None,
@@ -169,7 +171,7 @@ class BatchRunService:
     async def _close(
         self,
         run_id: UUID,
-        status: str,
+        status: BatchRunStatus,
         updated_by: str,
         *,
         result: int | None = None,

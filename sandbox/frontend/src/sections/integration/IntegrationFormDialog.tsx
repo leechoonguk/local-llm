@@ -120,7 +120,7 @@ export default function IntegrationFormDialog({
         setError: methods.setError,
         toastError: toast.error,
         fieldByCode: {
-          conflict: 'code',
+          provider_code_taken: 'code',
           provider_code_invalid: 'code',
           provider_base_url_invalid: 'base_url',
         },

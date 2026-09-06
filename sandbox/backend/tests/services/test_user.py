@@ -140,3 +140,42 @@ async def test_count_users_ignores_the_window(factory) -> None:
 
     assert len(page) == 1
     assert total == 3
+
+
+@pytest.mark.asyncio
+async def test_list_users_filters_each_field_and_the_total(factory) -> None:
+    """Each filter narrows its own column, case-insensitively, and the total follows.
+
+    Both filters together are asserted because they are separate boxes on the
+    screen: combined with OR they would *widen* the result when a reader adds a
+    second condition. The total is asserted beside the page because the count is
+    a second query - a filter applied to the rows and not to the count reads as
+    "1-1 of 3", the footer describing a collection the grid is no longer showing.
+    """
+    async with factory() as session:
+        service = UserService(session)
+        for username, email in (
+            ("Ada", "ada@example.com"),
+            ("grace", "grace@lovelace.test"),
+            ("linus", "linus@example.com"),
+        ):
+            await service.create_user(
+                UserCreateRequest(username=username, email=email, password="secret-pass"),
+                "tester",
+            )
+
+    async with factory() as session:
+        service = UserService(session)
+        by_name = await service.list_users(username="ada")
+        by_email = await service.list_users(email="LOVELACE")
+        both = await service.list_users(username="grace", email="example.com")
+        unfiltered = await service.count_users()
+        filtered = await service.count_users(email="example.com")
+        missing = await service.list_users(username="nobody")
+
+    assert [user.username for user in by_name] == ["Ada"]
+    assert [user.username for user in by_email] == ["grace"]
+    assert both == []
+    assert unfiltered == 3
+    assert filtered == 2
+    assert missing == []

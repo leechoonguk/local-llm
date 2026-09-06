@@ -19,6 +19,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "redis>=6.4",
     "httpx2>=2.9.1",
+    "defusedxml>=0.7.1",
     "jsonschema>=4.26.0",
 ]
 
@@ -40,7 +41,18 @@ line-length = 100
 # "D" (pydocstyle) is the owner of the docstring standard — the linter that
 # already runs, not a bespoke hook (backend-testing.md). Scoped to tests by the
 # negated per-file-ignore below: app modules carry section banners instead.
-select = ["E", "W", "F", "I", "UP", "B", "SIM", "D"]
+# Complexity is measured, not reviewed: C901 (cyclomatic), PLR0912 (branches)
+# and PLR0915 (statements) at ruff's defaults. PLR0913 (arguments) is
+# deliberately absent — a router's signature is its contract with FastAPI's DI
+# and with OpenAPI (backend-router-params.md), so the linter would fight the
+# standard on every endpoint. PLR0911 (returns) is absent for the same reason a
+# guard clause is good: several early returns read better than one nested tail.
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "D", "C901", "PLR0912", "PLR0915", "S"]
+# `S` (bandit) earns its place by what it found rather than by reputation: the
+# provider XML decoder was parsing attacker-controlled bodies with the stdlib
+# parser, which expands internal entities on this Python — measured, and now a
+# test. The rest of its findings here are name-shaped false positives, handled
+# at their sites rather than by dropping the rule.
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
@@ -56,13 +68,26 @@ lines-after-imports = 2
 # check-backend-migrations, which applies them to the revisions still being
 # written. A pushed revision is immutable, so the linter must not demand an edit
 # that the migration policy forbids. Alembic generates the canonical import
-# block, so there is nothing for isort to decide here.
-"alembic/versions/*.py" = ["E501", "W292", "I001"]
+# block, so there is nothing for isort to decide here. `S105`: the seeded
+# actor's password hash is the data the revision exists to insert, and a pushed
+# revision cannot be edited to carry a `noqa` (backend-migrations.md).
+"alembic/versions/*.py" = ["E501", "W292", "I001", "S105"]
 # Docstrings are required in tests only: every test states why its case is a
 # contract. Elsewhere the section-banner standard (code-layout.md) applies.
 "!tests/**.py" = ["D"]
 # An empty package marker has nothing to document (same exemption as banners).
 "tests/**/__init__.py" = ["D104"]
+# A test asserts; that is the whole job (S101). `S105` fires on the *names* of
+# constants a test compares against — `token_type`, a seeded credential — never
+# on a live secret: tests hold fixtures, and a fixture that looked like a
+# password is what a test of authentication is made of.
+# A test asserts (S101) and holds fixtures that *look* like credentials: a
+# token hash as a parameter default (S107), a `token_type` literal (S105/S106),
+# the XML bodies a hostile-provider test has to build with the very parser it is
+# proving unsafe (S314), and `subprocess` running our own migration binary
+# (S603). None of them is a secret or an injection point; all of them are what a
+# test of authentication, XML decoding and migrations is made of.
+"tests/**.py" = ["S101", "S105", "S106", "S107", "S314", "S603"]
 
 [tool.pyright]
 include = ["app", "alembic", "tests"]

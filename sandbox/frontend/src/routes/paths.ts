@@ -18,4 +18,7 @@ export const PATHS = {
   user: '/user',
   batch: '/batch',
   integration: '/integration',
+  food: {
+    rawMaterial: '/food/raw-material',
+  },
 } as const

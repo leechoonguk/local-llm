@@ -34,6 +34,7 @@ import { applyServerError } from '@/lib/api/formErrors'
 import { useCreateSecret, useUpdateSecret } from '@/lib/api/hooks/useIntegration'
 import { useToast } from '@/hooks/useToast'
 import type { Integration, IntegrationSecret } from '@/types/integration'
+import { formatDateTime } from '@/utils/formatTime'
 
 /** The server never returns a stored value, so this stands for "a key is stored". */
 const VALUE_MASK = '••••••••'
@@ -83,6 +84,7 @@ export default function IntegrationSecretPanel({
           value: form.value,
           description: form.description === '' ? null : form.description,
           enabled: form.enabled,
+          rotation_group: form.rotationGroup === '' ? null : form.rotationGroup,
         })
         toast.success(tCommon('messages.saved'))
         onBack()
@@ -95,6 +97,9 @@ export default function IntegrationSecretPanel({
           value: form.value === '' ? undefined : form.value,
           description: form.description === '' ? null : form.description,
           enabled: form.enabled,
+          // A group is set, never cleared, through this box: an empty box means
+          // "keep it" - the same reading the value box has.
+          rotation_group: form.rotationGroup === '' ? undefined : form.rotationGroup,
         },
       })
       toast.success(tCommon('messages.saved'))
@@ -213,6 +218,34 @@ export default function IntegrationSecretPanel({
           onChange={(value) => setForm({ ...form, description: value })}
         />
 
+        {/*
+         * Secrets of one provider sharing a group are one credential: the client
+         * sends whichever member is not spent. The spent state is read-only - it
+         * is the provider's verdict with a clock on it, not something to edit.
+         */}
+        <ScalarField
+          label={t('secret.rotation_group')}
+          value={form.rotationGroup}
+          readOnly={readOnly}
+          maxLength={NAME_MAX_LENGTH}
+          helperText={readOnly ? undefined : t('secret.rotation_group_hint')}
+          onChange={(value) => setForm({ ...form, rotationGroup: value })}
+        />
+
+        {secret !== null && secret.rotation_group !== null && (
+          <DetailField label={t('secret.exhausted_until')}>
+            {secret.exhausted_until !== null && new Date(secret.exhausted_until) > new Date() ? (
+              <Label variant="soft" color="warning">
+                {t('secret.spent_until', { time: formatDateTime(secret.exhausted_until) })}
+              </Label>
+            ) : (
+              <Label variant="soft" color="success">
+                {t('secret.fresh')}
+              </Label>
+            )}
+          </DetailField>
+        )}
+
         {readOnly ? (
           <Box>
             <DetailField label={t('form.enabled')}>
@@ -247,5 +280,6 @@ function initialForm(secret: IntegrationSecret | null) {
     value: '',
     description: secret?.description ?? '',
     enabled: secret?.enabled ?? true,
+    rotationGroup: secret?.rotation_group ?? '',
   }
 }

@@ -26,7 +26,8 @@ class TokenResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     access_token: str
-    token_type: str = "bearer"
+    # OAuth2's scheme name, published in every token response (RFC 6749 §5.1).
+    token_type: str = "bearer"  # noqa: S105
 
 
 class LogoutResponse(BaseModel):

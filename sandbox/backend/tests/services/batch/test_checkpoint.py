@@ -16,7 +16,7 @@ from app.services.batch.checkpoint import BatchCheckpointService
 
 SOURCE_CODE = "search-barcode-item-info"
 
-SYNCED_BY = "batch:sync_barcode_ledger"
+SYNCED_BY = "batch:sync_food_barcode_ledger"
 
 
 @pytest.mark.asyncio
@@ -28,7 +28,7 @@ async def test_checkpoint_service_crud(factory) -> None:
     """
     async with factory() as session:
         created = await BatchCheckpointService(session).create_checkpoint(
-            BatchCheckpointCreateRequest(source_code=SOURCE_CODE, next_range_start=1),
+            BatchCheckpointCreateRequest(source_code=SOURCE_CODE, resume_position=1),
             created_by="tester",
         )
         row_id = created.id
@@ -42,9 +42,9 @@ async def test_checkpoint_service_crud(factory) -> None:
 
     async with factory() as session:
         updated = await BatchCheckpointService(session).update_checkpoint(
-            row_id, BatchCheckpointUpdateRequest(next_range_start=3001), updated_by="tester"
+            row_id, BatchCheckpointUpdateRequest(resume_position=3001), updated_by="tester"
         )
-        assert updated.next_range_start == 3001
+        assert updated.resume_position == 3001
 
     async with factory() as session:
         await BatchCheckpointService(session).delete_checkpoint(row_id)
@@ -64,7 +64,7 @@ async def test_checkpoint_service_missing_row_raises_not_found(factory) -> None:
     async with factory() as session:
         with pytest.raises(NotFoundError):
             await BatchCheckpointService(session).update_checkpoint(
-                missing, BatchCheckpointUpdateRequest(next_range_start=2), updated_by="tester"
+                missing, BatchCheckpointUpdateRequest(resume_position=2), updated_by="tester"
             )
 
     async with factory() as session:
@@ -93,7 +93,7 @@ async def test_find_checkpoint_answers_none_without_a_cursor(factory) -> None:
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(SOURCE_CODE)
     assert checkpoint is not None
-    assert (checkpoint.next_range_start, checkpoint.last_row_key) == (None, None)
+    assert (checkpoint.resume_position, checkpoint.resume_key) == (None, None)
 
 
 @pytest.mark.asyncio
@@ -107,14 +107,14 @@ async def test_update_resume_point_creates_then_advances_one_row(factory) -> Non
         created = await BatchCheckpointService(session).update_resume_point(
             SOURCE_CODE, 1001, "8801234567890:2024001", SYNCED_BY
         )
-        assert created.next_range_start == 1001
+        assert created.resume_position == 1001
         assert created.created_by == SYNCED_BY
 
     async with factory() as session:
         advanced = await BatchCheckpointService(session).update_resume_point(
             SOURCE_CODE, 2001, "8801234567891:2024002", SYNCED_BY
         )
-        assert advanced.next_range_start == 2001
+        assert advanced.resume_position == 2001
         assert advanced.updated_by == SYNCED_BY
 
     async with factory() as session:
@@ -125,7 +125,7 @@ async def test_update_resume_point_creates_then_advances_one_row(factory) -> Non
 
     # Both halves advance together: an offset kept beside a key from an earlier
     # page would make the next run compare against the wrong record.
-    assert (checkpoint.next_range_start, checkpoint.last_row_key) == (
+    assert (checkpoint.resume_position, checkpoint.resume_key) == (
         2001,
         "8801234567891:2024002",
     )
@@ -147,6 +147,6 @@ async def test_checkpoint_read_schema_exposes_the_version(factory) -> None:
         rows = await BatchCheckpointService(session).list_checkpoints()
 
     read = to_read(row)
-    assert read.next_range_start == 5
+    assert read.resume_position == 5
     assert read.version == 1
     assert [item.id for item in to_read_list(rows)] == [row.id]

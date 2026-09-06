@@ -93,6 +93,14 @@ class IntegrationOperation(Base, AuditMixin):
     retry_max_ms: Mapped[int] = mapped_column(Integer)
     idempotent: Mapped[bool] = mapped_column(Boolean)
     request_schema: Mapped[dict[str, Any] | None] = mapped_column(JSON, default=None)
+    # Envelope values that mean "not this credential right now", not "this
+    # answer is wrong", each with how long the key sits out in seconds: the
+    # client tries the next key of the pool before it raises. Measured on
+    # mfds-food-safety-korea: INFO-320 (hour's quota spent) recovers within
+    # the hour, INFO-500 (key busy - "잠시 후에 다시") within seconds. Empty
+    # when the provider has no per-key state. Disjoint from the ENVELOPE row's
+    # accepted values by construction (service and check refuse the overlap).
+    quota_codes: Mapped[dict[str, int]] = mapped_column(JSON, default=dict, server_default="{}")
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     provider: Mapped[Integration] = relationship(
         back_populates="operations",

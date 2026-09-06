@@ -26,9 +26,29 @@ function createQueryKeys(scope: string): QueryKeyFactory {
 }
 
 export const userKeys = createQueryKeys('users')
+export const foodRawMaterialKeys = createQueryKeys('food-raw-materials')
 
 export const batchKeys = createQueryKeys('batches')
 
-export const integrationKeys = createQueryKeys('integrations')
+/**
+ * A schedule's executions, and one execution's units — each its own scope, not
+ * a `scope:` discriminator folded into `batchKeys.list(...)`.
+ *
+ * Invalidation matches by prefix, so `batchKeys.lists()` (`['batches','list']`)
+ * matched `['batches','list',{scope:'runs',…}]` too, and a schedule's own
+ * create/update/delete marked the run log and the step log invalid. Nothing
+ * asked for that: those rows are written by the scheduler, outside HTTP, and no
+ * mutation in this client can produce one.
+ *
+ * What it cost so far is a marking, not a request — `invalidateQueries` defaults
+ * to `refetchType: 'active'`, and these queries are only mounted while the run
+ * dialog is open, which cannot coincide with editing the schedule behind it. It
+ * becomes a refetch the first time a screen shows a run log beside a schedule
+ * write. The key was claiming a containment that does not hold, and a key that
+ * lies is repaired before it is copied — separate scopes have no prefix relation.
+ */
+export const batchRunKeys = createQueryKeys('batch-runs')
 
-export const authKeys = createQueryKeys('auth')
+export const batchStepKeys = createQueryKeys('batch-steps')
+
+export const integrationKeys = createQueryKeys('integrations')

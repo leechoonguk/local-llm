@@ -93,6 +93,9 @@ class IntegrationCall(Base, AuditMixin):
     request_id: Mapped[str | None] = mapped_column(String(64), index=True, default=None)
     error_code: Mapped[str | None] = mapped_column(String(64), default=None)
     error_detail: Mapped[str | None] = mapped_column(String(512), default=None)
+    # Which named credential the call went out with - the name, never the value.
+    # A pool of keys makes "which key hit the quota" a question the log answers.
+    secret_name: Mapped[str | None] = mapped_column(String(64), default=None)
     operation: Mapped[IntegrationOperation | None] = relationship(
         back_populates="calls",
         lazy="raise_on_sql",

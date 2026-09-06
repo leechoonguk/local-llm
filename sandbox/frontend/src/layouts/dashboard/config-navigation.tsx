@@ -9,12 +9,22 @@
  * directions.
  */
 
+import type { ParseKeys } from 'i18next'
 import { PATHS } from '@/routes/paths'
 import type { NavIcon } from '@/components/iconify/icons'
 
+/**
+ * A key the `nav` namespace really has.
+ *
+ * Typed rather than `string` because these keys are read at a distance: the
+ * sidebar renders `t(item.titleKey)`, so a key that exists nowhere renders as
+ * itself in the navigation and no test looks at a label.
+ */
+type NavKey = ParseKeys<'nav'>
+
 export interface NavItem {
   /** Key inside the `nav` namespace. */
-  titleKey: string
+  titleKey: NavKey
   path: string
   /** Key into `NAV_ICONS` — a local SVG drawn through `SvgColor`. */
   icon: NavIcon
@@ -22,21 +32,22 @@ export interface NavItem {
 
 export interface NavGroup {
   /** Key inside the `nav` namespace, rendered as the group's subheader. */
-  subheaderKey: string
+  subheaderKey: NavKey
   items: NavItem[]
 }
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    subheaderKey: 'group.overview',
-    items: [{ titleKey: 'dashboard', path: PATHS.dashboard, icon: 'dashboard' }],
-  },
-  {
     subheaderKey: 'group.admin',
     items: [
+      { titleKey: 'dashboard', path: PATHS.dashboard, icon: 'dashboard' },
       { titleKey: 'user', path: PATHS.user, icon: 'user' },
       { titleKey: 'batch', path: PATHS.batch, icon: 'batch' },
       { titleKey: 'integration', path: PATHS.integration, icon: 'integration' },
     ],
+  },
+  {
+    subheaderKey: 'group.food',
+    items: [{ titleKey: 'food_raw_material', path: PATHS.food.rawMaterial, icon: 'food' }],
   },
 ]

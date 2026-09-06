@@ -13,7 +13,7 @@ from app.schemas.batch.run import BatchRunUpdateRequest, to_read, to_read_list
 from app.services.batch.run import BatchRunService
 
 
-CODE = "sync_barcode_ledger"
+CODE = "sync_food_barcode_ledger"
 
 
 @pytest.mark.asyncio

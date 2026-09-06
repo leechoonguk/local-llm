@@ -12,13 +12,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
-from app.models.barcode import Barcode
-from app.repositories.barcode import BarcodeRepository
-from app.schemas.barcode import (
-    BarcodeCreateInternal,
-    BarcodeCreateRequest,
-    BarcodeUpdateInternal,
-    BarcodeUpdateRequest,
+from app.models.food.nutrition import FoodNutrition
+from app.repositories.food.nutrition import FoodNutritionRepository
+from app.schemas.food.nutrition import (
+    FoodNutritionCreateInternal,
+    FoodNutritionCreateRequest,
+    FoodNutritionUpdateInternal,
+    FoodNutritionUpdateRequest,
 )
 
 
@@ -26,16 +26,12 @@ from app.schemas.barcode import (
 # Constants
 # ============================================================
 
-# The columns a stored row and an incoming record are compared on. The natural
-# key is excluded: it is what matched them in the first place.
-SYNCED_COLUMNS = (
-    "report_item_name",
-    "product_name",
-    "company_name",
-    "upper_product_classification_name",
-    "top_product_classification_name",
-    "source_updated_at",
-)
+# The columns a stored row and an incoming record are compared on — read off the
+# update request, which is *defined* as the record minus its identity. Listed by
+# hand instead, a column added to the ledger would keep comparing equal forever
+# and the sync would stop refreshing it silently; here the list cannot drift
+# from the schema because it is the schema.
+SYNCED_COLUMNS = tuple(FoodNutritionUpdateRequest.model_fields)
 
 
 # ============================================================
@@ -43,41 +39,43 @@ SYNCED_COLUMNS = (
 # ============================================================
 
 
-class BarcodeService:
+class FoodNutritionService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
-        self.barcode_repository = BarcodeRepository(session)
+        self.food_nutrition_repository = FoodNutritionRepository(session)
 
-    async def get_barcode(self, barcode_id: UUID) -> Barcode:
-        barcode = await self.barcode_repository.get(barcode_id)
-        if barcode is None:
-            raise NotFoundError(barcode_id)
-        return barcode
+    async def get_nutrition(self, food_nutrition_id: UUID) -> FoodNutrition:
+        material = await self.food_nutrition_repository.get(food_nutrition_id)
+        if material is None:
+            raise NotFoundError(food_nutrition_id)
+        return material
 
-    async def list_barcodes(self, offset: int = 0, limit: int = 100) -> list[Barcode]:
-        return await self.barcode_repository.list(offset, limit)
+    async def list_nutritions(self, offset: int = 0, limit: int = 100) -> list[FoodNutrition]:
+        return await self.food_nutrition_repository.list(offset, limit)
 
-    async def create_barcode(self, data: BarcodeCreateRequest, created_by: str) -> Barcode:
-        internal = BarcodeCreateInternal(**data.model_dump(), created_by=created_by)
+    async def create_nutrition(
+        self, data: FoodNutritionCreateRequest, created_by: str
+    ) -> FoodNutrition:
+        internal = FoodNutritionCreateInternal(**data.model_dump(), created_by=created_by)
         async with self.session.begin():
-            return await self.barcode_repository.create(internal)
+            return await self.food_nutrition_repository.create(internal)
 
-    async def update_barcode(
-        self, barcode_id: UUID, data: BarcodeUpdateRequest, updated_by: str
-    ) -> Barcode:
-        internal = BarcodeUpdateInternal(
+    async def update_nutrition(
+        self, food_nutrition_id: UUID, data: FoodNutritionUpdateRequest, updated_by: str
+    ) -> FoodNutrition:
+        internal = FoodNutritionUpdateInternal(
             **data.model_dump(exclude_unset=True), updated_by=updated_by
         )
         async with self.session.begin():
-            barcode = await self.barcode_repository.update(barcode_id, internal)
-            if barcode is None:
-                raise NotFoundError(barcode_id)
-            return barcode
+            material = await self.food_nutrition_repository.update(food_nutrition_id, internal)
+            if material is None:
+                raise NotFoundError(food_nutrition_id)
+            return material
 
-    async def update_barcode_ledger(
+    async def update_nutrition_ledger(
         self, payload: dict[str, object] | list[object], synced_by: str
     ) -> tuple[int, int]:
-        """Upsert one page of I2570 records; return (records read, rows written).
+        """Upsert one page of I2790 records; return (records read, rows written).
 
         The two numbers answer different questions and the caller needs both:
         the page's length says whether another window exists, and the written
@@ -96,28 +94,28 @@ class BarcodeService:
             for record in records:
                 if not isinstance(record, Mapping):
                     continue
-                data = BarcodeCreateRequest.from_record(record)
+                data = FoodNutritionCreateRequest.from_record(record)
                 if data is None:
                     continue
                 if await self._upsert(data, synced_by):
                     written += 1
         return len(records), written
 
-    async def delete_barcode(self, barcode_id: UUID) -> None:
+    async def delete_nutrition(self, food_nutrition_id: UUID) -> None:
         async with self.session.begin():
-            if not await self.barcode_repository.delete(barcode_id):
-                raise NotFoundError(barcode_id)
+            if not await self.food_nutrition_repository.delete(food_nutrition_id):
+                raise NotFoundError(food_nutrition_id)
 
-    async def _upsert(self, data: BarcodeCreateRequest, synced_by: str) -> bool:
+    async def _upsert(self, data: FoodNutritionCreateRequest, synced_by: str) -> bool:
         """Insert or refresh one record; report whether a row was written.
 
         Runs inside the caller's transaction — a page is one boundary, and a
         per-record one would leave the window half applied.
         """
-        existing = await self.barcode_repository.get_by_natural_key(data.barcode_no, data.report_no)
+        existing = await self.food_nutrition_repository.get_by_natural_key(data.food_code)
         if existing is None:
-            await self.barcode_repository.create(
-                BarcodeCreateInternal(**data.model_dump(), created_by=synced_by)
+            await self.food_nutrition_repository.create(
+                FoodNutritionCreateInternal(**data.model_dump(), created_by=synced_by)
             )
             return True
         changes: dict[str, Any] = {}
@@ -133,7 +131,7 @@ class BarcodeService:
                 changes[column] = incoming
         if not changes:
             return False
-        await self.barcode_repository.update(
-            existing.id, BarcodeUpdateInternal(**changes, updated_by=synced_by)
+        await self.food_nutrition_repository.update(
+            existing.id, FoodNutritionUpdateInternal(**changes, updated_by=synced_by)
         )
         return True

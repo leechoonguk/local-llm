@@ -13,13 +13,14 @@
  * Korean screen.
  */
 
+import type { TFunction } from 'i18next'
 import type { FieldValues, Path, UseFormSetError } from 'react-hook-form'
 import { toApiError } from '@/lib/api/errors'
 
 /** The message for a failure that never reached a handler, so it has no code. */
 const FALLBACK_KEY = 'errors.unknown'
 
-type Translator = (key: string) => string
+type Translator = TFunction<'common'>
 
 /**
  * Translate one failure. `fieldByCode` lets a dialog put the message on the
@@ -53,10 +54,21 @@ export function applyServerError<T extends FieldValues>(
  * An unknown code falls back rather than rendering the raw code: a new backend
  * failure mode is caught by `check-frontend-i18n` at build time, so the fallback
  * is for a version skew between a deployed client and a newer server.
+ *
+ * **The one runtime key in the application.** Every other `t()` call is checked
+ * against the resource types (`locales/i18next.d.ts`), which is what turns a
+ * missing key into a build failure instead of a key rendered on screen. This
+ * key cannot be: it is built from a code the *server* chose, and the whole
+ * point of the branch below is that the key may not exist. So the widening is
+ * declared here, once, and the existence test stays where it belongs — at
+ * runtime, comparing the answer with the key i18next echoes back when it misses.
  */
 export function serverErrorMessage(code: string, t: Translator): string {
   const key = `errors.${code}`
-  const message = t(key)
+  // The one widening in the app, and the reason is above: this key is built
+  // from a value the server chose, so it is not in the resource types by
+  // construction. Everything else goes through the typed `t`.
+  const message = (t as (runtimeKey: string) => string)(key)
 
   return message === key ? t(FALLBACK_KEY) : message
 }

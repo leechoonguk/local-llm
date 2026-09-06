@@ -11,7 +11,7 @@ from fastapi import APIRouter, status
 from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
 from app.dependencies.integrations import IntegrationHttpClientDep
-from app.dependencies.query import LimitQuery, OffsetQuery
+from app.dependencies.query import LimitQuery, OffsetQuery, TextFilterQuery
 from app.dependencies.services import (
     IntegrationOperationServiceDep,
     IntegrationProviderServiceDep,
@@ -61,10 +61,14 @@ async def list_integrations(
     current_user: CurrentUserDep,
     offset: OffsetQuery = 0,
     limit: LimitQuery = settings.items_per_user,
+    code: TextFilterQuery = None,
+    display_name: TextFilterQuery = None,
 ) -> Page[IntegrationReadResponse]:
     return Page(
-        items=to_read_list(await integration_provider_service.list_integrations(offset, limit)),
-        total=await integration_provider_service.count_integrations(),
+        items=to_read_list(
+            await integration_provider_service.list_integrations(offset, limit, code, display_name)
+        ),
+        total=await integration_provider_service.count_integrations(code, display_name),
     )
 
 

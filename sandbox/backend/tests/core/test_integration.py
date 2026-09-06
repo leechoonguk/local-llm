@@ -443,6 +443,22 @@ async def test_execute_rejects_invalid_configured_values() -> None:
 
 
 @pytest.mark.asyncio
+async def test_execute_rejects_a_verb_the_call_log_cannot_store() -> None:
+    """A stored operation carrying an unknown verb fails naming *itself*.
+
+    `integration_operation.method` has no check constraint while
+    `integration_call.method` does, so a row edited outside the API can hold a
+    verb the log refuses. Without this guard the call would run and the failure
+    would surface as a constraint violation while writing the log — pointing at
+    the wrong table and never at the operation that caused it.
+    """
+    misconfigured = client(lambda request: httpx2.Response(200, json={}), method="FETCH")
+    with pytest.raises(IntegrationConfigurationError, match="not one of"):
+        await misconfigured.execute({})
+    await misconfigured.aclose()
+
+
+@pytest.mark.asyncio
 async def test_execute_validates_response_headers_and_body() -> None:
     """A reply that does not match the configuration is refused, not passed on.
 
@@ -1075,6 +1091,42 @@ async def test_execute_rejects_malformed_xml_response() -> None:
     with pytest.raises(IntegrationError, match="not valid XML"):
         await configured.execute({})
     await configured.aclose()
+
+
+@pytest.mark.asyncio
+async def test_execute_refuses_hostile_xml_entities() -> None:
+    """A provider's XML cannot expand into a memory bomb or read a local file.
+
+    The response body is attacker-controlled the moment a provider is
+    compromised or misconfigured, and the two classic XML attacks both arrive as
+    entities: a nesting chain that expands to gigabytes, and a SYSTEM entity
+    pointing at a local path. `xml.etree` resolves neither — it refuses the
+    undefined entity — so the caller sees the same provider error as any other
+    unparseable body. This test is the measurement behind that claim: it fails
+    the day the parser starts expanding, which is when this code needs
+    `defusedxml` rather than a comment saying it does not.
+    """
+    billion_laughs = (
+        '<?xml version="1.0"?>'
+        "<!DOCTYPE lolz ["
+        ' <!ENTITY lol "lol">'
+        ' <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">'
+        ' <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">'
+        "]>"
+        "<lolz>&lol3;</lolz>"
+    )
+    external_entity = (
+        '<?xml version="1.0"?><!DOCTYPE r [<!ENTITY x SYSTEM "file:///etc/passwd">]><r>&x;</r>'
+    )
+
+    for hostile in (billion_laughs, external_entity):
+        configured = client(
+            lambda request, body=hostile: httpx2.Response(200, text=body),
+            response_format="XML",
+        )
+        with pytest.raises(IntegrationError, match="not valid XML"):
+            await configured.execute({})
+        await configured.aclose()
 
 
 def test_element_to_value_handles_empty_single_and_repeated_nodes() -> None:

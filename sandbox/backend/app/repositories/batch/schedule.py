@@ -5,9 +5,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.batch.schedule import BatchSchedule
@@ -26,13 +27,17 @@ class BatchScheduleRepository:
     async def get(self, batch_id: UUID) -> BatchSchedule | None:
         return await self.session.get(BatchSchedule, batch_id)
 
-    async def list(self, offset: int = 0, limit: int = 100) -> list[BatchSchedule]:
-        result = await self.session.execute(select(BatchSchedule).offset(offset).limit(limit))
+    async def list(
+        self, offset: int = 0, limit: int = 100, name: str | None = None
+    ) -> list[BatchSchedule]:
+        query = _apply_filters(select(BatchSchedule), name)
+        result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 
-    async def count(self) -> int:
-        """How many rows the unwindowed `list` would return."""
-        result = await self.session.execute(select(func.count()).select_from(BatchSchedule))
+    async def count(self, name: str | None = None) -> int:
+        """How many rows the unwindowed `list` would return, under the same filter."""
+        query = _apply_filters(select(func.count()).select_from(BatchSchedule), name)
+        result = await self.session.execute(query)
         return result.scalar_one()
 
     async def list_enabled(self) -> list[BatchSchedule]:
@@ -71,3 +76,21 @@ class BatchScheduleRepository:
             return False
         await self.session.delete(batch)
         return True
+
+
+# ============================================================
+# Functions
+# ============================================================
+
+
+def _apply_filters(query: Select[Any], name: str | None) -> Select[Any]:
+    """Narrow a schedule query to the rows whose name contains `name`.
+
+    One builder for the page and its count: two spellings of the same predicate
+    is how a filtered list and its total start disagreeing. `ilike` (never
+    `like`) so the match is case-insensitive on every backend, and the wildcards
+    are added here so a caller never sends SQL syntax.
+    """
+    if name is None:
+        return query
+    return query.where(BatchSchedule.name.ilike(f"%{name}%"))

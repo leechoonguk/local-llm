@@ -3,9 +3,10 @@
 # ============================================================
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -32,13 +33,25 @@ class UserRepository:
         result = await self.session.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
-    async def list(self, offset: int = 0, limit: int = 100) -> list[User]:
-        result = await self.session.execute(select(User).offset(offset).limit(limit))
+    async def list(
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        username: str | None = None,
+        email: str | None = None,
+    ) -> list[User]:
+        query = _apply_filters(select(User), username, email)
+        result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 
-    async def count(self) -> int:
-        """How many rows the unwindowed `list` would return."""
-        result = await self.session.execute(select(func.count()).select_from(User))
+    async def count(self, username: str | None = None, email: str | None = None) -> int:
+        """How many rows the unwindowed `list` would return, under the same filters.
+
+        The filters are applied here too, or the footer counts the collection
+        while the grid shows a subset of it — "1-3 of 240" on three matching rows.
+        """
+        query = _apply_filters(select(func.count()).select_from(User), username, email)
+        result = await self.session.execute(query)
         return result.scalar_one()
 
     async def create(self, data: UserCreateInternal) -> User:
@@ -66,3 +79,24 @@ class UserRepository:
             return False
         await self.session.delete(user)
         return True
+
+
+# ============================================================
+# Functions
+# ============================================================
+
+
+def _apply_filters(query: Select[Any], username: str | None, email: str | None) -> Select[Any]:
+    """Narrow a User query by each field the caller named.
+
+    One builder for the page and its count, because two spellings of the same
+    predicate is how a filtered list and its total start disagreeing. The
+    filters are combined with AND — each one is a separate box on the screen, so
+    filling both must narrow, never widen. `ilike` (never `like`) so the match
+    is case-insensitive on every backend, and the wildcards are added here so a
+    caller never sends SQL syntax.
+    """
+    for column, value in ((User.username, username), (User.email, email)):
+        if value is not None:
+            query = query.where(column.ilike(f"%{value}%"))
+    return query

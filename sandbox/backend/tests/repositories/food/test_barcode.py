@@ -1,11 +1,11 @@
-"""BarcodeRepository tests — CRUD and the natural-key lookup the sync matches on."""
+"""FoodBarcodeRepository tests — CRUD and the natural-key lookup the sync matches on."""
 
 from datetime import UTC, datetime
 
 import pytest
 
-from app.repositories.barcode import BarcodeRepository
-from app.schemas.barcode import BarcodeCreateInternal, BarcodeUpdateInternal
+from app.repositories.food.barcode import FoodBarcodeRepository
+from app.schemas.food.barcode import FoodBarcodeCreateInternal, FoodBarcodeUpdateInternal
 
 
 BARCODE_NO = "8801234567890"
@@ -14,16 +14,16 @@ REPORT_NO = "F2024000123456"
 
 
 @pytest.mark.asyncio
-async def test_barcode_repository_crud(factory) -> None:
+async def test_food_barcode_repository_crud(factory) -> None:
     """The five operations in sequence, ending with a second delete.
 
     Deleting twice is the interesting part: the repository reports `False`
     instead of raising, which is what lets the service answer 404.
     """
     async with factory() as session:
-        repo = BarcodeRepository(session)
+        repo = FoodBarcodeRepository(session)
         created = await repo.create(
-            BarcodeCreateInternal(
+            FoodBarcodeCreateInternal(
                 barcode_no=BARCODE_NO,
                 report_no=REPORT_NO,
                 product_name="신선배 김치",
@@ -39,7 +39,7 @@ async def test_barcode_repository_crud(factory) -> None:
         assert len(await repo.list()) == 1
 
         updated = await repo.update(
-            row_id, BarcodeUpdateInternal(product_name="묵은지", updated_by="batch")
+            row_id, FoodBarcodeUpdateInternal(product_name="묵은지", updated_by="batch")
         )
         assert updated is not None
         assert updated.product_name == "묵은지"
@@ -48,11 +48,11 @@ async def test_barcode_repository_crud(factory) -> None:
         await session.commit()
         assert await repo.get(row_id) is None
         assert await repo.delete(row_id) is False
-        assert await repo.update(row_id, BarcodeUpdateInternal(updated_by="batch")) is None
+        assert await repo.update(row_id, FoodBarcodeUpdateInternal(updated_by="batch")) is None
 
 
 @pytest.mark.asyncio
-async def test_barcode_repository_get_by_natural_key(factory) -> None:
+async def test_food_barcode_repository_get_by_natural_key(factory) -> None:
     """The sync matches records by `(barcode_no, report_no)` and nothing else.
 
     The second lookup uses the same barcode with another report number: a
@@ -60,9 +60,11 @@ async def test_barcode_repository_get_by_natural_key(factory) -> None:
     would overwrite a different item's record.
     """
     async with factory() as session:
-        repo = BarcodeRepository(session)
+        repo = FoodBarcodeRepository(session)
         await repo.create(
-            BarcodeCreateInternal(barcode_no=BARCODE_NO, report_no=REPORT_NO, created_by="batch")
+            FoodBarcodeCreateInternal(
+                barcode_no=BARCODE_NO, report_no=REPORT_NO, created_by="batch"
+            )
         )
         await session.commit()
 
@@ -72,7 +74,7 @@ async def test_barcode_repository_get_by_natural_key(factory) -> None:
 
 
 @pytest.mark.asyncio
-async def test_barcode_repository_stores_the_source_timestamp(factory) -> None:
+async def test_food_barcode_repository_stores_the_source_timestamp(factory) -> None:
     """최종수정일시 is business data on the ledger, not machinery.
 
     Nothing pages by it any more, so the only thing that must stay true is
@@ -80,9 +82,9 @@ async def test_barcode_repository_stores_the_source_timestamp(factory) -> None:
     """
     stamped = datetime(2024, 3, 1, tzinfo=UTC)
     async with factory() as session:
-        repo = BarcodeRepository(session)
+        repo = FoodBarcodeRepository(session)
         created = await repo.create(
-            BarcodeCreateInternal(
+            FoodBarcodeCreateInternal(
                 barcode_no=BARCODE_NO,
                 report_no=REPORT_NO,
                 source_updated_at=stamped,

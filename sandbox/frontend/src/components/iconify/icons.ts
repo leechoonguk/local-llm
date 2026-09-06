@@ -49,6 +49,7 @@ export const NAV_ICONS = {
   user: `${NAV_ICON_ROOT}/ic_user.svg`,
   batch: `${NAV_ICON_ROOT}/ic_kanban.svg`,
   integration: `${NAV_ICON_ROOT}/ic_external.svg`,
+  food: `${NAV_ICON_ROOT}/ic_food.svg`,
 } as const
 
 /** The brand mark, drawn like a nav glyph so it inherits the primary colour. */

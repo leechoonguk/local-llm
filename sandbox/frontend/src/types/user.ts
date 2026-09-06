@@ -6,7 +6,7 @@
  * backend schema, so a field added on the server fails the build here.
  */
 
-import type { AuditedResource } from '@/types/api'
+import type { AuditedResource, OffsetLimitParams, UserFilterParams } from '@/types/api'
 
 export interface User extends AuditedResource {
   username: string
@@ -24,3 +24,13 @@ export interface UserUpdateRequest {
   email?: string
   password?: string
 }
+
+/**
+ * What `GET /user/` accepts: the page plus one filter per filterable column.
+ *
+ * The user list is the only screen that filters today, so the intersection
+ * lives here rather than in the shared params type — a domain that gains
+ * filters declares its own, and one that never does keeps a params type that
+ * matches its endpoint.
+ */
+export type UserListParams = OffsetLimitParams & UserFilterParams

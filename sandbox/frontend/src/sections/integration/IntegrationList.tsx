@@ -13,11 +13,12 @@
 
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Card, Switch } from '@mui/material'
-import { GridRowModes } from '@mui/x-data-grid'
+import { Card, Switch } from '@mui/material'
+import { GridRowModes, useGridApiRef } from '@mui/x-data-grid'
 import type { GridColDef, GridRowId, GridRowModesModel } from '@mui/x-data-grid'
 import ConfirmDialog from '@/components/confirm-dialog/ConfirmDialog'
-import ListToolbar from '@/components/data-grid/ListToolbar'
+import ListCardHead from '@/components/data-grid/ListCardHead'
+import ListFilters from '@/components/data-grid/ListFilters'
 import { rowActionsColumn } from '@/components/data-grid/RowActions'
 import IntegrationDetailDialog from '@/sections/integration/IntegrationDetailDialog'
 import IntegrationFormDialog, {
@@ -29,6 +30,8 @@ import Label from '@/components/label/Label'
 import ServerDataGrid from '@/components/data-grid/ServerDataGrid'
 import { useCrudDialog } from '@/hooks/useCrudDialog'
 import { useDataGridState } from '@/hooks/useDataGridState'
+import { useListFilters } from '@/hooks/useListFilters'
+import { useQueryErrorToast } from '@/hooks/useQueryErrorToast'
 import {
   useDeleteIntegration,
   useIntegrationList,
@@ -37,7 +40,33 @@ import {
 import { useToast } from '@/hooks/useToast'
 import { toApiError } from '@/lib/api/errors'
 import { serverErrorMessage } from '@/lib/api/formErrors'
-import type { Integration } from '@/types/integration'
+import type { Integration, IntegrationListParams } from '@/types/integration'
+
+/**
+ * The columns this screen filters, in the order the boxes stand.
+ *
+ * The list is the query parameters' names, so a box, its label and the
+ * parameter it sends cannot drift apart: a name the router does not read fails
+ * `check-frontend-types` rather than filtering nothing quietly.
+ */
+const FILTER_FIELDS = ['code', 'display_name'] as const
+
+type FilterField = (typeof FILTER_FIELDS)[number]
+
+/** The columns a row edits, and what each can be wrong about. */
+const EDITABLE_FIELDS = ['display_name', 'base_url'] as const
+
+type EditableField = (typeof EDITABLE_FIELDS)[number]
+
+interface FieldProblem {
+  key:
+    | 'validation.display_name_required'
+    | 'validation.display_name_max'
+    | 'validation.base_url_required'
+    | 'validation.base_url_max'
+    | 'validation.base_url_invalid'
+  count?: number
+}
 
 const STATE_COLUMN_WIDTH = 110
 
@@ -49,7 +78,13 @@ export default function IntegrationList() {
   const toast = useToast()
 
   const grid = useDataGridState()
-  const query = useIntegrationList(grid.params)
+  const apiRef = useGridApiRef()
+  const filters = useListFilters(FILTER_FIELDS, grid.resetPage)
+  const params = useMemo<IntegrationListParams>(
+    () => ({ ...grid.params, ...filters.params }),
+    [grid.params, filters.params],
+  )
+  const query = useIntegrationList(params)
   const rows = query.data?.items ?? []
   const rowCount = query.data?.total ?? 0
   const dialog = useCrudDialog<Integration>()
@@ -57,10 +92,50 @@ export default function IntegrationList() {
   const updateMutation = useUpdateIntegration()
   const [rowModes, setRowModes] = useState<GridRowModesModel>({})
 
+  useQueryErrorToast(query, tCommon('messages.load_failed'))
+
   const startEdit = (id: GridRowId) =>
     setRowModes((previous) => ({ ...previous, [id]: { mode: GridRowModes.Edit } }))
-  const commitEdit = (id: GridRowId) =>
+  /**
+   * Why a row cannot be saved, in the words the reader gets — or `null`.
+   *
+   * One place, because the save button is not the only way out: pressing Enter
+   * commits through the grid, and a rule enforced on the button alone would let
+   * the keyboard past it into a 422 the server has to explain.
+   */
+  const refusal = (row: Integration): { field: EditableField; sentence: string } | null => {
+    for (const field of EDITABLE_FIELDS) {
+      const problem = problemOf(field, String(row[field] ?? ''))
+      if (problem === null) continue
+      return { field, sentence: t(problem.key, { count: problem.count ?? 0 }) }
+    }
+    return null
+  }
+
+  /**
+   * Refusing a save says which cell refused, and puts the caret in it.
+   *
+   * The grid's own answer to an invalid row is to stay open, silently, so the
+   * save button reads as broken. The focus move is deferred because the button
+   * that was clicked takes focus back on its own mouse event.
+   */
+  const reportRefusal = (id: GridRowId, problem: { field: EditableField; sentence: string }) => {
+    toast.error(problem.sentence)
+    queueMicrotask(() => {
+      apiRef.current?.setCellFocus(id, problem.field)
+      apiRef.current?.getCellElement(id, problem.field)?.querySelector('input')?.focus()
+    })
+  }
+
+  const commitEdit = (id: GridRowId) => {
+    const row = apiRef.current?.getRowWithUpdatedValues(id, '') as Integration | undefined
+    const problem = row === undefined ? null : refusal(row)
+    if (problem !== null) {
+      reportRefusal(id, problem)
+      return
+    }
     setRowModes((previous) => ({ ...previous, [id]: { mode: GridRowModes.View } }))
+  }
   const cancelEdit = (id: GridRowId) =>
     setRowModes((previous) => ({
       ...previous,
@@ -76,12 +151,12 @@ export default function IntegrationList() {
         flex: 1,
         minWidth: 160,
         editable: true,
-        // The same length the create form and the server enforce. An invalid cell
-        // keeps the row in edit mode, so a 422 never has to explain it.
-        preProcessEditCellProps: (params) => {
-          const value = String(params.props.value ?? '').trim()
-          return { ...params.props, error: value === '' || value.length > DISPLAY_NAME_MAX_LENGTH }
-        },
+        // The same rule the blocked save states in words, so a red cell and the
+        // sentence can never disagree.
+        preProcessEditCellProps: (params) => ({
+          ...params.props,
+          error: problemOf('display_name', String(params.props.value ?? '')) !== null,
+        }),
       },
       {
         field: 'base_url',
@@ -89,12 +164,10 @@ export default function IntegrationList() {
         flex: 1.5,
         minWidth: 220,
         editable: true,
-        preProcessEditCellProps: (params) => {
-          const value = String(params.props.value ?? '').trim()
-          const invalid =
-            value.length > BASE_URL_MAX_LENGTH || !HTTPS_ORIGIN_PATTERN.test(value)
-          return { ...params.props, error: invalid }
-        },
+        preProcessEditCellProps: (params) => ({
+          ...params.props,
+          error: problemOf('base_url', String(params.props.value ?? '')) !== null,
+        }),
       },
       {
         field: 'enabled',
@@ -171,6 +244,7 @@ export default function IntegrationList() {
               ],
       }),
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [t, tCommon, dialog, rowModes],
   )
 
@@ -181,6 +255,14 @@ export default function IntegrationList() {
    * and keep the row open.
    */
   const handleRowUpdate = async (updated: Integration, original: Integration) => {
+    const problem = refusal(updated)
+    if (problem !== null) {
+      reportRefusal(updated.id, problem)
+      // Thrown so the grid keeps the row open; flagged so the error handler does
+      // not say a second, vaguer thing about a failure already named.
+      throw Object.assign(new Error(problem.sentence), { reported: true })
+    }
+
     const unchanged =
       updated.display_name === original.display_name &&
       updated.base_url === original.base_url &&
@@ -213,31 +295,27 @@ export default function IntegrationList() {
   return (
     <>
       <Card>
-        <ListToolbar
+        <ListCardHead
           title={t('list_title')}
-          count={rows.length}
-          addLabel={tCommon('actions.add')}
-          onAdd={dialog.openCreate}
-          density={grid.density}
-          onDensityChange={grid.setDensity}
+          count={rowCount}
+          add={{ label: tCommon('actions.add'), onAdd: dialog.openCreate }}
+          refreshLabel={tCommon('actions.retry')}
           onRefresh={() => void query.refetch()}
           refreshing={query.isFetching}
-          densityLabel={tCommon('actions.density')}
-          refreshLabel={tCommon('actions.retry')}
+          filters={
+            <ListFilters
+              fields={FILTER_FIELDS.map((field) => ({
+                name: field,
+                label: field === 'code' ? t('filter.code') : t('filter.display_name'),
+              }))}
+              values={filters.inputs}
+              onChange={(name, value) => filters.setInput(name as FilterField, value)}
+              isFiltered={filters.isFiltered}
+              onReset={filters.reset}
+              resetLabel={tCommon('actions.reset')}
+            />
+          }
         />
-
-        {query.isError && (
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={() => void query.refetch()}>
-                {tCommon('actions.retry')}
-              </Button>
-            }
-          >
-            {tCommon('messages.load_failed')}
-          </Alert>
-        )}
 
         <ServerDataGrid
           rows={rows}
@@ -254,9 +332,11 @@ export default function IntegrationList() {
           rowModesModel={rowModes}
           onRowModesModelChange={setRowModes}
           processRowUpdate={handleRowUpdate}
-          onProcessRowUpdateError={(error) =>
+          apiRef={apiRef}
+          onProcessRowUpdateError={(error) => {
+            if ((error as { reported?: boolean }).reported === true) return
             toast.error(serverErrorMessage(toApiError(error).code, tCommon))
-          }
+          }}
         />
       </Card>
 
@@ -271,13 +351,7 @@ export default function IntegrationList() {
       <ConfirmDialog
         open={dialog.isDeleteOpen}
         title={t('delete_title')}
-        content={
-          <>
-            {t('messages.delete_confirm', { name: dialog.selected?.display_name ?? '' })}
-            <br />
-            {tCommon('messages.cannot_undo')}
-          </>
-        }
+        content={t('messages.delete_confirm', { name: dialog.selected?.display_name ?? '' })}
         confirmLabel={tCommon('actions.delete')}
         cancelLabel={tCommon('actions.cancel')}
         pending={deleteMutation.isPending}
@@ -286,4 +360,28 @@ export default function IntegrationList() {
       />
     </>
   )
+}
+
+/**
+ * The one place a provider's editable value is judged.
+ *
+ * The red cell and the sentence a blocked save shows come from this function, so
+ * a cell can never be red for a reason the message does not name, or refuse a
+ * save the message calls fine. The rule carries its own wording rather than a
+ * code the caller stitches to a field name: Korean joins the two with a
+ * different particle per field.
+ */
+function problemOf(field: EditableField, value: string): FieldProblem | null {
+  const trimmed = value.trim()
+  if (field === 'display_name') {
+    if (trimmed === '') return { key: 'validation.display_name_required' }
+    return trimmed.length > DISPLAY_NAME_MAX_LENGTH
+      ? { key: 'validation.display_name_max', count: DISPLAY_NAME_MAX_LENGTH }
+      : null
+  }
+  if (trimmed === '') return { key: 'validation.base_url_required' }
+  if (trimmed.length > BASE_URL_MAX_LENGTH) {
+    return { key: 'validation.base_url_max', count: BASE_URL_MAX_LENGTH }
+  }
+  return HTTPS_ORIGIN_PATTERN.test(trimmed) ? null : { key: 'validation.base_url_invalid' }
 }

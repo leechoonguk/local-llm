@@ -12,11 +12,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import engine
 from app.core.exceptions import IntegrationError
-from app.schemas.batch.checkpoint import FIRST_RANGE_START
-from app.services.barcode import BarcodeService
+from app.schemas.batch.checkpoint import FIRST_POSITION
 from app.services.batch.checkpoint import BatchCheckpointService
 from app.services.batch.run import current_run_id
 from app.services.batch.step import BatchStepService
+from app.services.food.item_report import FoodItemReportService
 from app.services.integration.operation import IntegrationOperationService
 
 
@@ -29,31 +29,30 @@ from app.services.integration.operation import IntegrationOperationService
 # filters and the paging family all live in `integration_field`.
 PROVIDER_CODE = "mfds-food-safety-korea"
 
-OPERATION_CODE = "search-barcode-item-info"
+OPERATION_CODE = "search-food-item-report"
 
-# I2570 pages by row interval (the RANGE family): both bounds are required and
-# have no default, so every call states its window — and the provider caps how
-# wide that window may be.
+# I1250 pages by row interval (the RANGE family), like every service of this
+# portal: both bounds are required and have no default, so every call states its
+# window — and the portal caps how wide it may be at 1000 rows
+# (`ERROR-336 데이터요청은 한번에 최대 1000건을 넘을 수 없습니다`, measured on
+# the sibling I2570 feed and documented by the portal for every service).
 #
-# Measured (2026-09-02): 1..1000 and 1001..2000 answer INFO-000 with 1000 rows;
-# 1..1002 answers `ERROR-336 데이터요청은 한번에 최대 1000건을 넘을 수 없습니다`.
-# 1..1001 is *accepted* — their validator compares `end - start` against 1000
-# rather than the row count — and that extra row is not taken: it rides a
-# provider bug, so the day it is fixed every page of this job becomes a 502.
-#
-# The full window costs 1.9s and 275KB, well inside the operation's
-# `read_timeout_ms` of 15000, and latency is dominated by the provider's fixed
-# cost rather than the row count (a 5-row call measured 2.3-7.0s). A full pass
-# is therefore 54 calls instead of 533.
+# The cap is the window: a narrower one costs the same fixed provider latency
+# per call and buys nothing.
 DEFAULT_PAGE_SIZE = 1000
 
 # A ceiling, not a target: a pass stops on the first short page. It bounds a
 # provider that never shortens one — a filter it decided to ignore answers 200
 # with a full unfiltered page, the measured failure mode of this portal.
 #
-# It must still exceed the whole set, because the cursor only advances once a
-# pass reaches the end: 100 x 1000 = 100,000 against a measured total_count of
-# 53,242 (72_seed_barcode_item_info_integration_operation).
+# **100 is the provider's documented hourly quota, not a size estimate.** The
+# portal answers `INFO-320 CHNG_DT 파라미터를 사용하지 않으면 1시간당 100회까지만
+# 호출할 수 있습니다` once an hour's unfiltered calls run out - measured to
+# tolerate ~190 before refusing, which is not a number to plan on. The feed
+# holds 1,071,979 records (`total_count`, 2026-09-05), so the initial load is
+# ~1,072 windows: **eleven nightly runs by construction**, each walking 100 and
+# storing where it stopped. A ceiling above the quota would not read more; it
+# would end the run on a refusal instead of on its own count.
 DEFAULT_MAX_PAGES = 100
 
 # What this portal answers when a window holds no rows: `INFO-200 해당하는
@@ -66,9 +65,16 @@ DEFAULT_MAX_PAGES = 100
 # job names it once here.
 END_OF_DATA_CODES = frozenset({"INFO-200"})
 
+# What this portal answers when the hour's unfiltered calls are spent - a
+# quota, not an error and not the end of the feed. The run stops where it is
+# and keeps its cursor; the next run continues. Raised instead, the initial load
+# would fail every hour at window 101 and never finish; read as the end, it
+# would leave the cursor at the tail of a set that is half imported.
+QUOTA_CODES = frozenset({"INFO-320"})
+
 # Written into `created_by`/`updated_by`: an audit trail states who wrote a row,
 # and for these rows the answer is this job, not a person.
-SYNCED_BY = "batch:sync_barcode_ledger"
+SYNCED_BY = "batch:sync_food_item_report_ledger"
 
 
 # ============================================================
@@ -76,10 +82,10 @@ SYNCED_BY = "batch:sync_barcode_ledger"
 # ============================================================
 
 
-async def sync_barcode_ledger(
+async def sync_food_item_report_ledger(
     page_size: int = DEFAULT_PAGE_SIZE, max_pages: int = DEFAULT_MAX_PAGES
 ) -> int:
-    """Migrate the 식품바코드 품목정보 (I2570) records into the barcode ledger.
+    """Migrate the 식품(첨가물) 품목제조보고 (I1250) records into the item report ledger.
 
     **A pass, not a run.** One pass walks the provider's whole set; a run walks
     at most `max_pages` of it and stores where it stopped. So the 53k-row load
@@ -146,25 +152,28 @@ async def sync_barcode_ledger(
         batch_checkpoint_service = BatchCheckpointService(session)
         checkpoint = await batch_checkpoint_service.find_checkpoint(OPERATION_CODE)
 
-    cursor = None if checkpoint is None else checkpoint.next_range_start
-    anchor = None if checkpoint is None else checkpoint.last_row_key
+    cursor = None if checkpoint is None else checkpoint.resume_position
+    anchor = None if checkpoint is None else checkpoint.resume_key
 
     # A source with no cursor — never read, or a job that does not page by rows —
     # starts at the first one. The checkpoint says what it knows; what an unknown
     # means is this job's own decision.
-    range_start = FIRST_RANGE_START if cursor is None else cursor
+    range_start = FIRST_POSITION if cursor is None else cursor
 
     # One row of overlap, so the first page carries the evidence that the cursor
     # still names the record it was written for. Skipped when the window is one
     # row wide: the overlap would fill it, the walk would re-read the anchor
     # forever and never advance.
-    verifying = anchor is not None and range_start > FIRST_RANGE_START and page_size > 1
+    verifying = anchor is not None and range_start > FIRST_POSITION and page_size > 1
     if verifying:
         range_start -= 1
 
     written_count = 0
     run_id = current_run_id.get()
-    for page in range(max_pages):
+    # Steps number the calls made, not the loop's iterations: a re-anchor probe
+    # is a call of its own, and two steps sharing a sequence is a UNIQUE error.
+    calls_made = 0
+    for _page in range(max_pages):
         window: dict[str, int] = {
             "range_start": range_start,
             "range_end": range_start + page_size - 1,
@@ -176,88 +185,73 @@ async def sync_barcode_ledger(
         # write transaction would be one idle transaction per window.
         async with AsyncSession(engine) as session:
             integration_operation_service = IntegrationOperationService(session)
+            calls_made += 1
             try:
                 result, call_id = await integration_operation_service.execute_operation(
                     PROVIDER_CODE, OPERATION_CODE, window, actor=SYNCED_BY
                 )
             except IntegrationError as exc:
-                # Either ending writes a step before the job returns or dies:
-                # the run's own row only says the night failed, and the window is
-                # the fact a reader needs. The call id comes off the service
-                # because the raise carried no return value — it is what lets a
-                # reader go from this step to the provider's own answer.
-                if exc.envelope_value in END_OF_DATA_CODES:
-                    # The provider said "no rows here", which is an answer, not a
-                    # failure: the window sits past the last record. A short page
-                    # is the same fact when the operation's contract accepts that
-                    # code as a valid envelope — this branch is for the sibling
-                    # feeds whose contract does not, where the end of the walk
-                    # arrives as a refusal and would otherwise fail every night
-                    # from the moment the ledger caught up.
-                    #
-                    # Recorded as the empty page it is. Writing the step from the
-                    # `except` block instead would carry `error_code`, and the
-                    # step's status is derived from that — so a run that ended
-                    # exactly as designed would hold a FAILED step and still
-                    # report SUCCEEDED, a log disagreeing with itself.
-                    await _record_step(
-                        run_id,
-                        page,
-                        window,
-                        started,
-                        received=0,
-                        written=0,
-                        integration_call_id=integration_operation_service.last_call_id,
-                    )
+                if await _refusal_ends_the_run(
+                    exc, run_id, calls_made, window, started, integration_operation_service
+                ):
                     break
-
-                await _record_step(
-                    run_id,
-                    page,
-                    window,
-                    started,
-                    integration_call_id=integration_operation_service.last_call_id,
-                    error_code=type(exc).__name__,
-                    error_detail=exc.detail,
-                )
                 raise
 
         # The overlap row decides whether the offset still means what it meant.
         # Checked before the ledger write so a moved feed is not imported at the
         # wrong offsets first and reconciled afterwards.
-        if verifying:
+        if verifying and anchor is not None:
             verifying = False
             if _row_key(result.canonical_payload, 0) != anchor:
-                # The record the cursor was measured from is gone or displaced:
-                # every offset after it names a different row now. Start over,
-                # and let this run's remaining pages do the first windows.
+                # The record the cursor was measured from is not where it was.
+                # Before concluding the feed was re-ordered, look for it inside
+                # this very window: a feed that gained a few records *before*
+                # the cursor pushes the anchor a few rows down, and it is still
+                # here. Measured on I1250 (2026-09-06): the anchor stood at
+                # 190999 one day and 191002 the next - three reports inserted
+                # somewhere in the first 191k - and restarting at row 1 for that
+                # re-read 99 windows to write three rows. Against a 1,072-window
+                # feed with 100 windows an hour, a restart on every small shift
+                # is an initial load that never finishes.
                 #
-                # The call still happened, so it is still a step — read, wrote
+                # Found: continue from the anchor's new position - the next
+                # iteration re-opens the window there and verifies it again,
+                # so the resume is still proven, just one call later. Not
+                # found: the anchor is behind this window (records removed) or
+                # gone; look one window back once, then start over.
+                #
+                # The call still happened, so it is still a step - read, wrote
                 # nothing. Skipping it left a hole in the run's sequence and hid
-                # the one event a reader would come here for; the next step's
-                # window returning to row 1 is what says why.
+                # the one event a reader would come here for.
                 await _record_step(
                     run_id,
-                    page,
+                    calls_made,
                     window,
                     started,
                     received=len(result.canonical_payload),
                     written=0,
                     integration_call_id=call_id,
                 )
-                range_start = FIRST_RANGE_START
+                shift, calls_made = await _relocate_anchor(
+                    result.canonical_payload, anchor, range_start, page_size, run_id, calls_made
+                )
+                if shift is None:
+                    range_start = FIRST_POSITION
+                    continue
+                range_start += shift
+                verifying = True
                 continue
 
         # Write phase: one transaction per page, opened inside the service.
         async with AsyncSession(engine) as session:
-            barcode_service = BarcodeService(session)
-            received, written = await barcode_service.update_barcode_ledger(
+            food_item_report_service = FoodItemReportService(session)
+            received, written = await food_item_report_service.update_item_report_ledger(
                 result.canonical_payload, SYNCED_BY
             )
 
         await _record_step(
             run_id,
-            page,
+            calls_made,
             window,
             started,
             received=received,
@@ -298,16 +292,109 @@ async def sync_barcode_ledger(
     return written_count
 
 
+async def _refusal_ends_the_run(
+    exc: IntegrationError,
+    run_id: UUID | None,
+    step: int,
+    window: dict[str, int],
+    started: float,
+    integration_operation_service: IntegrationOperationService,
+) -> bool:
+    """Record the refused window, and say whether the run simply ends there.
+
+    Two refusals are answers, not failures, and both end the run where it is:
+    - `INFO-200` past the last record - the window sits beyond the feed. A short
+      page is the same fact when the operation's contract accepts the code; this
+      branch is for the sibling feeds whose contract does not.
+    - `INFO-320`, the hour's calls spent - nothing was read, nothing advances, the
+      checkpoint already names this window and the next run opens it again.
+
+    Either is recorded as the empty page it is: written from the `except` block
+    with an error code, the step's status would be FAILED under a run that ended
+    exactly as designed - a log disagreeing with itself. Any other refusal is a
+    failure: recorded with its code, and the caller re-raises.
+
+    Its own function so the walk stays under the statement cap - the three
+    branches are one decision, "what does this code mean for the run".
+    """
+    ended = exc.envelope_value in END_OF_DATA_CODES or exc.envelope_value in QUOTA_CODES
+    await _record_step(
+        run_id,
+        step,
+        window,
+        started,
+        received=0 if ended else None,
+        written=0 if ended else None,
+        integration_call_id=integration_operation_service.last_call_id,
+        error_code=None if ended else type(exc).__name__,
+        error_detail=None if ended else exc.detail,
+    )
+    return ended
+
+
+async def _relocate_anchor(
+    payload: dict[str, object] | list[object],
+    anchor: str,
+    range_start: int,
+    page_size: int,
+    run_id: UUID | None,
+    calls_made: int,
+) -> tuple[int | None, int]:
+    """How far the anchor moved, or None if it is nowhere near - plus the calls spent.
+
+    First in the window just read (a forward shift: records inserted before the
+    cursor push the anchor down, and it is still here at no extra cost); then in
+    the one window behind it (a backward shift: records removed before the
+    cursor pull it up), which is one more call and one more step. Beyond that
+    the feed was re-ordered, and the caller starts over.
+    """
+    shift = _position_of(payload, anchor)
+    if shift is not None or range_start <= FIRST_POSITION:
+        return shift, calls_made
+    behind_start = max(FIRST_POSITION, range_start - page_size)
+    window = {"range_start": behind_start, "range_end": range_start - 1}
+    started = perf_counter()
+    async with AsyncSession(engine) as session:
+        behind = IntegrationOperationService(session)
+        calls_made += 1
+        result, call_id = await behind.execute_operation(
+            PROVIDER_CODE, OPERATION_CODE, window, actor=SYNCED_BY
+        )
+    await _record_step(
+        run_id,
+        calls_made,
+        window,
+        started,
+        received=len(result.canonical_payload),
+        written=0,
+        integration_call_id=call_id,
+    )
+    found = _position_of(result.canonical_payload, anchor)
+    return (None if found is None else found - (range_start - behind_start)), calls_made
+
+
+def _position_of(payload: dict[str, object] | list[object], key: str) -> int | None:
+    """Where one record sits in a page, by its natural key - or None.
+
+    The re-anchor's question: "is the record the cursor was measured from still
+    in this window, and how far did it move?"
+    """
+    records = payload if isinstance(payload, list) else [payload]
+    for index, record in enumerate(records):
+        if isinstance(record, dict) and _row_key([record], 0) == key:
+            return index
+    return None
+
+
 def _row_key(payload: dict[str, object] | list[object], index: int) -> str | None:
     """The natural identity of one record of a page — `0` the first, `-1` the last.
 
-    `(barcode_no, report_no)` is the ledger's own unique key
-    (`uq_barcode_barcode_no_report_no`), so the anchor and the row it protects
-    are identified the same way: a key the ledger could not store is not a key
-    this walk should resume from.
+    `item_report_no` is the ledger's own unique column, so the anchor and the
+    row it protects are identified the same way: a key the ledger could not
+    store is not a key this walk should resume from.
 
     A one-record page arrives as a bare object rather than a list, the same
-    shape `BarcodeService.update_barcode_ledger` normalises, and an empty page
+    shape `FoodItemReportService.update_item_report_ledger` normalises, and an empty page
     answers None instead of raising — a page that carried nothing measured
     nothing.
     """
@@ -317,12 +404,13 @@ def _row_key(payload: dict[str, object] | list[object], index: int) -> str | Non
     record = records[index]
     if not isinstance(record, dict):
         return None
-    return f"{record.get('barcode_no', '')}:{record.get('report_no', '')}"
+    code = record.get("item_report_no")
+    return None if not isinstance(code, str) else code
 
 
 async def _record_step(
     run_id: UUID | None,
-    page: int,
+    step: int,
     window: dict[str, int],
     started: float,
     *,
@@ -344,7 +432,7 @@ async def _record_step(
         batch_step_service = BatchStepService(session)
         await batch_step_service.create_finished_step(
             run_id,
-            page + 1,
+            step,
             round((perf_counter() - started) * 1000),
             SYNCED_BY,
             range_start=window["range_start"],
@@ -358,5 +446,5 @@ async def _record_step(
 
 
 if __name__ == "__main__":  # pragma: no cover — entry point, not testable logic
-    count = asyncio.run(sync_barcode_ledger())
-    print(f"Wrote {count} barcode ledger rows")
+    count = asyncio.run(sync_food_item_report_ledger())
+    print(f"Wrote {count} item report ledger rows")

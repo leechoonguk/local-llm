@@ -1,0 +1,44 @@
+### Food API — 원장 조회 (읽기 전용)
+### 전제: backend 서버 실행 중 (cd backend && make dev) + 시드 계정 적용 (`make db-init`)
+###           + 원재료 원장이 한 번 이상 적재됨 (`sync_food_raw_material_ledger`, cron 또는 수동)
+### 순차 실행: 1번이 로그인하고, 나머지는 목록을 읽는다. DB는 바뀌지 않는다.
+# 읽기 전용인 이유: food_* 테이블은 매일 밤 배치가 프로바이더에서 채우는 원장이다. 손으로 쓴 행은
+# 다음 패스에서 프로바이더 레코드와 비교돼 덮인다. 그래서 POST/PATCH/DELETE가 없고,
+# check-backend-domain 은 원장 도메인의 쓰기 엔드포인트를 요구하는 대신 거부한다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+
+### 1. 로그인 — 200 (공용 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. 원재료 목록 — 200 (items + total; total은 필터 없는 원장 전체 43,609)
+# @name listRawMaterials
+GET {{base}}/food/raw-material/?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 3. 원재료 목록 필터 — 200 (raw_material_code 부분일치 — total이 목록과 같은 필터를 센다)
+GET {{base}}/food/raw-material/?offset=0&limit=20&raw_material_code=A10007
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 4. 원재료 목록 필터 — 200 (대표원재료명 부분일치 — 필드마다 별도 파라미터, AND 결합)
+GET {{base}}/food/raw-material/?offset=0&limit=20&representative_raw_material_name=고추
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 5. 원재료 목록 필터 — 200 (이명 부분일치 — 동의어 목록 안의 한 단어)
+GET {{base}}/food/raw-material/?offset=0&limit=20&raw_material_alias=고추
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 6. 셀렉트 필터 옵션 — 200 (대분류·중분류·상태의 distinct 값 — 원장이 오늘 밤 가진 값이다)
+# @name facets
+GET {{base}}/food/raw-material/facets
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 7. 원재료 목록 셀렉트 필터 — 200 (대분류 정확 일치 — 6번 목록의 첫 값. 부분일치가 아니라 `식물`이 `식물성유지`를 끌어오지 않는다)
+GET {{base}}/food/raw-material/?offset=0&limit=20&raw_material_large_class={{facets.response.body.raw_material_large_class[0]}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 8. 원재료 목록 — 401 (토큰 없음 — 원장도 인증 뒤에 있다)
+GET {{base}}/food/raw-material/?offset=0&limit=20

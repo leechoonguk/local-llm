@@ -35,12 +35,14 @@ class BatchScheduleService:
             raise NotFoundError(batch_id)
         return batch
 
-    async def count_batches(self) -> int:
-        """The collection's size, for the page the caller just read."""
-        return await self.batch_schedule_repository.count()
+    async def count_batches(self, name: str | None = None) -> int:
+        """The collection's size under the filter the caller just applied."""
+        return await self.batch_schedule_repository.count(name)
 
-    async def list_batches(self, offset: int = 0, limit: int = 100) -> list[BatchSchedule]:
-        return await self.batch_schedule_repository.list(offset, limit)
+    async def list_batches(
+        self, offset: int = 0, limit: int = 100, name: str | None = None
+    ) -> list[BatchSchedule]:
+        return await self.batch_schedule_repository.list(offset, limit, name)
 
     async def list_enabled_batches(self) -> list[BatchSchedule]:
         """Return every enabled job — the schedule a starting process loads."""

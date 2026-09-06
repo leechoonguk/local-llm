@@ -126,11 +126,23 @@ export function NumberField({
   label,
   value,
   readOnly,
+  min,
+  max,
   onChange,
 }: {
   label: string
   value: number
   readOnly: boolean
+  /**
+   * The bound the server declares for this field.
+   *
+   * Non-digits are stripped below, so a negative never reaches the API — but `0`
+   * does, and it is exactly what an emptied input hands back. A field the server
+   * refuses at `gt=0` therefore needs its own floor here, or the user learns the
+   * rule from a 422 with no field named.
+   */
+  min?: number
+  max?: number
   onChange: (value: number) => void
 }) {
   if (readOnly) {
@@ -140,6 +152,7 @@ export function NumberField({
       </Box>
     )
   }
+  const outOfRange = (min !== undefined && value < min) || (max !== undefined && value > max)
   return (
     <TextField
       label={label}
@@ -147,6 +160,8 @@ export function NumberField({
       onChange={(event) => onChange(Number(event.target.value.replace(/\D/g, '')) || 0)}
       size="small"
       fullWidth
+      error={outOfRange}
+      slotProps={{ htmlInput: { inputMode: 'numeric', min, max } }}
     />
   )
 }

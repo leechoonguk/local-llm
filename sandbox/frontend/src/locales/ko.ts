@@ -9,6 +9,9 @@
 
 export const ko = {
   common: {
+    filters: {
+      all: '전체',
+    },
     actions: {
       add: '추가',
       view: '상세',
@@ -26,6 +29,7 @@ export const ko = {
     },
     messages: {
       no_data: '데이터가 없습니다',
+      unknown_actor: '알 수 없음',
       cannot_undo: '이 작업은 되돌릴 수 없습니다.',
       created: '등록했습니다',
       updated: '수정했습니다',
@@ -37,7 +41,7 @@ export const ko = {
     },
     pagination: {
       rows_per_page: '페이지당 행:',
-      displayed_rows: '{{from}}–{{to}} / 전체 {{count}}',
+      displayed_rows: '{{from}}–{{to}} / 전체 {{total}}',
       displayed_rows_unknown: '{{from}}–{{to}}',
     },
     fields: {
@@ -61,6 +65,16 @@ export const ko = {
       unknown: '요청을 처리할 수 없습니다',
       not_found: '대상을 찾을 수 없습니다',
       conflict: '이미 사용 중인 값입니다',
+      username_taken: '이미 사용 중인 아이디입니다',
+      email_taken: '이미 사용 중인 이메일입니다',
+      provider_code_taken: '이미 사용 중인 제공자 코드입니다',
+      secret_name_taken: '이미 사용 중인 자격증명 이름입니다',
+      secret_in_use: '요청 필드가 참조 중인 자격증명입니다. 필드를 먼저 정리하세요',
+      batch_already_running: '이미 실행 중입니다',
+      batch_job_unregistered: '등록되지 않은 배치 잡입니다',
+      scheduler_unavailable: '이 프로세스에서는 스케줄러가 실행되고 있지 않습니다',
+      integration_input_type_invalid: '입력값의 형식이 올바르지 않습니다',
+      integration_input_required: '필수 입력값이 비어 있습니다',
       stale_version: '다른 요청이 먼저 수정했습니다. 새로 불러온 뒤 다시 시도하세요',
       authentication_failed: '아이디 또는 비밀번호가 올바르지 않습니다',
       service_unavailable: '서비스를 일시적으로 사용할 수 없습니다',
@@ -78,6 +92,7 @@ export const ko = {
     user: '사용자',
     batch: '배치',
     integration: '외부 연동',
+    food_raw_material: '원재료 코드',
     logout: '로그아웃',
     language: {
       ko: '한국어',
@@ -85,8 +100,8 @@ export const ko = {
     },
     brand: 'Fast API Standard',
     group: {
-      overview: '개요',
       admin: '관리',
+      food: '식품',
     },
   },
   auth: {
@@ -117,24 +132,33 @@ export const ko = {
     title: '사용자',
     description: '계정 등록 · 수정 · 삭제',
     list_title: '사용자 목록',
-    create_title: '사용자 등록',
-    edit_title: '사용자 수정',
     delete_title: '사용자 삭제',
     table: {
       username: '사용자명',
       email: '이메일',
+      password: '비밀번호',
     },
     form: {
       username: '사용자명',
       email: '이메일',
       password: '비밀번호',
-      password_keep: '비워두면 비밀번호를 변경하지 않습니다',
+    },
+    validation: {
+      username_required: '사용자명을 입력하세요',
+      username_max: '사용자명은 {{count}}자 이하로 입력하세요',
+      email_required: '이메일을 입력하세요',
+      email_invalid: '이메일 형식이 올바르지 않습니다',
+      email_max: '이메일은 {{count}}자 이하로 입력하세요',
+      password_required: '비밀번호를 입력하세요',
+      password_min: '비밀번호는 {{count}}자 이상이어야 합니다',
+      password_max: '비밀번호는 {{count}}자 이하로 입력하세요',
     },
     filter: {
-      search_placeholder: '사용자명 · 이메일 검색',
+      username: '사용자명',
+      email: '이메일',
     },
     messages: {
-      delete_confirm: '{{name}} 계정을 삭제합니다.',
+      delete_confirm: '{{name}} 계정을 삭제하면 되돌릴 수 없습니다.',
     },
   },
   batch: {
@@ -144,12 +168,17 @@ export const ko = {
     create_title: '스케줄 등록',
     edit_title: '스케줄 수정',
     delete_title: '스케줄 삭제',
+    status: {
+      running: '실행 중',
+      idle: '대기',
+    },
     table: {
       name: '이름',
       code: '잡 코드',
       cron: 'CRON',
       enabled: '상태',
       description: '설명',
+      running: '실행 상태',
     },
     form: {
       name: '이름',
@@ -161,7 +190,7 @@ export const ko = {
       description: '설명',
     },
     filter: {
-      search_placeholder: '이름 검색',
+      name: '이름',
     },
     actions: {
       run: '즉시 실행',
@@ -169,7 +198,7 @@ export const ko = {
       history: '실행 이력',
     },
     messages: {
-      delete_confirm: '{{name}} 스케줄을 삭제합니다.',
+      delete_confirm: '{{name}} 스케줄을 삭제하면 되돌릴 수 없습니다.',
       run_started: '실행을 시작했습니다',
       run_stopped: '실행을 중지했습니다',
     },
@@ -211,9 +240,20 @@ export const ko = {
     list_title: '공급자 목록',
     create_title: '공급자 등록',
     edit_title: '공급자 수정',
-    delete_title: '공급자 삭제',
     detail_title: '공급자 상세',
     detail_audit: '{{user}}가 {{at}}에 수정 · v{{version}}',
+    delete_title: '공급자 삭제',
+    filter: {
+      code: '코드',
+      display_name: '표시명',
+    },
+    validation: {
+      display_name_required: '표시명을 입력하세요',
+      display_name_max: '표시명은 {{count}}자 이하로 입력하세요',
+      base_url_required: '기본 URL을 입력하세요',
+      base_url_max: '기본 URL은 {{count}}자 이하로 입력하세요',
+      base_url_invalid: '기본 URL은 https:// 로 시작하는 origin이어야 합니다',
+    },
     table: {
       code: '코드',
       display_name: '표시명',
@@ -226,9 +266,6 @@ export const ko = {
       display_name: '표시명',
       base_url: '기준 URL',
       enabled: '사용 여부',
-    },
-    filter: {
-      search_placeholder: '코드 · 표시명 검색',
     },
     tabs: {
       operations: '오퍼레이션',
@@ -247,12 +284,14 @@ export const ko = {
     operation: {
       field_count: '필드',
       create_title: '오퍼레이션 추가',
-      edit_title: '오퍼레이션 수정',
       delete_title: '오퍼레이션 삭제',
+      edit_title: '오퍼레이션 수정',
       delete_warning: '이 오퍼레이션과 와이어 필드 {{count}}개가 함께 삭제됩니다',
       duplicate_code: '이미 있는 코드입니다',
       code_hint: '영소문자·숫자·하이픈만 사용합니다',
       path_hint: '경로 자리표시자는 중괄호로 씁니다',
+      quota_codes: '한도 코드',
+      quota_codes_hint: '코드=초 형식, 쉼표로 구분. 이 코드가 오면 그 키를 초 동안 쉬게 하고 다음 키로 보냅니다',
       response_root: '응답 루트',
       response_root_hint: '응답에서 목록이 시작되는 위치(JSON 포인터)',
       connect_timeout: '연결 타임아웃(ms)',
@@ -301,13 +340,52 @@ export const ko = {
       never_read: '저장된 키는 다시 표시되지 않습니다',
       value: 'API 키',
       value_keep: '비워두면 저장된 키를 그대로 유지합니다',
+      rotation_group: '로테이션 그룹',
+      rotation_group_hint: '같은 그룹의 키는 하나처럼 동작합니다. 한도에 걸린 키는 건너뛰고 다음 키로 보냅니다',
+      exhausted_until: '한도 상태',
+      spent_until: '{{time}} 까지 소진',
+      fresh: '사용 가능',
       create_title: '자격 증명 추가',
       delete_title: '자격 증명 삭제',
       duplicate_name: '이미 있는 이름입니다',
       referenced_by: '이 자격 증명을 참조하는 요청 필드가 있습니다: {{fields}}',
     },
     messages: {
-      delete_confirm: '{{name}} 공급자를 삭제합니다.',
+      delete_confirm: '{{name}} 공급자를 삭제하면 되돌릴 수 없습니다.',
+    },
+  },
+  food: {
+    raw_material: {
+      title: '원재료 코드',
+      description: '식품안전나라 원재료 원장 · 매일 밤 동기화 (읽기 전용)',
+      list_title: '원재료 코드 목록',
+      table: {
+        code: '원재료코드',
+        name: '대표원재료명',
+        alias: '이명',
+        large_class: '대분류',
+        medium_class: '중분류',
+        status: '상태',
+        valid_start: '유효시작일',
+        valid_end: '유효종료일',
+        use_yn: '사용',
+        source_updated_at: '최종수정일시',
+        english_name: '영문명',
+        scientific_name: '학명',
+        region_code: '지역코드',
+        region: '지역',
+        process_code: '가공코드',
+        process: '가공',
+        status_code: '상태코드',
+      },
+      filter: {
+        code: '원재료코드',
+        name: '대표원재료명',
+        alias: '이명',
+        large_class: '대분류',
+        medium_class: '중분류',
+        status: '상태',
+      },
     },
   },
 } as const

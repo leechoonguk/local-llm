@@ -43,11 +43,16 @@ JOB_CODE = "test_job"
 POLL_SECONDS = 0.01
 
 
-async def _until(condition, timeout: float = 2.0) -> None:
+async def _until(condition, timeout: float = 30.0) -> None:
     """Wait for the scheduler's own loop to reach a state, or fail the test.
 
     The executor runs jobs as tasks, so nothing here is synchronous with the
     call that scheduled them — polling the state is what a caller can observe.
+
+    The deadline is a give-up point, not a measurement: the wait ends the moment
+    the condition holds, and a generous one costs nothing while a tight one buys
+    nothing. At 2s this test failed inside `make verify` by 10ms — a red gate
+    that said nothing about the scheduler, on a machine that was merely busy.
     """
     deadline = asyncio.get_running_loop().time() + timeout
     while not condition():
@@ -179,13 +184,13 @@ async def test_run_now_refuses_a_second_concurrent_run() -> None:
     scheduler.start()
 
     scheduler.run_now(batch_id, JOB_CODE)
-    await _until(lambda: scheduler._is_running(batch_id))
+    await _until(lambda: scheduler.is_running(batch_id))
 
     with pytest.raises(ConflictError):
         scheduler.run_now(batch_id, JOB_CODE)
 
     release.set()
-    await _until(lambda: not scheduler._is_running(batch_id))
+    await _until(lambda: not scheduler.is_running(batch_id))
     scheduler.shutdown()
 
 
@@ -198,10 +203,10 @@ async def test_stop_cancels_the_execution_in_flight() -> None:
     scheduler.start()
 
     scheduler.run_now(batch_id, JOB_CODE)
-    await _until(lambda: scheduler._is_running(batch_id))
+    await _until(lambda: scheduler.is_running(batch_id))
 
     assert await scheduler.stop(batch_id) is True
-    await _until(lambda: not scheduler._is_running(batch_id))
+    await _until(lambda: not scheduler.is_running(batch_id))
     assert not release.is_set()
 
     scheduler.shutdown()
@@ -276,9 +281,9 @@ async def _observe_run(scheduler: BatchScheduler, batch_id: UUID, release: async
     until the test has seen it running. Nothing polls the database while the
     scheduler writes to it: on a StaticPool engine both share one connection.
     """
-    await _until(lambda: scheduler._is_running(batch_id))
+    await _until(lambda: scheduler.is_running(batch_id))
     release.set()
-    await _until(lambda: not scheduler._is_running(batch_id))
+    await _until(lambda: not scheduler.is_running(batch_id))
 
 
 @pytest.mark.asyncio
@@ -344,10 +349,10 @@ async def test_a_stopped_run_is_recorded_by_the_request_that_stopped_it(run_log_
     scheduler = _blocking_scheduler(release)
     scheduler.start()
     scheduler.run_now(batch_id, JOB_CODE, "tester")
-    await _until(lambda: scheduler._is_running(batch_id))
+    await _until(lambda: scheduler.is_running(batch_id))
 
     assert await scheduler.stop(batch_id, "operator") is True
-    await _until(lambda: not scheduler._is_running(batch_id))
+    await _until(lambda: not scheduler.is_running(batch_id))
     release.set()
     scheduler.shutdown()
 

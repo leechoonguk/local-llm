@@ -22,21 +22,29 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Dialog, DialogContent, DialogTitle, LinearProgress, TableCell, Typography } from '@mui/material'
+import { Dialog, DialogContent, DialogTitle, LinearProgress, TableCell, Typography } from '@mui/material'
 import type { ComponentProps } from 'react'
 import ClippedText from '@/components/detail/ClippedText'
 import Label from '@/components/label/Label'
 import ServerPagedTable from '@/components/detail/ServerPagedTable'
 import type { TableColumn } from '@/components/detail/PagedTableSection'
+import { useQueryErrorToast } from '@/hooks/useQueryErrorToast'
 import { useServerTablePage } from '@/hooks/useServerTablePage'
 import { useBatchRunList, useBatchRunStepList } from '@/lib/api/hooks/useBatch'
 import { formatDateTime } from '@/utils/formatTime'
-import type { Batch, BatchRun, BatchStep } from '@/types/batch'
+import type { Batch, BatchRun, BatchRunStatus, BatchStep } from '@/types/batch'
 
 type LabelColor = NonNullable<ComponentProps<typeof Label>['color']>
 
-/** The run table's whole vocabulary — the backend's CHECK constraint, verbatim. */
-const STATUS_COLORS: Record<string, LabelColor> = {
+/**
+ * The run table's whole vocabulary — the backend's CHECK constraint, verbatim.
+ *
+ * Keyed by `BatchRunStatus`, so the compiler refuses a map that misses an
+ * ending: the constraint gaining a sixth value fails the build here rather than
+ * rendering as a grey badge nobody reads. A step's two endings are a subset, so
+ * the same map serves both tables.
+ */
+const STATUS_COLORS: Record<BatchRunStatus, LabelColor> = {
   RUNNING: 'info',
   SUCCEEDED: 'success',
   FAILED: 'error',
@@ -76,6 +84,9 @@ export default function BatchRunsDialog({ open, batch, onClose }: BatchRunsDialo
 
   const runs = runsPage.resolve(runsQuery.data)
   const steps = stepsPage.resolve(stepsQuery.data)
+
+  useQueryErrorToast(runsQuery, tCommon('messages.load_failed'))
+  useQueryErrorToast(stepsQuery, tCommon('messages.load_failed'))
 
   const handleSelect = (run: BatchRun) => {
     setSelectedRun((current) => (current?.id === run.id ? null : run))
@@ -119,49 +130,45 @@ export default function BatchRunsDialog({ open, batch, onClose }: BatchRunsDialo
       <DialogContent>
         {(runsQuery.isLoading || stepsQuery.isLoading) && <LinearProgress />}
 
-        {runsQuery.isError ? (
-          <Alert severity="error">{tCommon('messages.load_failed')}</Alert>
-        ) : (
-          <ServerPagedTable
-            columns={runColumns}
-            rows={runs.rows}
-            rowKey={(run) => run.id}
-            pagination={runs.pagination}
-            empty={t('runs.empty')}
-            expanded={(run) => selectedRun?.id === run.id}
-            onRowClick={handleSelect}
-            renderCells={(run) => (
-              <>
-                <TableCell>
-                  <Label color={STATUS_COLORS[run.status] ?? 'default'}>
-                    {t(`runs.status.${run.status}`)}
-                  </Label>
-                </TableCell>
-                <TableCell>
-                  <ClippedText
-                    text={`${t(`runs.trigger.${run.trigger}`)} · ${run.triggered_by}${
-                      run.stopped_by !== null ? ` → ${run.stopped_by}` : ''
-                    }`}
-                  />
-                </TableCell>
-                <TableCell>
-                  <ClippedText text={formatDateTime(run.started_at)} />
-                </TableCell>
-                <TableCell align="right">
-                  <ClippedText
-                    text={run.duration_ms !== null ? `${(run.duration_ms / 1000).toFixed(1)}s` : '—'}
-                  />
-                </TableCell>
-                <TableCell align="right">
-                  <ClippedText text={String(run.result ?? '—')} />
-                </TableCell>
-                <TableCell>
-                  <ClippedText text={run.error_code ?? '—'} />
-                </TableCell>
-              </>
-            )}
-          />
-        )}
+        <ServerPagedTable
+          columns={runColumns}
+          rows={runs.rows}
+          rowKey={(run) => run.id}
+          pagination={runs.pagination}
+          empty={t('runs.empty')}
+          expanded={(run) => selectedRun?.id === run.id}
+          onRowClick={handleSelect}
+          renderCells={(run) => (
+            <>
+              <TableCell>
+                <Label color={STATUS_COLORS[run.status]}>
+                  {t(`runs.status.${run.status}`)}
+                </Label>
+              </TableCell>
+              <TableCell>
+                <ClippedText
+                  text={`${t(`runs.trigger.${run.trigger}`)} · ${run.triggered_by}${
+                    run.stopped_by !== null ? ` → ${run.stopped_by}` : ''
+                  }`}
+                />
+              </TableCell>
+              <TableCell>
+                <ClippedText text={formatDateTime(run.started_at)} />
+              </TableCell>
+              <TableCell align="right">
+                <ClippedText
+                  text={run.duration_ms !== null ? `${(run.duration_ms / 1000).toFixed(1)}s` : '—'}
+                />
+              </TableCell>
+              <TableCell align="right">
+                <ClippedText text={String(run.result ?? '—')} />
+              </TableCell>
+              <TableCell>
+                <ClippedText text={run.error_code ?? '—'} />
+              </TableCell>
+            </>
+          )}
+        />
 
         {selectedRun !== null && (
           <>
@@ -169,50 +176,46 @@ export default function BatchRunsDialog({ open, batch, onClose }: BatchRunsDialo
               {t('runs.steps_title')}
             </Typography>
 
-            {stepsQuery.isError ? (
-              <Alert severity="error">{tCommon('messages.load_failed')}</Alert>
-            ) : (
-              <ServerPagedTable
-                columns={stepColumns}
-                rows={steps.rows}
-                rowKey={(step) => step.id}
-                pagination={steps.pagination}
-                empty={t('runs.steps_empty')}
-                renderCells={(step) => (
-                  <>
-                    <TableCell>
-                      <ClippedText text={String(step.sequence)} />
-                    </TableCell>
-                    <TableCell>
-                      <ClippedText
-                        text={
-                          step.range_start !== null && step.range_end !== null
-                            ? `${step.range_start}–${step.range_end}`
-                            : '—'
-                        }
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      <ClippedText text={String(step.received ?? '—')} />
-                    </TableCell>
-                    <TableCell align="right">
-                      <ClippedText text={String(step.written ?? '—')} />
-                    </TableCell>
-                    <TableCell align="right">
-                      <ClippedText text={`${(step.duration_ms / 1000).toFixed(1)}s`} />
-                    </TableCell>
-                    <TableCell>
-                      <Label color={STATUS_COLORS[step.status] ?? 'default'}>
-                        {t(`runs.status.${step.status}`)}
-                      </Label>
-                    </TableCell>
-                    <TableCell>
-                      <ClippedText text={step.error_code ?? '—'} />
-                    </TableCell>
-                  </>
-                )}
-              />
-            )}
+            <ServerPagedTable
+              columns={stepColumns}
+              rows={steps.rows}
+              rowKey={(step) => step.id}
+              pagination={steps.pagination}
+              empty={t('runs.steps_empty')}
+              renderCells={(step) => (
+                <>
+                  <TableCell>
+                    <ClippedText text={String(step.sequence)} />
+                  </TableCell>
+                  <TableCell>
+                    <ClippedText
+                      text={
+                        step.range_start !== null && step.range_end !== null
+                          ? `${step.range_start}–${step.range_end}`
+                          : '—'
+                      }
+                    />
+                  </TableCell>
+                  <TableCell align="right">
+                    <ClippedText text={String(step.received ?? '—')} />
+                  </TableCell>
+                  <TableCell align="right">
+                    <ClippedText text={String(step.written ?? '—')} />
+                  </TableCell>
+                  <TableCell align="right">
+                    <ClippedText text={`${(step.duration_ms / 1000).toFixed(1)}s`} />
+                  </TableCell>
+                  <TableCell>
+                    <Label color={STATUS_COLORS[step.status]}>
+                      {t(`runs.status.${step.status}`)}
+                    </Label>
+                  </TableCell>
+                  <TableCell>
+                    <ClippedText text={step.error_code ?? '—'} />
+                  </TableCell>
+                </>
+              )}
+            />
           </>
         )}
       </DialogContent>

@@ -1,30 +1,34 @@
 /**
- * Destructive-action confirmation, ported from the reference application.
+ * Destructive-action confirmation — the question every delete goes through.
  *
- * The chrome is the design: `xs` width, tight title padding, a dashed divider
- * above and below the body, and an **outlined** cancel beside the destructive
- * action — both `small`. A dialog that asks "are you sure" should read as a
- * question, not as a page.
+ * The head is the app's dialog head (`FormDialogHeader`) in the error tone, so
+ * the question that destroys a row is recognisably the same surface as the form
+ * that edits it: one icon size, one title weight, one close button, one dashed
+ * rule. Without it the dialog read as a stray paragraph with buttons under it.
  *
- * Delete is the one action with no undo in this API, so it always goes through
- * here: the row it will destroy is named in the body, and the button stays
- * disabled while the mutation is in flight so a double click cannot send the
- * request twice.
+ * **The body is one sentence.** It was two — the row, then "이 작업은 되돌릴 수
+ * 없습니다" as a caption — and the split implied two facts of different weight
+ * where there is one: deleting *this row* is what cannot be undone. A caption is
+ * for something the reader may skip, and the cost of a delete is not that. So
+ * the domain's own sentence carries both (`messages.delete_confirm`), and the
+ * title above it names the verb once instead of the body repeating it.
+ *
+ * `xs` and `fullWidth`, so the question is the same width wherever it is asked;
+ * shrink-wrapped, a long name made a wide dialog and a short one a narrow one.
+ * The confirm button carries the delete icon and the error colour it has in the
+ * record panels, and stays disabled while the request is in flight so a double
+ * click cannot send it twice.
  */
 
-import {
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogTitle,
-  Divider,
-} from '@mui/material'
+import { Button, Dialog, DialogActions, DialogContent, Divider, Typography } from '@mui/material'
 import type { ReactNode } from 'react'
+import FormDialogHeader from '@/components/dialog/FormDialogHeader'
+import Iconify from '@/components/iconify/Iconify'
 
 interface ConfirmDialogProps {
   open: boolean
   title: string
+  /** One sentence: which row disappears, and what that costs. */
   content: ReactNode
   confirmLabel: string
   cancelLabel: string
@@ -44,12 +48,12 @@ export default function ConfirmDialog({
   onClose,
 }: ConfirmDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs">
-      <DialogTitle sx={{ py: 1.5, px: 2 }}>{title}</DialogTitle>
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <FormDialogHeader name="delete" tone="error" title={title} onClose={onClose} />
 
-      <Divider sx={{ borderStyle: 'dashed' }} />
-
-      <DialogContent sx={{ p: 2, typography: 'body2' }}>{content}</DialogContent>
+      <DialogContent sx={{ p: 2 }}>
+        <Typography variant="body2">{content}</Typography>
+      </DialogContent>
 
       <Divider sx={{ borderStyle: 'dashed' }} />
 
@@ -61,6 +65,7 @@ export default function ConfirmDialog({
           variant="contained"
           color="error"
           size="small"
+          startIcon={<Iconify name="delete" />}
           onClick={onConfirm}
           disabled={pending}
         >

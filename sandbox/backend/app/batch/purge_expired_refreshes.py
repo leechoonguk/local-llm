@@ -15,11 +15,23 @@ from app.services.refresh import RefreshService
 
 
 # ============================================================
+# Constants
+# ============================================================
+
+# Thirty days past a token's own expiry. The window is what tells a replayed
+# token apart from an unknown one: a row that is gone answers the same as a row
+# that never existed, so the evidence of a revoked session outlives the session
+# by a month. Long enough to investigate a report, short enough that the table
+# stays a login's worth of rows rather than a year's.
+DEFAULT_GRACE_DAYS = 30
+
+
+# ============================================================
 # Functions
 # ============================================================
 
 
-async def purge_expired_refreshes(days: int = 30) -> int:
+async def purge_expired_refreshes(days: int = DEFAULT_GRACE_DAYS) -> int:
     """Delete refresh tokens that expired more than the given number of days ago.
 
     The grace window is deliberate: a revoked row is what tells a replayed

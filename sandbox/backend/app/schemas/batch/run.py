@@ -3,6 +3,7 @@
 # ============================================================
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -22,18 +23,23 @@ ERROR_CODE_MAX_LENGTH = 64
 
 ERROR_DETAIL_MAX_LENGTH = 512
 
-# The clock says a run is over; the status says how. Both are written by the
-# same transition, so the schema keeps the vocabulary next to it.
+# The one status code compares against: a run starts here and every other value
+# is an ending. The endings are not spelled a second time as a tuple — nothing
+# read it, and `BatchRunStatus` below is the vocabulary.
 RUNNING = "RUNNING"
-
-TERMINAL_STATUSES = ("SUCCEEDED", "FAILED", "STOPPED", "INTERRUPTED")
-
-TRIGGERS = ("CRON", "MANUAL")
 
 
 # ============================================================
 # Classes
 # ============================================================
+
+
+#: `ck_batch_run_status` — a run is RUNNING or it is one of four endings.
+BatchRunStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "STOPPED", "INTERRUPTED"]
+
+
+#: `ck_batch_run_trigger` — the clock started it, or a person did.
+BatchTrigger = Literal["CRON", "MANUAL"]
 
 
 class BatchRunBase(BaseModel):
@@ -43,8 +49,8 @@ class BatchRunBase(BaseModel):
 
     batch_id: UUID | None = None
     code: str = Field(max_length=CODE_MAX_LENGTH)
-    status: str = Field(max_length=16)
-    trigger: str = Field(max_length=8)
+    status: BatchRunStatus
+    trigger: BatchTrigger
     triggered_by: str = Field(max_length=ACTOR_MAX_LENGTH)
     stopped_by: str | None = Field(default=None, max_length=ACTOR_MAX_LENGTH)
     started_at: datetime
@@ -83,7 +89,7 @@ class BatchRunUpdateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    status: str | None = Field(default=None, max_length=16)
+    status: BatchRunStatus | None = None
     stopped_by: str | None = Field(default=None, max_length=ACTOR_MAX_LENGTH)
     finished_at: datetime | None = None
     duration_ms: int | None = Field(default=None, ge=0)

@@ -76,8 +76,8 @@ class BatchCheckpointService:
     async def update_resume_point(
         self,
         source_code: str,
-        next_range_start: int,
-        last_row_key: str | None,
+        resume_position: int,
+        resume_key: str | None,
         updated_by: str,
     ) -> BatchCheckpoint:
         """Record where the next window starts — creating the row on first use.
@@ -100,16 +100,16 @@ class BatchCheckpointService:
                 return await self.batch_checkpoint_repository.create(
                     BatchCheckpointCreateInternal(
                         source_code=source_code,
-                        next_range_start=next_range_start,
-                        last_row_key=last_row_key,
+                        resume_position=resume_position,
+                        resume_key=resume_key,
                         created_by=updated_by,
                     )
                 )
             return await self.batch_checkpoint_repository.update_row(
                 checkpoint,
                 BatchCheckpointUpdateInternal(
-                    next_range_start=next_range_start,
-                    last_row_key=last_row_key,
+                    resume_position=resume_position,
+                    resume_key=resume_key,
                     updated_by=updated_by,
                 ),
             )

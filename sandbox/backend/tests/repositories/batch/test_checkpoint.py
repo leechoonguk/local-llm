@@ -23,7 +23,7 @@ async def test_checkpoint_repository_crud(factory) -> None:
         repo = BatchCheckpointRepository(session)
         created = await repo.create(
             BatchCheckpointCreateInternal(
-                source_code=SOURCE_CODE, next_range_start=1, created_by="batch"
+                source_code=SOURCE_CODE, resume_position=1, created_by="batch"
             )
         )
         await session.commit()
@@ -31,14 +31,14 @@ async def test_checkpoint_repository_crud(factory) -> None:
 
         got = await repo.get(row_id)
         assert got is not None
-        assert got.next_range_start == 1
+        assert got.resume_position == 1
         assert len(await repo.list()) == 1
 
         updated = await repo.update(
-            row_id, BatchCheckpointUpdateInternal(next_range_start=1001, updated_by="batch")
+            row_id, BatchCheckpointUpdateInternal(resume_position=1001, updated_by="batch")
         )
         assert updated is not None
-        assert updated.next_range_start == 1001
+        assert updated.resume_position == 1001
 
         assert await repo.delete(row_id) is True
         await session.commit()
@@ -54,12 +54,12 @@ async def test_checkpoint_repository_get_by_source_code(factory) -> None:
         repo = BatchCheckpointRepository(session)
         await repo.create(
             BatchCheckpointCreateInternal(
-                source_code=SOURCE_CODE, next_range_start=2001, created_by="b"
+                source_code=SOURCE_CODE, resume_position=2001, created_by="b"
             )
         )
         await session.commit()
 
         found = await repo.get_by_source_code(SOURCE_CODE)
         assert found is not None
-        assert found.next_range_start == 2001
+        assert found.resume_position == 2001
         assert await repo.get_by_source_code("search-food-item-report") is None

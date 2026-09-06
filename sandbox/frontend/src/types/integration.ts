@@ -6,7 +6,7 @@
  * the server answers 422 to.
  */
 
-import type { AuditedResource } from '@/types/api'
+import type { AuditedResource, IntegrationFilterParams, OffsetLimitParams } from '@/types/api'
 
 export type FieldDirection = 'REQUEST' | 'RESPONSE'
 
@@ -36,6 +36,10 @@ export interface IntegrationSecret extends AuditedResource {
   name: string
   description: string | null
   enabled: boolean
+  /** Secrets of one provider sharing a group are one credential: the client rotates. */
+  rotation_group: string | null
+  /** When a member answered the quota code, plus the window; null when fresh. */
+  exhausted_until: string | null
 }
 
 export interface IntegrationField extends AuditedResource {
@@ -71,6 +75,8 @@ export interface IntegrationOperation extends AuditedResource {
   retry_max_ms: number
   idempotent: boolean
   request_schema: Record<string, unknown> | null
+  /** Envelope code -> seconds the key sits out; the client tries the next member. */
+  quota_codes: Record<string, number>
   enabled: boolean
   fields: IntegrationField[]
 }
@@ -97,6 +103,7 @@ export interface IntegrationSecretCreateRequest {
   value: string
   description?: string | null
   enabled?: boolean
+  rotation_group?: string | null
 }
 
 /** An absent `value` keeps the stored one — the value is write-only. */
@@ -104,6 +111,7 @@ export interface IntegrationSecretUpdateRequest {
   value?: string | null
   description?: string | null
   enabled?: boolean | null
+  rotation_group?: string | null
 }
 
 export interface IntegrationFieldCreateRequest {
@@ -139,6 +147,7 @@ export interface IntegrationOperationCreateRequest {
   retry_max_ms: number
   idempotent: boolean
   request_schema?: Record<string, unknown> | null
+  quota_codes?: Record<string, number>
   enabled?: boolean
   fields?: IntegrationFieldCreateRequest[]
 }
@@ -168,3 +177,12 @@ export interface IntegrationExecuteResponse {
   metadata: Record<string, unknown>
   status_code: number
 }
+
+/**
+ * What `GET /integration/` accepts: the page plus one filter per filterable
+ * column.
+ *
+ * The intersection lives with the domain rather than in the shared params type,
+ * so an endpoint that takes no filter keeps a params type that matches it.
+ */
+export type IntegrationListParams = OffsetLimitParams & IntegrationFilterParams

@@ -70,7 +70,7 @@ Content-Type: application/json
 
 {
   "inputs": {
-    "last_updated_from": "20240101",
+    "last_updated_from": "{{$datetime 'YYYYMMDD' -1 d}}",
     "range_start": 1,
     "range_end": 3
   }
@@ -125,7 +125,7 @@ Content-Type: application/json
 
 {
   "inputs": {
-    "last_updated_from": "20240101"
+    "last_updated_from": "{{$datetime 'YYYYMMDD' -1 d}}"
   }
 }
 

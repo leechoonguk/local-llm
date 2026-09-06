@@ -9,7 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
-from app.core.integration import IntegrationExchange
+from app.core.integration import CallMethod, CallOutcome, IntegrationExchange
 
 
 # ============================================================
@@ -31,19 +31,20 @@ class IntegrationCallCreateInternal(BaseModel):
     operation_id: uuid.UUID | None = None
     provider_code: str
     operation_code: str
-    method: str
+    method: CallMethod
     url: str
     request_headers: dict[str, Any]
     request_body: dict[str, Any] | None = None
     status_code: int | None = None
     response_headers: dict[str, Any] | None = None
     response_body: str | None = None
-    outcome: str
+    outcome: CallOutcome
     duration_ms: int
     attempts: int
     request_id: str | None = None
     error_code: str | None = None
     error_detail: str | None = None
+    secret_name: str | None = None
     created_by: str
 
     @classmethod
@@ -83,5 +84,6 @@ class IntegrationCallCreateInternal(BaseModel):
             request_id=exchange.request_id,
             error_code=exchange.error_code,
             error_detail=exchange.error_detail,
+            secret_name=exchange.secret_name,
             created_by=created_by,
         )

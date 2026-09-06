@@ -81,7 +81,7 @@ Content-Type: application/json
 
 {
    "inputs": {
-      "changed_from": "20240101",
+      "changed_from": "{{$datetime 'YYYYMMDD' -1 d}}",
       "range_start": 1,
       "range_end": 3
    }
@@ -120,7 +120,7 @@ Content-Type: application/json
 
 {
    "inputs": {
-      "changed_from": "20240101"
+      "changed_from": "{{$datetime 'YYYYMMDD' -1 d}}"
    }
 }
 

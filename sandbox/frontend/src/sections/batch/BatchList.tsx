@@ -15,27 +15,41 @@
 
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Alert, Button, Card } from '@mui/material'
+import { Card } from '@mui/material'
 import type { GridColDef } from '@mui/x-data-grid'
 import BatchFormDialog from '@/sections/batch/BatchFormDialog'
 import BatchRunsDialog from '@/sections/batch/BatchRunsDialog'
 import ConfirmDialog from '@/components/confirm-dialog/ConfirmDialog'
-import ListToolbar from '@/components/data-grid/ListToolbar'
+import ListCardHead from '@/components/data-grid/ListCardHead'
+import ListFilters from '@/components/data-grid/ListFilters'
 import { rowActionsColumn } from '@/components/data-grid/RowActions'
 import Label from '@/components/label/Label'
 import ServerDataGrid from '@/components/data-grid/ServerDataGrid'
 import { useBatchList, useDeleteBatch, useRunBatch } from '@/lib/api/hooks/useBatch'
 import { useCrudDialog } from '@/hooks/useCrudDialog'
 import { useDataGridState } from '@/hooks/useDataGridState'
+import { useListFilters } from '@/hooks/useListFilters'
+import { useQueryErrorToast } from '@/hooks/useQueryErrorToast'
 import { useToast } from '@/hooks/useToast'
 import { toApiError } from '@/lib/api/errors'
 import { serverErrorMessage } from '@/lib/api/formErrors'
 import { formatDateTime } from '@/utils/formatTime'
-import type { Batch } from '@/types/batch'
+import type { Batch, BatchListParams } from '@/types/batch'
 
 const TIMESTAMP_COLUMN_WIDTH = 180
 
 const CRON_COLUMN_WIDTH = 130
+
+/**
+ * The columns this screen filters, in the order the boxes stand.
+ *
+ * The list is the query parameters' names, so a box, its label and the
+ * parameter it sends cannot drift apart: a name the router does not read fails
+ * `check-frontend-types` rather than filtering nothing quietly.
+ */
+const FILTER_FIELDS = ['name'] as const
+
+type FilterField = (typeof FILTER_FIELDS)[number]
 
 const STATE_COLUMN_WIDTH = 110
 
@@ -45,13 +59,20 @@ export default function BatchList() {
   const toast = useToast()
 
   const grid = useDataGridState()
-  const query = useBatchList(grid.params)
+  const filters = useListFilters(FILTER_FIELDS, grid.resetPage)
+  const params = useMemo<BatchListParams>(
+    () => ({ ...grid.params, ...filters.params }),
+    [grid.params, filters.params],
+  )
+  const query = useBatchList(params)
   const rows = query.data?.items ?? []
   const rowCount = query.data?.total ?? 0
   const dialog = useCrudDialog<Batch>()
   const [historyBatch, setHistoryBatch] = useState<Batch | null>(null)
   const deleteMutation = useDeleteBatch()
   const runMutation = useRunBatch()
+
+  useQueryErrorToast(query, tCommon('messages.load_failed'))
 
   const handleRun = useCallback(
     async (batch: Batch, running: boolean) => {
@@ -87,6 +108,25 @@ export default function BatchList() {
         ),
       },
       {
+        /**
+         * Two different facts, so two columns: `enabled` is whether the clock
+         * will start this job, `running` is whether it is executing right now.
+         * One badge for both would have to say "사용 · 실행 중" or drop one of
+         * them, and the run and stop buttons answer to *this* one.
+         */
+        field: 'running',
+        headerName: t('table.running'),
+        width: STATE_COLUMN_WIDTH,
+        align: 'center',
+        headerAlign: 'center',
+        sortable: false,
+        renderCell: ({ row }) => (
+          <Label color={row.running ? 'info' : 'default'}>
+            {row.running ? t('status.running') : t('status.idle')}
+          </Label>
+        ),
+      },
+      {
         field: 'created_at',
         headerName: tCommon('fields.created_at'),
         width: TIMESTAMP_COLUMN_WIDTH,
@@ -103,11 +143,16 @@ export default function BatchList() {
           {
             label: t('actions.run'),
             icon: 'run',
+            // The verbs follow the state the row reports: starting a job that is
+            // already running answers 409, and stopping one that is not is a
+            // request that cancels nothing.
+            disabled: row.running,
             onClick: () => void handleRun(row, true),
           },
           {
             label: t('actions.stop'),
             icon: 'stop',
+            disabled: !row.running,
             onClick: () => void handleRun(row, false),
           },
           {
@@ -141,31 +186,24 @@ export default function BatchList() {
   return (
     <>
       <Card>
-        <ListToolbar
+        <ListCardHead
           title={t('list_title')}
-          count={rows.length}
-          addLabel={tCommon('actions.add')}
-          onAdd={dialog.openCreate}
-          density={grid.density}
-          onDensityChange={grid.setDensity}
+          count={rowCount}
+          add={{ label: tCommon('actions.add'), onAdd: dialog.openCreate }}
+          refreshLabel={tCommon('actions.retry')}
           onRefresh={() => void query.refetch()}
           refreshing={query.isFetching}
-          densityLabel={tCommon('actions.density')}
-          refreshLabel={tCommon('actions.retry')}
+          filters={
+            <ListFilters
+              fields={FILTER_FIELDS.map((field) => ({ name: field, label: t('filter.name') }))}
+              values={filters.inputs}
+              onChange={(name, value) => filters.setInput(name as FilterField, value)}
+              isFiltered={filters.isFiltered}
+              onReset={filters.reset}
+              resetLabel={tCommon('actions.reset')}
+            />
+          }
         />
-
-        {query.isError && (
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" size="small" onClick={() => void query.refetch()}>
-                {tCommon('actions.retry')}
-              </Button>
-            }
-          >
-            {tCommon('messages.load_failed')}
-          </Alert>
-        )}
 
         <ServerDataGrid
           rows={rows}
@@ -195,13 +233,7 @@ export default function BatchList() {
       <ConfirmDialog
         open={dialog.isDeleteOpen}
         title={t('delete_title')}
-        content={
-          <>
-            {t('messages.delete_confirm', { name: dialog.selected?.name ?? '' })}
-            <br />
-            {tCommon('messages.cannot_undo')}
-          </>
-        }
+        content={t('messages.delete_confirm', { name: dialog.selected?.name ?? '' })}
         confirmLabel={tCommon('actions.delete')}
         cancelLabel={tCommon('actions.cancel')}
         pending={deleteMutation.isPending}

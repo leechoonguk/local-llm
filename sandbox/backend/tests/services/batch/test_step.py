@@ -12,9 +12,9 @@ from app.services.batch.run import BatchRunService
 from app.services.batch.step import BatchStepService
 
 
-CODE = "sync_barcode_ledger"
+CODE = "sync_food_barcode_ledger"
 
-ACTOR = "batch:sync_barcode_ledger"
+ACTOR = "batch:sync_food_barcode_ledger"
 
 
 async def _run_id(factory) -> UUID:

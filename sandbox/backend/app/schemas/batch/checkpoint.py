@@ -16,10 +16,10 @@ from app.models.batch.checkpoint import BatchCheckpoint
 
 SOURCE_CODE_MAX_LENGTH = 64
 
-# The provider's RANGE family is 1-based: row 0 does not exist.
-FIRST_RANGE_START = 1
+# Both paging families are 1-based: there is no row 0 and no page 0.
+FIRST_POSITION = 1
 
-LAST_ROW_KEY_MAX_LENGTH = 200
+RESUME_KEY_MAX_LENGTH = 200
 
 
 # ============================================================
@@ -33,8 +33,8 @@ class BatchCheckpointBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source_code: str = Field(max_length=SOURCE_CODE_MAX_LENGTH)
-    next_range_start: int | None = Field(default=None, ge=FIRST_RANGE_START)
-    last_row_key: str | None = Field(default=None, max_length=LAST_ROW_KEY_MAX_LENGTH)
+    resume_position: int | None = Field(default=None, ge=FIRST_POSITION)
+    resume_key: str | None = Field(default=None, max_length=RESUME_KEY_MAX_LENGTH)
 
 
 class BatchCheckpointCreateRequest(BatchCheckpointBase):
@@ -65,8 +65,8 @@ class BatchCheckpointUpdateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    next_range_start: int | None = Field(default=None, ge=FIRST_RANGE_START)
-    last_row_key: str | None = Field(default=None, max_length=LAST_ROW_KEY_MAX_LENGTH)
+    resume_position: int | None = Field(default=None, ge=FIRST_POSITION)
+    resume_key: str | None = Field(default=None, max_length=RESUME_KEY_MAX_LENGTH)
 
 
 class BatchCheckpointUpdateInternal(BatchCheckpointUpdateRequest):

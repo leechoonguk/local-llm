@@ -105,7 +105,7 @@ Content-Type: application/json
 
 {
     "inputs": {
-       "changed_date": "20240101",
+       "changed_date": "{{$datetime 'YYYYMMDD' -1 d}}",
        "range_start": 1,
        "range_end": 3
     }

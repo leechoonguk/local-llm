@@ -19,6 +19,17 @@ from app.schemas.integration.secret import (
 
 
 # ============================================================
+# Constants
+# ============================================================
+
+#: A duplicate name is the writer's mistake; a referenced secret is a
+#: dependency, and the form answers each differently.
+SECRET_NAME_TAKEN_CODE = "secret_name_taken"  # noqa: S105 - an error code the client maps to a sentence, not a secret
+
+SECRET_IN_USE_CODE = "secret_in_use"  # noqa: S105 - an error code the client maps to a sentence, not a secret
+
+
+# ============================================================
 # Classes
 # ============================================================
 
@@ -37,7 +48,10 @@ class IntegrationSecretService:
             if provider is None:
                 raise NotFoundError(integration_id)
             if await self.secret_repository.get_secret(provider.id, data.name) is not None:
-                raise ConflictError(f"Secret '{data.name}' already exists for this provider")
+                raise ConflictError(
+                    f"Secret '{data.name}' already exists for this provider",
+                    SECRET_NAME_TAKEN_CODE,
+                )
             return await self.secret_repository.create_secret(provider, data, created_by)
 
     async def update_secret(
@@ -79,5 +93,8 @@ class IntegrationSecretService:
             if secret is None:
                 raise NotFoundError(integration_id)
             if await self.secret_repository.count_secret_references(secret.id) > 0:
-                raise ConflictError(f"Secret '{name}' is still referenced by a request field")
+                raise ConflictError(
+                    f"Secret '{name}' is still referenced by a request field",
+                    SECRET_IN_USE_CODE,
+                )
             await self.secret_repository.delete_secret(secret)

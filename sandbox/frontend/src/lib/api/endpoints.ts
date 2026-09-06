@@ -44,3 +44,8 @@ export const INTEGRATION_ENDPOINTS = {
   SECRETS: (id: string) => `/integration/${id}/secrets`,
   SECRET: (id: string, name: string) => `/integration/${id}/secrets/${name}`,
 } as const
+
+export const FOOD_ENDPOINTS = {
+  RAW_MATERIAL_LIST: '/food/raw-material/',
+  RAW_MATERIAL_FACETS: '/food/raw-material/facets',
+} as const

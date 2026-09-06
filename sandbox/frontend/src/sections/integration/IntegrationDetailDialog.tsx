@@ -17,7 +17,6 @@
 
 import { useState } from 'react'
 import {
-  Alert,
   Box,
   CircularProgress,
   Dialog,
@@ -34,6 +33,7 @@ import type { ActionIcon } from '@/components/iconify/icons'
 import Label from '@/components/label/Label'
 import { RECORD_SURFACE } from '@/config'
 import { useIntegration } from '@/lib/api/hooks/useIntegration'
+import { useQueryErrorToast } from '@/hooks/useQueryErrorToast'
 import { useTablePage } from '@/hooks/useTablePage'
 import IntegrationOperationDeletePanel from '@/sections/integration/IntegrationOperationDeletePanel'
 import IntegrationOperationPanel from '@/sections/integration/IntegrationOperationPanel'
@@ -102,6 +102,8 @@ export default function IntegrationDetailDialog({
 
   const operationPaging = useTablePage(provider?.operations ?? EMPTY_OPERATIONS)
   const secretPaging = useTablePage(provider?.secrets ?? EMPTY_SECRETS)
+
+  useQueryErrorToast(query, tCommon('messages.load_failed'))
 
   /**
    * The dialog stays mounted between openings, so its body has to be reset the
@@ -175,9 +177,9 @@ export default function IntegrationDetailDialog({
 
               <Typography variant="caption" color="text.secondary">
                 {t('detail_audit', {
-                  user: provider.updated_by,
+                  user: provider.updated_by ?? tCommon('messages.unknown_actor'),
                   at: formatDateTime(provider.updated_at),
-                  version: provider.version,
+                  version: String(provider.version),
                 })}
               </Typography>
             </>
@@ -212,8 +214,6 @@ export default function IntegrationDetailDialog({
             <CircularProgress />
           </Stack>
         )}
-
-        {query.isError && <Alert severity="error">{tCommon('messages.load_failed')}</Alert>}
 
         {provider !== undefined && showsTabs && (
           <Box>

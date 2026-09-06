@@ -13,7 +13,7 @@ from app.models.batch.run import BatchRun
 from app.services.batch.run import BatchRunService
 
 
-CODE = "sync_barcode_ledger"
+CODE = "sync_food_barcode_ledger"
 
 
 @pytest.fixture()

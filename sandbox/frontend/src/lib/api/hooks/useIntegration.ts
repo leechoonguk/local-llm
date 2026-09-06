@@ -11,8 +11,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QUERY_STALE_TIME } from '@/lib/api/queryDefaults'
 import { integrationKeys } from '@/lib/api/queryKeys'
 import { integrationService } from '@/lib/api/services/integration.service'
-import type { OffsetLimitParams } from '@/types/api'
 import type {
+  IntegrationListParams,
   IntegrationCreateRequest,
   IntegrationExecuteRequest,
   IntegrationSecretCreateRequest,
@@ -20,7 +20,7 @@ import type {
   IntegrationUpdateRequest,
 } from '@/types/integration'
 
-export function useIntegrationList(params: OffsetLimitParams) {
+export function useIntegrationList(params: IntegrationListParams) {
   return useQuery({
     queryKey: integrationKeys.list(params),
     queryFn: () => integrationService.list(params),

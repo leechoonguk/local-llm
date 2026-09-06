@@ -1,4 +1,8 @@
-"""Batch job tests — sync_barcode_ledger against an in-memory engine and a scripted provider."""
+"""Batch job tests — sync_food_item_report_raw_material_ledger against an in-memory engine.
+
+The provider is scripted: the job's contract is what it writes and how it
+resumes, not what the network answered.
+"""
 
 from collections.abc import Mapping
 
@@ -7,27 +11,25 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.batch.sync_barcode_ledger import OPERATION_CODE
+from app.batch.sync_food_item_report_raw_material_ledger import OPERATION_CODE
 from app.core.exceptions import IntegrationError
 from app.core.integration import IntegrationExecutionResult
-from app.models.barcode import Barcode
 from app.models.base import Base
 from app.models.batch.run import BatchRun
 from app.models.batch.step import BatchStep
+from app.models.food.item_report_raw_material import FoodItemReportRawMaterial
 from app.services.batch.checkpoint import BatchCheckpointService
 from app.services.batch.run import BatchRunService, current_run_id
 from app.services.integration.operation import IntegrationOperationService
 
 
-BARCODE_NO = "8801234567890"
-
-REPORT_NO = "F2024000123456"
+ITEM_REPORT_NO = "199704010552"
 
 
 @pytest.fixture()
 async def test_engine():
-    """In-memory engine + tables, replacing app.batch.sync_barcode_ledger.engine."""
-    import app.batch.sync_barcode_ledger as batch_sync_barcode_ledger
+    """In-memory engine + tables, replacing the job module's engine."""
+    import app.batch.sync_food_item_report_raw_material_ledger as job_module
 
     engine = create_async_engine(
         "sqlite+aiosqlite://",
@@ -37,20 +39,19 @@ async def test_engine():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    original = batch_sync_barcode_ledger.engine
-    batch_sync_barcode_ledger.engine = engine
+    original = job_module.engine
+    job_module.engine = engine
     yield engine
-    batch_sync_barcode_ledger.engine = original
+    job_module.engine = original
     await engine.dispose()
 
 
 def _record(index: int, **overrides: object) -> dict[str, object]:
-    """One canonical I2570 record; `index` moves the natural key, not the content."""
+    """One canonical C002 record; `index` moves the natural key, not the content."""
     record: dict[str, object] = {
-        "barcode_no": f"{BARCODE_NO}{index}",
-        "report_no": REPORT_NO,
-        "product_name": "신선배 김치",
-        "last_update_datetime": "2024-01-15 09:30:00.0",
+        "item_report_no": f"{ITEM_REPORT_NO}{index}",
+        "product_name": "가시오가피 냉면",
+        "changed_date": "20230610",
     }
     record.update(overrides)
     return record
@@ -113,17 +114,19 @@ def _script(monkeypatch, pages: list[list[object]]) -> list[Mapping[str, object]
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_pages_until_a_short_page(test_engine, monkeypatch) -> None:
+async def test_raw_material_ledger_pages_until_a_short_page(test_engine, monkeypatch) -> None:
     """The window's own size is the only end-of-data signal this provider gives.
 
-    A job that stopped at the first page would import 100 of 53k rows and
+    A job that stopped at the first page would import one window of the set and
     report success; one that never stopped would loop on the last window.
     """
     windows = _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    written = await sync_barcode_ledger(page_size=2, max_pages=10)
+    written = await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
     assert written == 3
     assert [(w["range_start"], w["range_end"]) for w in windows] == [(1, 2), (3, 4)]
@@ -131,72 +134,80 @@ async def test_sync_barcode_ledger_pages_until_a_short_page(test_engine, monkeyp
 
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
-        rows = list((await session.execute(select(Barcode))).scalars().all())
+        rows = list((await session.execute(select(FoodItemReportRawMaterial))).scalars().all())
     assert len(rows) == 3
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_sends_no_filter(test_engine, monkeypatch) -> None:
+async def test_raw_material_ledger_sends_no_filter(test_engine, monkeypatch) -> None:
     """The window is the whole request — no 변경일자, ever.
 
-    A bound would hide a record inserted later under an older timestamp, and
-    on this source it narrows nothing anyway: every row is stamped 2015-01-22.
-    The second run therefore re-reads and writes nothing, which is what proves
-    the ledger compares instead of rewriting.
+    The operation does declare a `changed_from` (CHNG_DT) input, and this job
+    sends it on no window: a bound would hide a record inserted later under an
+    older timestamp, which the portal's own stamps make possible. The second run
+    therefore re-reads and writes nothing, which is what proves the ledger
+    compares instead of rewriting.
     """
     _script(monkeypatch, [[_record(1)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    assert await sync_barcode_ledger(page_size=2, max_pages=10) == 1
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 1
 
     windows = _script(monkeypatch, [[_record(1)]])
-    assert await sync_barcode_ledger(page_size=2, max_pages=10) == 0
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 0
     assert list(windows[0]) == ["range_start", "range_end"]
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_stops_at_the_page_ceiling(test_engine, monkeypatch) -> None:
+async def test_raw_material_ledger_stops_at_the_page_ceiling(test_engine, monkeypatch) -> None:
     """A provider that never shortens a page must not walk the table forever.
 
-    Measured failure mode of this portal: a filter it decides to ignore answers
-    200 with a full unfiltered page, which is indistinguishable from more data.
+    Measured failure mode of this portal (on the sibling I2570 feed, same
+    gateway): a filter it decides to ignore answers 200 with a full unfiltered
+    page, which is indistinguishable from more data.
     """
     windows = _script(monkeypatch, [[_record(1)], [_record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    assert await sync_barcode_ledger(page_size=1, max_pages=2) == 2
+    assert await sync_food_item_report_raw_material_ledger(page_size=1, max_pages=2) == 2
     assert len(windows) == 2
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_continues_the_interrupted_pass(test_engine, monkeypatch) -> None:
+async def test_raw_material_ledger_continues_the_interrupted_pass(test_engine, monkeypatch) -> None:
     """An initial load spans runs, and the second run must not start over.
 
-    Measured shape of the real source: 53k rows against a per-run page ceiling.
-    A run that restarted at row 1 would re-read what it already has forever and
-    the load would never reach the end.
+    An initial load is many windows against a per-run page ceiling. A run that
+    restarted at row 1 would re-read what it already has forever and the load
+    would never reach the end.
     """
     _script(monkeypatch, [[_record(1)], [_record(2)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    assert await sync_barcode_ledger(page_size=1, max_pages=2) == 2
+    assert await sync_food_item_report_raw_material_ledger(page_size=1, max_pages=2) == 2
 
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert checkpoint.next_range_start == 3
+    assert checkpoint.resume_position == 3
 
     windows = _script(monkeypatch, [[_record(3)], [_record(4)]])
-    assert await sync_barcode_ledger(page_size=1, max_pages=2) == 2
+    assert await sync_food_item_report_raw_material_ledger(page_size=1, max_pages=2) == 2
     assert [(w["range_start"], w["range_end"]) for w in windows] == [(3, 3), (4, 4)]
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_records_progress_after_every_page(
+async def test_raw_material_ledger_records_progress_after_every_page(
     test_engine, monkeypatch
 ) -> None:
     """The offset is stored per page, not per run.
@@ -207,20 +218,22 @@ async def test_sync_barcode_ledger_records_progress_after_every_page(
     """
     windows = _script(monkeypatch, [[_record(1)], [_record(2)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=1, max_pages=2)
+    await sync_food_item_report_raw_material_ledger(page_size=1, max_pages=2)
 
     assert [(w["range_start"], w["range_end"]) for w in windows] == [(1, 1), (2, 2)]
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert checkpoint.next_range_start == 3
+    assert checkpoint.resume_position == 3
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_keeps_the_tail_and_verifies_it_next_run(
+async def test_raw_material_ledger_keeps_the_tail_and_verifies_it_next_run(
     test_engine, monkeypatch
 ) -> None:
     """A finished pass leaves the cursor one row past the last record read.
@@ -236,33 +249,35 @@ async def test_sync_barcode_ledger_keeps_the_tail_and_verifies_it_next_run(
     """
     _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert (checkpoint.next_range_start, checkpoint.last_row_key) == (
+    assert (checkpoint.resume_position, checkpoint.resume_key) == (
         4,
-        f"{BARCODE_NO}3:{REPORT_NO}",
+        f"{ITEM_REPORT_NO}3",
     )
 
     # The feed is unchanged: the overlap row answers with the same key, and the
     # walk continues without re-reading the set.
     windows = _script(monkeypatch, [[_record(3)]])
-    assert await sync_barcode_ledger(page_size=2, max_pages=10) == 0
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 0
     assert windows[0]["range_start"] == 3
 
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert checkpoint.next_range_start == 4
+    assert checkpoint.resume_position == 4
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_a_different_record(
+async def test_raw_material_ledger_restarts_when_the_overlap_row_is_a_different_record(
     test_engine, monkeypatch
 ) -> None:
     """A moved feed sends the walk back to the first row.
@@ -275,16 +290,20 @@ async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_a_different_
     """
     _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
-    # The next run finds a different record where the anchor stood.
-    windows = _script(monkeypatch, [[_record(9), _record(8)], [_record(7)]])
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    # The next run finds a different record where the anchor stood, looks one
+    # window back for it, and only then starts over.
+    windows = _script(
+        monkeypatch, [[_record(9), _record(8)], [_record(1), _record(2)], [_record(7)]]
+    )
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
-    assert windows[0]["range_start"] == 3
-    assert windows[1]["range_start"] == 1
+    assert [w["range_start"] for w in windows] == [3, 1, 1]
 
     # The restarted walk read row 1 and stopped there (a short page), so the
     # cursor is the tail of what it actually read — not the offset it abandoned.
@@ -292,14 +311,14 @@ async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_a_different_
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert (checkpoint.next_range_start, checkpoint.last_row_key) == (
+    assert (checkpoint.resume_position, checkpoint.resume_key) == (
         2,
-        f"{BARCODE_NO}7:{REPORT_NO}",
+        f"{ITEM_REPORT_NO}7",
     )
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_gone(
+async def test_raw_material_ledger_restarts_when_the_overlap_row_is_gone(
     test_engine, monkeypatch
 ) -> None:
     """An empty answer at the overlap offset is a feed shorter than the cursor.
@@ -310,20 +329,22 @@ async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_gone(
     """
     _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
-    windows = _script(monkeypatch, [[], [_record(1)]])
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    windows = _script(monkeypatch, [[], [], [_record(1)]])
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
-    assert [w["range_start"] for w in windows] == [3, 1]
+    assert [w["range_start"] for w in windows] == [3, 1, 1]
 
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert checkpoint.next_range_start == 2
+    assert checkpoint.resume_position == 2
 
 
 async def _run_in_context(test_engine) -> object:
@@ -331,7 +352,7 @@ async def _run_in_context(test_engine) -> object:
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         run = await BatchRunService(session).create_started_run(
-            None, "sync_barcode_ledger", "CRON", "scheduler"
+            None, "sync_food_item_report_raw_material_ledger", "CRON", "scheduler"
         )
     current_run_id.set(run.id)
     return run.id
@@ -349,15 +370,17 @@ async def _steps(test_engine) -> list[BatchStep]:
 async def test_each_page_is_recorded_as_a_step(test_engine, monkeypatch) -> None:
     """A run says the night worked; the steps say which windows it walked.
 
-    Without them, "where did the 53k-row load get to" is answerable only by
-    counting ledger rows — which the feed's own duplicates make wrong.
+    Without them, "where did the load get to" is answerable only by counting
+    ledger rows — which the feed's own duplicates make wrong.
     """
     _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
     await _run_in_context(test_engine)
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
     steps = await _steps(test_engine)
     assert [(s.sequence, s.range_start, s.range_end) for s in steps] == [(1, 1, 2), (2, 3, 4)]
@@ -391,10 +414,12 @@ async def test_a_failing_window_is_recorded_before_the_job_dies(test_engine, mon
     monkeypatch.setattr(IntegrationOperationService, "execute_operation", _execute)
     await _run_in_context(test_engine)
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
     with pytest.raises(IntegrationError):
-        await sync_barcode_ledger(page_size=1, max_pages=3)
+        await sync_food_item_report_raw_material_ledger(page_size=1, max_pages=3)
 
     steps = await _steps(test_engine)
     assert [(step.sequence, step.status) for step in steps] == [(1, "SUCCEEDED"), (2, "FAILED")]
@@ -412,9 +437,11 @@ async def test_a_job_run_by_hand_records_no_steps(test_engine, monkeypatch) -> N
     _script(monkeypatch, [[_record(1)]])
     current_run_id.set(None)
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    assert await sync_barcode_ledger(page_size=2, max_pages=1) == 1
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=1) == 1
     assert await _steps(test_engine) == []
 
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
@@ -423,7 +450,7 @@ async def test_a_job_run_by_hand_records_no_steps(test_engine, monkeypatch) -> N
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_unreadable(
+async def test_raw_material_ledger_restarts_when_the_overlap_row_is_unreadable(
     test_engine, monkeypatch
 ) -> None:
     """A page whose records are not records cannot confirm the cursor.
@@ -436,18 +463,20 @@ async def test_sync_barcode_ledger_restarts_when_the_overlap_row_is_unreadable(
     """
     _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
-    windows = _script(monkeypatch, [["not a record"], [_record(1)]])
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    windows = _script(monkeypatch, [["not a record"], [], [_record(1)]])
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
-    assert [w["range_start"] for w in windows] == [3, 1]
+    assert [w["range_start"] for w in windows] == [3, 1, 1]
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_reads_a_no_data_refusal_as_the_end(
+async def test_raw_material_ledger_reads_a_no_data_refusal_as_the_end(
     test_engine, monkeypatch
 ) -> None:
     """A feed whose contract rejects the no-data code ends the pass, not the run.
@@ -460,20 +489,22 @@ async def test_sync_barcode_ledger_reads_a_no_data_refusal_as_the_end(
     """
     _refusing_script(monkeypatch, [[_record(1), _record(2)]], "INFO-200")
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
     # A full page, then the refusal: the pass ends without raising.
-    assert await sync_barcode_ledger(page_size=2, max_pages=10) == 2
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 2
 
     factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
     assert checkpoint is not None
-    assert checkpoint.next_range_start == 3
+    assert checkpoint.resume_position == 3
 
 
 @pytest.mark.asyncio
-async def test_sync_barcode_ledger_still_fails_on_a_refusal_that_is_not_the_end(
+async def test_raw_material_ledger_still_fails_on_a_refusal_that_is_not_the_end(
     test_engine, monkeypatch
 ) -> None:
     """Every other refusal is a failure, and the run says so.
@@ -483,16 +514,16 @@ async def test_sync_barcode_ledger_still_fails_on_a_refusal_that_is_not_the_end(
     """
     _refusing_script(monkeypatch, [[_record(1), _record(2)]], "ERROR-336")
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
     with pytest.raises(IntegrationError):
-        await sync_barcode_ledger(page_size=2, max_pages=10)
+        await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
 
 @pytest.mark.asyncio
-async def test_the_end_of_the_feed_is_not_logged_as_a_failed_step(
-    test_engine, monkeypatch
-) -> None:
+async def test_the_end_of_the_feed_is_not_logged_as_a_failed_step(test_engine, monkeypatch) -> None:
     """A run that ended exactly as designed holds no failed step.
 
     A step's status is derived from its error, so writing the end-of-feed step
@@ -503,9 +534,11 @@ async def test_the_end_of_the_feed_is_not_logged_as_a_failed_step(
     await _run_in_context(test_engine)
     _refusing_script(monkeypatch, [[_record(1), _record(2)]], "INFO-200")
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
     steps = await _steps(test_engine)
     assert [(step.sequence, step.status, step.received) for step in steps] == [
@@ -516,9 +549,7 @@ async def test_the_end_of_the_feed_is_not_logged_as_a_failed_step(
 
 
 @pytest.mark.asyncio
-async def test_the_verification_call_is_a_step_like_any_other(
-    test_engine, monkeypatch
-) -> None:
+async def test_the_verification_call_is_a_step_like_any_other(test_engine, monkeypatch) -> None:
     """The call that rejected the cursor is in the log, in sequence.
 
     It is the one event a reader comes to this table for — "why did the walk
@@ -527,16 +558,135 @@ async def test_the_verification_call_is_a_step_like_any_other(
     """
     _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
 
-    from app.batch.sync_barcode_ledger import sync_barcode_ledger
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
 
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
     await _run_in_context(test_engine)
-    _script(monkeypatch, [[_record(9), _record(8)], [_record(7)]])
-    await sync_barcode_ledger(page_size=2, max_pages=10)
+    _script(monkeypatch, [[_record(9), _record(8)], [_record(1), _record(2)], [_record(7)]])
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
 
     steps = await _steps(test_engine)
     assert [(step.sequence, step.range_start, step.written) for step in steps] == [
         (1, 3, 0),
-        (2, 1, 1),
+        (2, 1, 0),
+        (3, 1, 1),
     ]
+
+
+@pytest.mark.asyncio
+async def test_a_feed_that_ends_on_a_full_window_keeps_its_tail(test_engine, monkeypatch) -> None:
+    """A full last window is followed by an empty one, and the cursor stays put.
+
+    1,071,963 % 1000 = 963 today; on the night the set is an exact multiple, the
+    walk learns the end only from the empty window after it. That window must
+    advance nothing and keep the previous key - a cursor moved by the empty
+    window's width would sit past the end, and one reset by it would re-read the
+    set every night.
+    """
+    _script(monkeypatch, [[_record(1), _record(2)], []])
+
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
+
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 2
+
+    factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
+    assert checkpoint is not None
+    assert (checkpoint.resume_position, checkpoint.resume_key) == (3, f"{ITEM_REPORT_NO}2")
+
+
+@pytest.mark.asyncio
+async def test_the_hourly_quota_ends_the_run_and_keeps_the_cursor(test_engine, monkeypatch) -> None:
+    """`INFO-320` is a quota, not the end of the feed and not a failure.
+
+    Measured: 100 unfiltered calls per hour, against a feed of 194. Raised, the
+    initial load would die at window 101 every hour and never finish; read as
+    the end, the cursor would sit at the tail of a half-imported set. The run
+    stops where it is, the checkpoint still names the refused window, and the
+    next run opens it again.
+    """
+    _refusing_script(monkeypatch, [[_record(1)], [_record(2)]], "INFO-320")
+
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
+
+    assert await sync_food_item_report_raw_material_ledger(page_size=1, max_pages=5) == 2
+
+    factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        checkpoint = await BatchCheckpointService(session).find_checkpoint(OPERATION_CODE)
+    assert checkpoint is not None
+    assert (checkpoint.resume_position, checkpoint.resume_key) == (3, f"{ITEM_REPORT_NO}2")
+
+    # Next hour: the refused window answers, and the walk continues from it.
+    windows = _script(monkeypatch, [[_record(2), _record(3)], [_record(4)]])
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=5) == 2
+    assert [w["range_start"] for w in windows] == [2, 4]
+
+
+@pytest.mark.asyncio
+async def test_a_record_inserted_before_the_cursor_moves_the_walk_not_the_whole_feed(
+    test_engine, monkeypatch
+) -> None:
+    """The anchor is still in the overlap window, a few rows down: continue from there.
+
+    Measured on C002 (2026-09-06): three reports inserted somewhere in the
+    first 191k rows moved the anchor from 190999 to 191002, and a restart at
+    row 1 for that re-read 99 windows to write three rows. Against a
+    1,072-window feed at 100 windows an hour, restarting on every small shift
+    is an initial load that never finishes. Found in the window, the walk moves
+    to the anchor's new position and verifies it there - no extra call.
+    """
+    _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
+
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
+
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
+
+    # One record now stands where the anchor stood; the anchor is one row down.
+    windows = _script(
+        monkeypatch, [[_record(9), _record(3)], [_record(3), _record(4)], [_record(5)]]
+    )
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 2
+    assert [w["range_start"] for w in windows] == [3, 4, 6]
+
+
+@pytest.mark.asyncio
+async def test_a_record_removed_before_the_cursor_is_found_one_window_back(
+    test_engine, monkeypatch
+) -> None:
+    """The anchor moved up, out of the overlap window: one probe behind finds it.
+
+    A removal shifts every later row up, so the anchor sits before the window
+    the cursor names. One window back costs one call; a restart costs the
+    whole feed.
+    """
+    _script(monkeypatch, [[_record(1), _record(2)], [_record(3)]])
+
+    from app.batch.sync_food_item_report_raw_material_ledger import (
+        sync_food_item_report_raw_material_ledger,
+    )
+
+    await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10)
+
+    # Record 2 was removed: the anchor (3) now sits at row 2, one before the window.
+    windows = _script(
+        monkeypatch,
+        [
+            [_record(4), _record(5)],
+            [_record(1), _record(3)],
+            [_record(3), _record(4)],
+            [_record(5)],
+        ],
+    )
+    assert await sync_food_item_report_raw_material_ledger(page_size=2, max_pages=10) == 2
+    assert [w["range_start"] for w in windows] == [3, 1, 2, 4]

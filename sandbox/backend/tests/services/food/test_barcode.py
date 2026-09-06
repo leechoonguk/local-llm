@@ -1,4 +1,4 @@
-"""BarcodeService tests — CRUD contracts and the ledger upsert the batch runs."""
+"""FoodBarcodeService tests — CRUD contracts and the ledger upsert the batch runs."""
 
 from datetime import UTC, datetime
 from uuid import uuid4
@@ -6,20 +6,20 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import NotFoundError
-from app.schemas.barcode import (
-    BarcodeCreateRequest,
-    BarcodeUpdateRequest,
+from app.schemas.food.barcode import (
+    FoodBarcodeCreateRequest,
+    FoodBarcodeUpdateRequest,
     to_read,
     to_read_list,
 )
-from app.services.barcode import BarcodeService
+from app.services.food.barcode import FoodBarcodeService
 
 
 BARCODE_NO = "8801234567890"
 
 REPORT_NO = "F2024000123456"
 
-SYNCED_BY = "batch:sync_barcode_ledger"
+SYNCED_BY = "batch:sync_food_barcode_ledger"
 
 
 def _record(**overrides: object) -> dict[str, object]:
@@ -39,55 +39,57 @@ def _record(**overrides: object) -> dict[str, object]:
 
 
 @pytest.mark.asyncio
-async def test_barcode_service_crud(factory) -> None:
+async def test_food_barcode_service_crud(factory) -> None:
     """Each step runs in its own session, as the request lifecycle does.
 
     A read autobegins a transaction, so reusing one session would make the
     next write's `session.begin()` collide instead of exercising the contract.
     """
     async with factory() as session:
-        created = await BarcodeService(session).create_barcode(
-            BarcodeCreateRequest(barcode_no=BARCODE_NO, report_no=REPORT_NO, product_name="김치"),
+        created = await FoodBarcodeService(session).create_barcode(
+            FoodBarcodeCreateRequest(
+                barcode_no=BARCODE_NO, report_no=REPORT_NO, product_name="김치"
+            ),
             created_by="tester",
         )
         row_id = created.id
 
     async with factory() as session:
-        assert (await BarcodeService(session).get_barcode(row_id)).product_name == "김치"
+        assert (await FoodBarcodeService(session).get_barcode(row_id)).product_name == "김치"
 
     async with factory() as session:
-        assert len(await BarcodeService(session).list_barcodes()) == 1
+        assert len(await FoodBarcodeService(session).list_barcodes()) == 1
 
     async with factory() as session:
-        updated = await BarcodeService(session).update_barcode(
-            row_id, BarcodeUpdateRequest(product_name="묵은지"), updated_by="tester"
+        updated = await FoodBarcodeService(session).update_barcode(
+            row_id, FoodBarcodeUpdateRequest(product_name="묵은지"), updated_by="tester"
         )
         assert updated.product_name == "묵은지"
 
     async with factory() as session:
-        await BarcodeService(session).delete_barcode(row_id)
+        await FoodBarcodeService(session).delete_barcode(row_id)
 
     async with factory() as session:
-        assert await BarcodeService(session).list_barcodes() == []
+        assert await FoodBarcodeService(session).list_barcodes() == []
 
 
 @pytest.mark.asyncio
-async def test_barcode_service_missing_row_raises_not_found(factory) -> None:
+async def test_food_barcode_service_missing_row_raises_not_found(factory) -> None:
     """404 is the ledger's answer for an id it does not hold, on all three verbs."""
     missing = uuid4()
     async with factory() as session:
         with pytest.raises(NotFoundError):
-            await BarcodeService(session).get_barcode(missing)
+            await FoodBarcodeService(session).get_barcode(missing)
 
     async with factory() as session:
         with pytest.raises(NotFoundError):
-            await BarcodeService(session).update_barcode(
-                missing, BarcodeUpdateRequest(product_name="x"), updated_by="tester"
+            await FoodBarcodeService(session).update_barcode(
+                missing, FoodBarcodeUpdateRequest(product_name="x"), updated_by="tester"
             )
 
     async with factory() as session:
         with pytest.raises(NotFoundError):
-            await BarcodeService(session).delete_barcode(missing)
+            await FoodBarcodeService(session).delete_barcode(missing)
 
 
 @pytest.mark.asyncio
@@ -99,13 +101,15 @@ async def test_update_barcode_ledger_inserts_then_leaves_unchanged_rows_alone(fa
     — and "this row changed" would stop meaning anything.
     """
     async with factory() as session:
-        assert await BarcodeService(session).update_barcode_ledger([_record()], SYNCED_BY) == (1, 1)
+        service = FoodBarcodeService(session)
+        assert await service.update_barcode_ledger([_record()], SYNCED_BY) == (1, 1)
 
     async with factory() as session:
-        assert await BarcodeService(session).update_barcode_ledger([_record()], SYNCED_BY) == (1, 0)
+        service = FoodBarcodeService(session)
+        assert await service.update_barcode_ledger([_record()], SYNCED_BY) == (1, 0)
 
     async with factory() as session:
-        rows = await BarcodeService(session).list_barcodes()
+        rows = await FoodBarcodeService(session).list_barcodes()
         assert len(rows) == 1
         assert rows[0].version == 1
         assert rows[0].created_by == SYNCED_BY
@@ -115,17 +119,17 @@ async def test_update_barcode_ledger_inserts_then_leaves_unchanged_rows_alone(fa
 async def test_update_barcode_ledger_refreshes_a_changed_record(factory) -> None:
     """A changed column is what the provider's 변경일자 filter promises to deliver."""
     async with factory() as session:
-        await BarcodeService(session).update_barcode_ledger([_record()], SYNCED_BY)
+        await FoodBarcodeService(session).update_barcode_ledger([_record()], SYNCED_BY)
 
     async with factory() as session:
-        received, written = await BarcodeService(session).update_barcode_ledger(
+        received, written = await FoodBarcodeService(session).update_barcode_ledger(
             [_record(product_name="총각김치", last_update_datetime="2024-06-01 12:00:00.0")],
             SYNCED_BY,
         )
         assert (received, written) == (1, 1)
 
     async with factory() as session:
-        rows = await BarcodeService(session).list_barcodes()
+        rows = await FoodBarcodeService(session).list_barcodes()
         assert len(rows) == 1
         assert rows[0].product_name == "총각김치"
         assert rows[0].updated_by == SYNCED_BY
@@ -139,14 +143,14 @@ async def test_update_barcode_ledger_skips_records_without_a_natural_key(factory
     a duplicate on every later run and no query could ever find it.
     """
     async with factory() as session:
-        received, written = await BarcodeService(session).update_barcode_ledger(
+        received, written = await FoodBarcodeService(session).update_barcode_ledger(
             [_record(barcode_no="   "), _record(report_no=None), "not-a-record"],
             SYNCED_BY,
         )
         assert (received, written) == (3, 0)
 
     async with factory() as session:
-        assert await BarcodeService(session).list_barcodes() == []
+        assert await FoodBarcodeService(session).list_barcodes() == []
 
 
 @pytest.mark.asyncio
@@ -157,7 +161,8 @@ async def test_update_barcode_ledger_accepts_a_single_record_payload(factory) ->
     what a bare `for record in payload` would silently do.
     """
     async with factory() as session:
-        assert await BarcodeService(session).update_barcode_ledger(_record(), SYNCED_BY) == (1, 1)
+        service = FoodBarcodeService(session)
+        assert await service.update_barcode_ledger(_record(), SYNCED_BY) == (1, 1)
 
 
 @pytest.mark.asyncio
@@ -168,12 +173,12 @@ async def test_update_barcode_ledger_keeps_a_record_with_an_unreadable_timestamp
     the row is stored and is simply invisible to the high-water mark.
     """
     async with factory() as session:
-        await BarcodeService(session).update_barcode_ledger(
+        await FoodBarcodeService(session).update_barcode_ledger(
             [_record(last_update_datetime="어제")], SYNCED_BY
         )
 
     async with factory() as session:
-        rows = await BarcodeService(session).list_barcodes()
+        rows = await FoodBarcodeService(session).list_barcodes()
         assert len(rows) == 1
         assert rows[0].source_updated_at is None
 
@@ -187,12 +192,12 @@ async def test_update_barcode_ledger_reads_the_portal_date_only_form(factory) ->
     states it.
     """
     async with factory() as session:
-        await BarcodeService(session).update_barcode_ledger(
+        await FoodBarcodeService(session).update_barcode_ledger(
             [_record(last_update_datetime="20240115")], SYNCED_BY
         )
 
     async with factory() as session:
-        rows = await BarcodeService(session).list_barcodes()
+        rows = await FoodBarcodeService(session).list_barcodes()
         stored = rows[0].source_updated_at
         assert stored is not None
         # SQLite hands `DateTime(timezone=True)` back without its offset; the
@@ -204,12 +209,12 @@ async def test_update_barcode_ledger_reads_the_portal_date_only_form(factory) ->
 async def test_update_barcode_ledger_accepts_a_record_without_a_timestamp(factory) -> None:
     """A sparse record still belongs in the ledger; it just carries no timestamp."""
     async with factory() as session:
-        await BarcodeService(session).update_barcode_ledger(
+        await FoodBarcodeService(session).update_barcode_ledger(
             [_record(last_update_datetime="")], SYNCED_BY
         )
 
     async with factory() as session:
-        rows = await BarcodeService(session).list_barcodes()
+        rows = await FoodBarcodeService(session).list_barcodes()
         assert len(rows) == 1
         assert rows[0].source_updated_at is None
 
@@ -222,13 +227,13 @@ async def test_barcode_read_schema_exposes_the_optimistic_lock_version(factory) 
     carries it — the ledger is written by a nightly job and read concurrently.
     """
     async with factory() as session:
-        row = await BarcodeService(session).create_barcode(
-            BarcodeCreateRequest(barcode_no=BARCODE_NO, report_no=REPORT_NO),
+        row = await FoodBarcodeService(session).create_barcode(
+            FoodBarcodeCreateRequest(barcode_no=BARCODE_NO, report_no=REPORT_NO),
             created_by="tester",
         )
 
     async with factory() as session:
-        rows = await BarcodeService(session).list_barcodes()
+        rows = await FoodBarcodeService(session).list_barcodes()
 
     read = to_read(row)
     assert read.barcode_no == BARCODE_NO

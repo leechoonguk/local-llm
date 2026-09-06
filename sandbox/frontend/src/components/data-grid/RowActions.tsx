@@ -62,6 +62,13 @@ export interface RowAction {
    * `error` is not among them, so the destructive action would lose its red.
    */
   tone?: 'primary' | 'error'
+  /**
+   * A verb this row cannot serve right now — run on a job already running, stop
+   * on one that is not. Dead rather than hidden: a row whose buttons appear and
+   * disappear moves the buttons beside them, so the pointer lands on the wrong
+   * verb, and the reader cannot see that the action exists at all.
+   */
+  disabled?: boolean
   onClick: () => void
 }
 
@@ -95,6 +102,7 @@ export function rowActionsColumn<R extends GridValidRowModel>({
             />
           }
           label={action.label}
+          disabled={action.disabled ?? false}
           onClick={action.onClick}
         />
       )),
@@ -116,6 +124,7 @@ export function RowActionButtons({ actions }: { actions: RowAction[] }) {
           <IconButton
             size="small"
             aria-label={action.label}
+            disabled={action.disabled ?? false}
             onClick={action.onClick}
             sx={action.tone === undefined ? undefined : { color: `${action.tone}.main` }}
           >

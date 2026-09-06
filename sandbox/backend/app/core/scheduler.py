@@ -19,9 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.batch.purge_expired_refreshes import purge_expired_refreshes
 from app.batch.purge_old_batch_runs import purge_old_batch_runs
-from app.batch.sync_barcode_ledger import sync_barcode_ledger
+from app.batch.sync_food_barcode_ledger import sync_food_barcode_ledger
+from app.batch.sync_food_item_report_ledger import sync_food_item_report_ledger
+from app.batch.sync_food_item_report_raw_material_ledger import (
+    sync_food_item_report_raw_material_ledger,
+)
+from app.batch.sync_food_nutrition_ledger import sync_food_nutrition_ledger
+from app.batch.sync_food_raw_material_ledger import sync_food_raw_material_ledger
 from app.core.database import engine
 from app.core.exceptions import ConflictError
+from app.schemas.batch.run import BatchRunStatus, BatchTrigger
 from app.services.batch.run import BatchRunService, current_run_id
 
 
@@ -31,6 +38,16 @@ from app.services.batch.run import BatchRunService, current_run_id
 
 type BatchJob = Callable[[], Awaitable[int]]
 
+#: A run in flight and a code the registry does not carry are different answers
+#: to "run this now", and an operator acts differently on each.
+BATCH_ALREADY_RUNNING_CODE = "batch_already_running"
+
+BATCH_JOB_UNREGISTERED_CODE = "batch_job_unregistered"
+
+#: `settings.env == "test"` disables the scheduler, so a run request reaches a
+#: process that would execute nothing.
+SCHEDULER_UNAVAILABLE_CODE = "scheduler_unavailable"
+
 # The only place a job code becomes runnable Python. A `batch` row names a key
 # here, so adding a job is one function plus one row — the lifespan never grows
 # a branch, and a code nothing implements is rejected at the API boundary
@@ -39,7 +56,11 @@ BATCH_JOBS: Mapping[str, BatchJob] = MappingProxyType(
     {
         "purge_expired_refreshes": purge_expired_refreshes,
         "purge_old_batch_runs": purge_old_batch_runs,
-        "sync_barcode_ledger": sync_barcode_ledger,
+        "sync_food_barcode_ledger": sync_food_barcode_ledger,
+        "sync_food_item_report_ledger": sync_food_item_report_ledger,
+        "sync_food_item_report_raw_material_ledger": sync_food_item_report_raw_material_ledger,
+        "sync_food_nutrition_ledger": sync_food_nutrition_ledger,
+        "sync_food_raw_material_ledger": sync_food_raw_material_ledger,
     }
 )
 
@@ -52,9 +73,9 @@ MISFIRE_GRACE_SECONDS = 3600
 MANUAL_RUN_SUFFIX = ":run-now"
 
 # Who fired this execution, in the words the row stores.
-CRON_TRIGGER = "CRON"
+CRON_TRIGGER: BatchTrigger = "CRON"
 
-MANUAL_TRIGGER = "MANUAL"
+MANUAL_TRIGGER: BatchTrigger = "MANUAL"
 
 SCHEDULER_ACTOR = "scheduler"
 
@@ -145,11 +166,14 @@ class BatchScheduler:
         already owns job execution, so `stop` and the run tracking work on it
         exactly as they do on a scheduled run.
         """
-        if self._is_running(batch_id):
-            raise ConflictError("Batch job is already running")
+        if self.is_running(batch_id):
+            raise ConflictError("Batch job is already running", BATCH_ALREADY_RUNNING_CODE)
         job = self._job_for(batch_id, code)
         if job is None:
-            raise ConflictError(f"No batch job is registered for code '{code}'")
+            raise ConflictError(
+                f"No batch job is registered for code '{code}'",
+                BATCH_JOB_UNREGISTERED_CODE,
+            )
         self._scheduler.add_job(
             self._run,
             DateTrigger(),
@@ -185,7 +209,15 @@ class BatchScheduler:
         task.cancel()
         return True
 
-    def _is_running(self, batch_id: UUID) -> bool:
+    def is_running(self, batch_id: UUID) -> bool:
+        """Whether an execution of this schedule is in flight **in this process**.
+
+        Public because the list screen shows it: a run button that is live while
+        the job is already running, beside a stop button that is live while
+        nothing runs, asks the operator to know what the screen would not say.
+        The truth is the task map this scheduler cancels from — a `batch_run`
+        row still marked RUNNING may belong to a process that is gone.
+        """
         return batch_id in self._running
 
     def _job_for(self, batch_id: UUID, code: str) -> BatchJob | None:
@@ -202,7 +234,7 @@ class BatchScheduler:
         batch_id: UUID,
         code: str,
         job: BatchJob,
-        trigger: str = CRON_TRIGGER,
+        trigger: BatchTrigger = CRON_TRIGGER,
         triggered_by: str = SCHEDULER_ACTOR,
     ) -> None:
         """Execute one run and record how it ended.
@@ -247,7 +279,7 @@ class BatchScheduler:
             self._runs.pop(batch_id, None)
 
     async def _open_run(
-        self, batch_id: UUID, code: str, trigger: str, triggered_by: str
+        self, batch_id: UUID, code: str, trigger: BatchTrigger, triggered_by: str
     ) -> UUID | None:
         """Write the run row before the job's first line, or carry on without it.
 
@@ -271,7 +303,7 @@ class BatchScheduler:
     async def _close_run(
         self,
         run_id: UUID | None,
-        status: str,
+        status: BatchRunStatus,
         *,
         result: int | None = None,
         stopped_by: str | None = None,

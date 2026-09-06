@@ -8,12 +8,13 @@
 
 import { api } from '@/lib/api/client'
 import { INTEGRATION_ENDPOINTS } from '@/lib/api/endpoints'
-import type { OffsetLimitParams, OkResponse, Page } from '@/types/api'
+import type { OkResponse, Page } from '@/types/api'
 import type {
   IntegrationExecuteRequest,
   IntegrationExecuteResponse,
   Integration,
   IntegrationCreateRequest,
+  IntegrationListParams,
   IntegrationSecret,
   IntegrationSecretCreateRequest,
   IntegrationSecretUpdateRequest,
@@ -21,7 +22,7 @@ import type {
 } from '@/types/integration'
 
 export const integrationService = {
-  list: (params: OffsetLimitParams) =>
+  list: (params: IntegrationListParams) =>
     api.get<Page<Integration>>(INTEGRATION_ENDPOINTS.LIST, { params }),
 
   detail: (id: string) => api.get<Integration>(INTEGRATION_ENDPOINTS.DETAIL(id)),

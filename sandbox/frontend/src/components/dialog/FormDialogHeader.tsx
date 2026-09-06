@@ -1,10 +1,15 @@
 /**
- * The head of a form dialog, ported from the reference application.
+ * The head of a dialog, ported from the reference application.
  *
- * Tight padding, a primary-tinted icon, a bold `subtitle1` title, the record's
- * identity as a caption under it, a close button, and a dashed divider. The
- * reference application repeats this block in every dialog; here it is one
- * component, so "what a form dialog looks like" is a single definition.
+ * Tight padding, a tinted icon, a bold `subtitle1` title, the record's identity
+ * as a caption under it, a close button, and a dashed divider. The reference
+ * application repeats this block in every dialog; here it is one component, so
+ * "what a dialog looks like" is a single definition.
+ *
+ * `tone` is the icon's colour and nothing else: a confirm dialog that destroys a
+ * row wears the same head as the form that edits it, in the palette's error
+ * colour. A second header component for "the scary one" is how two dialogs of
+ * one app end up with two title sizes.
  *
  * The caption is what tells the user *which* row they are editing — a dialog
  * titled only "Edit user" is the same dialog for every row.
@@ -23,6 +28,8 @@ interface FormDialogHeaderProps {
   title: string
   /** The row being edited, shown under the title. Absent when creating. */
   caption?: string
+  /** `error` for a head above a destructive question; `primary` otherwise. */
+  tone?: 'primary' | 'error'
   onClose: () => void
 }
 
@@ -30,6 +37,7 @@ export default function FormDialogHeader({
   name,
   title,
   caption,
+  tone = 'primary',
   onClose,
 }: FormDialogHeaderProps) {
   return (
@@ -38,7 +46,7 @@ export default function FormDialogHeader({
         <Stack direction="row" alignItems="center" justifyContent="space-between">
           <Stack>
             <Stack direction="row" alignItems="center" spacing={1}>
-              <Iconify name={name} width={ICON_SIZE} sx={{ color: 'primary.main' }} />
+              <Iconify name={name} width={ICON_SIZE} sx={{ color: `${tone}.main` }} />
               <Typography variant="subtitle1" fontWeight="bold">
                 {title}
               </Typography>

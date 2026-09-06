@@ -1,5 +1,8 @@
 """Batch domain tests — CRUD through the HTTP API (standard pattern)."""
 
+from typing import Any, cast
+from uuid import UUID
+
 from fastapi.testclient import TestClient
 
 from app.core.scheduler import BatchScheduler
@@ -74,6 +77,34 @@ def test_list_batches(client: TestClient, auth_headers: dict[str, str]) -> None:
     assert "Alpha" in names
     assert "Beta" in names
     assert body["total"] == 2
+
+
+def test_list_batches_name_filter(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """`?name=` narrows the page and the total together, and rejects an empty value.
+
+    The filter is part of the cache key, so the assertion runs a filtered read
+    after an unfiltered one: a key that ignored it would serve these two rows as
+    the whole collection to the next caller.
+    """
+    for name in ("Nightly sync", "Weekly report"):
+        client.post(
+            "/api/v1/batch/",
+            json={"code": JOB_CODE, "name": name, "cron": CRON},
+            headers=auth_headers,
+        )
+    client.get("/api/v1/batch/", headers=auth_headers)
+
+    response = client.get("/api/v1/batch/", params={"name": "NIGHTLY"}, headers=auth_headers)
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["name"] for item in body["items"]] == ["Nightly sync"]
+    assert body["total"] == 1
+
+    unmatched = client.get("/api/v1/batch/", params={"name": "nothing"}, headers=auth_headers)
+    assert unmatched.json() == {"items": [], "total": 0}
+
+    empty = client.get("/api/v1/batch/", params={"name": ""}, headers=auth_headers)
+    assert empty.status_code == 422
 
 
 def test_get_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -189,7 +220,9 @@ def test_batch_reads_use_cache_and_writes_invalidate(
     detail = client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json()
     assert client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json() == detail
     assert cache.set_keys == [
-        f"batches:v1:{user_id}:list:0:50",
+        # The trailing segment is the name filter, empty on an unfiltered read:
+        # a filtered page and the whole collection must not share a key.
+        f"batches:v1:{user_id}:list:0:50:",
         f"batches:v1:{user_id}:detail:{batch_id}",
     ]
 
@@ -257,6 +290,44 @@ def test_batch_writes_drive_the_running_scheduler(
     client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
     assert scheduler._scheduler.get_jobs() == []
 
+    app.state.scheduler = None
+
+
+def test_list_reports_the_live_run_state(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """`running` is the scheduler's answer at read time, never the cached row's.
+
+    The list is cached for a minute and a run lasts seconds, so the flag is
+    stamped after the cache is read: the assertion reads the collection once to
+    fill the cache, marks the schedule as in flight, and reads again. A `running`
+    that travelled with the cached body would still say false here — and the stop
+    button beside it would cancel nothing.
+    """
+    from app.main import app
+
+    scheduler = BatchScheduler()
+    app.state.scheduler = scheduler
+
+    created = client.post(
+        "/api/v1/batch/",
+        json={"code": JOB_CODE, "name": "Watched", "cron": CRON},
+        headers=auth_headers,
+    ).json()
+    batch_id = created["id"]
+    assert created["running"] is False
+
+    first = client.get("/api/v1/batch/", headers=auth_headers).json()
+    assert [row["running"] for row in first["items"] if row["id"] == batch_id] == [False]
+
+    # What `run_now` produces: the task map the scheduler cancels from.
+    scheduler._running[UUID(batch_id)] = cast(Any, object())
+    cached = client.get("/api/v1/batch/", headers=auth_headers).json()
+    assert [row["running"] for row in cached["items"] if row["id"] == batch_id] == [True]
+    assert client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json()["running"] is True
+
+    scheduler._running.clear()
+    assert client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json()["running"] is False
+
+    client.delete(f"/api/v1/batch/{batch_id}", headers=auth_headers)
     app.state.scheduler = None
 
 

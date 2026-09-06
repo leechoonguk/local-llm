@@ -42,6 +42,10 @@ class IntegrationOperationCreateRequest(BaseModel):
     retry_max_ms: int = Field(gt=0)
     idempotent: bool
     request_schema: JsonObject | None = None
+    # Envelope values that mean "not this key right now", each with the seconds
+    # the key sits out: the client tries the next member of the key's rotation
+    # group before it raises. Empty for a provider without per-key state.
+    quota_codes: dict[str, int] = Field(default_factory=dict, max_length=16)
     enabled: bool = True
     fields: list[IntegrationFieldCreateRequest] = Field(default_factory=list)
 
@@ -63,6 +67,7 @@ class IntegrationOperationReadResponse(BaseModel):
     retry_max_ms: int
     idempotent: bool
     request_schema: JsonObject | None = None
+    quota_codes: dict[str, int]
     enabled: bool
     created_by: str | None = None
     updated_by: str | None = None

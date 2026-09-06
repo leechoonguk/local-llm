@@ -8,12 +8,17 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QUERY_STALE_TIME } from '@/lib/api/queryDefaults'
-import { batchKeys } from '@/lib/api/queryKeys'
+import { batchKeys, batchRunKeys, batchStepKeys } from '@/lib/api/queryKeys'
 import { batchService } from '@/lib/api/services/batch.service'
 import type { OffsetLimitParams } from '@/types/api'
-import type { BatchCreateRequest, BatchRunRequest, BatchUpdateRequest } from '@/types/batch'
+import type {
+  BatchCreateRequest,
+  BatchListParams,
+  BatchRunRequest,
+  BatchUpdateRequest,
+} from '@/types/batch'
 
-export function useBatchList(params: OffsetLimitParams) {
+export function useBatchList(params: BatchListParams) {
   return useQuery({
     queryKey: batchKeys.list(params),
     queryFn: () => batchService.list(params),
@@ -35,12 +40,14 @@ export function useBatch(id: string | null) {
  * One schedule's executions, newest first.
  *
  * REALTIME rather than STANDARD: the rows are written by the scheduler outside
- * HTTP, so no mutation here can invalidate them — a stale answer would show
- * last night's failure as still running with no way to refresh it.
+ * HTTP, so nothing this client does can produce one — a stale answer would show
+ * last night's failure as still running with no way to refresh it. The key is
+ * `batchRunKeys`, a scope of its own, because `batchKeys.list({scope:'runs'})`
+ * sat under the prefix a schedule's mutations invalidate (see `queryKeys.ts`).
  */
 export function useBatchRunList(batchId: string | null, params: OffsetLimitParams) {
   return useQuery({
-    queryKey: batchKeys.list({ scope: 'runs', batchId, ...params }),
+    queryKey: batchRunKeys.list({ batchId, ...params }),
     queryFn: () => batchService.runs(batchId ?? '', params),
     staleTime: QUERY_STALE_TIME.REALTIME,
     placeholderData: (previous) => previous,
@@ -55,7 +62,7 @@ export function useBatchRunStepList(
   params: OffsetLimitParams,
 ) {
   return useQuery({
-    queryKey: batchKeys.list({ scope: 'steps', batchId, runId, ...params }),
+    queryKey: batchStepKeys.list({ batchId, runId, ...params }),
     queryFn: () => batchService.runSteps(batchId ?? '', runId ?? '', params),
     staleTime: QUERY_STALE_TIME.REALTIME,
     placeholderData: (previous) => previous,

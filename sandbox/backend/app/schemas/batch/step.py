@@ -3,6 +3,7 @@
 # ============================================================
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -30,6 +31,11 @@ FAILED = "FAILED"
 # ============================================================
 
 
+#: `ck_batch_step_status` — narrower than a run's, because a step row is written
+#: after the unit ends and so is never RUNNING.
+BatchStepStatus = Literal["SUCCEEDED", "FAILED"]
+
+
 class BatchStepBase(BaseModel):
     """One finished unit of a run.
 
@@ -42,7 +48,7 @@ class BatchStepBase(BaseModel):
 
     run_id: UUID
     sequence: int = Field(ge=FIRST_SEQUENCE)
-    status: str = Field(max_length=16)
+    status: BatchStepStatus
     range_start: int | None = Field(default=None, ge=FIRST_SEQUENCE)
     range_end: int | None = None
     received: int | None = Field(default=None, ge=0)
@@ -82,7 +88,7 @@ class BatchStepUpdateRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    status: str | None = Field(default=None, max_length=16)
+    status: BatchStepStatus | None = None
     received: int | None = Field(default=None, ge=0)
     written: int | None = Field(default=None, ge=0)
     integration_call_id: UUID | None = None

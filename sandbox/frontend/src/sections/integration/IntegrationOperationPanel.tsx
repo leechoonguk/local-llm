@@ -40,6 +40,16 @@ const METHODS: HttpMethod[] = ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH',
 
 const RESPONSE_FORMATS: ResponseFormat[] = ['JSON', 'XML']
 
+/** `gt=0` on the server: a zero timeout is refused, and 0 is what an emptied input gives. */
+const MIN_TIMEOUT_MS = 1
+
+/** `max_length` on `IntegrationOperationCreateRequest`. */
+const CODE_MAX_LENGTH = 64
+
+const PATH_TEMPLATE_MAX_LENGTH = 2048
+
+const RESPONSE_ROOT_MAX_LENGTH = 512
+
 /** The server rejects a code that is not lowercase letters, digits and hyphens. */
 const CODE_PATTERN = /^[a-z0-9-]+$/
 
@@ -59,6 +69,10 @@ const DEFAULTS = {
 const PATH_EXAMPLE = '/1471000/{service}/json/{start}/{end}'
 
 const RESPONSE_ROOT_EXAMPLE = '/body/items'
+
+// Sixteen `CODE=seconds` pairs of up to twenty-four characters, comma-separated.
+const QUOTA_CODES_MAX_LENGTH = 16 * 25
+const QUOTA_CODES_EXAMPLE = 'INFO-320=3600, INFO-500=60'
 
 interface IntegrationOperationPanelProps {
   provider: Integration
@@ -192,6 +206,7 @@ export default function IntegrationOperationPanel({
         <ScalarField
           label={t('operation.code')}
           value={form.code}
+          maxLength={CODE_MAX_LENGTH}
           readOnly={readOnly}
           // Immutable, and still a value the reader needs: `readOnly`, never
           // `disabled`. A disabled control is exempt from WCAG's contrast rules and
@@ -221,6 +236,7 @@ export default function IntegrationOperationPanel({
             label={t('operation.path_template')}
             value={form.path_template}
             readOnly={readOnly}
+            maxLength={PATH_TEMPLATE_MAX_LENGTH}
             placeholder={PATH_EXAMPLE}
             onChange={(value) => setForm({ ...form, path_template: value })}
           />
@@ -238,22 +254,42 @@ export default function IntegrationOperationPanel({
             label={t('operation.response_root')}
             value={form.response_root}
             readOnly={readOnly}
+            maxLength={RESPONSE_ROOT_MAX_LENGTH}
             placeholder={RESPONSE_ROOT_EXAMPLE}
             onChange={(value) => setForm({ ...form, response_root: value })}
           />
         </Stack>
+
+        {/*
+         * The envelope values that mean "not this key right now" rather than
+         * "this answer is wrong", each with the seconds the key sits out: the
+         * client sends the next member of the key's rotation group on one of
+         * these. Typed as one line - a portal has one or two, and a table
+         * editor for two codes is a second surface.
+         */}
+        <ScalarField
+          label={t('operation.quota_codes')}
+          value={form.quota_codes}
+          readOnly={readOnly}
+          maxLength={QUOTA_CODES_MAX_LENGTH}
+          placeholder={QUOTA_CODES_EXAMPLE}
+          helperText={readOnly ? undefined : t('operation.quota_codes_hint')}
+          onChange={(value) => setForm({ ...form, quota_codes: value })}
+        />
 
         <Stack direction="row" spacing={2}>
           <NumberField
             label={t('operation.connect_timeout')}
             value={form.connect_timeout_ms}
             readOnly={readOnly}
+            min={MIN_TIMEOUT_MS}
             onChange={(value) => setForm({ ...form, connect_timeout_ms: value })}
           />
           <NumberField
             label={t('operation.read_timeout')}
             value={form.read_timeout_ms}
             readOnly={readOnly}
+            min={MIN_TIMEOUT_MS}
             onChange={(value) => setForm({ ...form, read_timeout_ms: value })}
           />
           <NumberField
@@ -341,6 +377,7 @@ function initialForm(operation: IntegrationOperation | null) {
     retry_base_ms: operation?.retry_base_ms ?? DEFAULTS.retry_base_ms,
     retry_max_ms: operation?.retry_max_ms ?? DEFAULTS.retry_max_ms,
     idempotent: operation?.idempotent ?? true,
+    quota_codes: joinCodes(operation?.quota_codes ?? {}),
     enabled: operation?.enabled ?? true,
   }
 }
@@ -390,6 +427,7 @@ function nextOperations(
     retry_max_ms: form.retry_max_ms,
     idempotent: form.idempotent,
     request_schema: editing?.request_schema ?? null,
+    quota_codes: splitCodes(form.quota_codes),
     enabled: form.enabled,
     // Ordinal is row order: the arrows in the editor move it, and the server reads
     // it to build the path's segments and the query string.
@@ -401,6 +439,23 @@ function nextOperations(
     .map(toOperationRequest)
 
   return [...others, edited]
+}
+
+/** One line of `CODE=seconds` pairs to the object the server stores. */
+function splitCodes(line: string): Record<string, number> {
+  const codes: Record<string, number> = {}
+  for (const pair of line.split(',')) {
+    const [code, seconds] = pair.split('=').map((part) => part.trim())
+    const parsed = Number(seconds)
+    if (code !== '' && Number.isInteger(parsed) && parsed > 0) codes[code] = parsed
+  }
+  return codes
+}
+
+function joinCodes(codes: Record<string, number>): string {
+  return Object.entries(codes)
+    .map(([code, seconds]) => `${code}=${seconds}`)
+    .join(', ')
 }
 
 export function toOperationRequest(
@@ -420,6 +475,9 @@ export function toOperationRequest(
     retry_max_ms: operation.retry_max_ms,
     idempotent: operation.idempotent,
     request_schema: operation.request_schema,
+    // Every sibling travels with the edited one, so a field left out here is a
+    // field the save silently resets - the seed's quota code included.
+    quota_codes: operation.quota_codes,
     enabled: operation.enabled,
     fields: operation.fields.map(toFieldRequest),
   }
