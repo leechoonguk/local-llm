@@ -99,6 +99,28 @@ export function checkFrontendTypesSync(): string[] {
   return issues;
 }
 
+/**
+ * Type aliases the schema module imports from elsewhere in `app`.
+ *
+ * The schema is the contract's shape; a closed vocabulary is often declared with
+ * the constraint it mirrors (`app/core/integration.py`) and imported. Following
+ * the import is what keeps "the union on both sides is the same union" checkable
+ * without copying the literals into the schema.
+ */
+function importedAliases(source: string): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const hit of source.matchAll(/^from app\.((?:\w+\.)*\w+) import (\([^)]*\)|[^\n]+)$/gm)) {
+    const modulePath = join(projectRoot, "backend", "app", ...hit[1].split("."));
+    if (!existsSync(`${modulePath}.py`)) continue; // existence-ok: a package import, not a module
+    const declared = parseAliases(readFileSync(`${modulePath}.py`, "utf-8"), "py");
+    for (const name of hit[2].replace(/[()]/g, "").split(",").map((part: string) => part.trim())) {
+      const alias = declared.get(name);
+      if (alias !== undefined) found.set(name, alias);
+    }
+  }
+  return found;
+}
+
 /** Every request and response model of one domain, field by field, type by type. */
 function checkDomainTypes(domain: string, sharedTs: string): string[] {
   const issues: string[] = [];
@@ -112,6 +134,13 @@ function checkDomainTypes(domain: string, sharedTs: string): string[] {
   const pyTypes = parsePydanticTypes(backendSource);
   const tsTypes = parseTsTypes(combined);
   const pyAliases = parseAliases(backendSource, "py");
+  // A vocabulary declared once and imported: `CallMethod`/`CallOutcome` live in
+  // `app/core/integration.py` beside the CHECK constraints they mirror, and
+  // reading only the schema module reported them as unreadable annotations while
+  // the union on both sides agreed exactly.
+  for (const [name, alias] of importedAliases(backendSource)) {
+    if (!pyAliases.has(name)) pyAliases.set(name, alias);
+  }
   const tsAliases = parseAliases(combined, "ts");
   const label = `frontend/src/types/${domain}.ts`;
 

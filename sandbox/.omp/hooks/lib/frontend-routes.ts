@@ -55,6 +55,16 @@ const ENDPOINT_ENTRY = /^ {2}(\w+):\s*(?:\([^)]*\)\s*=>\s*)?[`'"]([^`'"]+)[`'"]/
 const SERVICE_CALL =
   /api\.(get|post|put|patch|delete)<[^<>]*(?:<[^<>]*>)?[^<>]*>\(\s*(\w+_ENDPOINTS\.\w+)/g;
 
+/**
+ * `api.stream(FOOD_ENDPOINTS.CHAT, …)` - the one verb with no response
+ * generic, because a server-sent stream's events are not one model: the
+ * endpoint answers many `token` frames and one `end`. It is always a POST
+ * (the question is a body, and the browser's own `EventSource` cannot carry a
+ * bearer token), so the signature it covers is spelled here rather than read
+ * off the call.
+ */
+const STREAM_CALL = /api\.stream\(\s*(\w+_ENDPOINTS\.\w+)/g;
+
 /** `-> IntegrationReadResponse:` at the end of a handler signature. */
 const RETURN_ANNOTATION = /->\s*([^:]+):\s*$/m;
 
@@ -141,6 +151,15 @@ export function collectServiceCalls(
   for (const file of listTypeScript(servicesDirectory)) {
     const source = readFileSync(join(servicesDirectory, file), "utf-8");
     const service = `${file.replace(".service.ts", "")}Service`;
+    STREAM_CALL.lastIndex = 0;
+    for (const match of source.matchAll(STREAM_CALL)) {
+      usedKeys.add(match[1]);
+      const path = constants.get(match[1]);
+      if (path === undefined) continue;
+      const symbol = `${service}.${functionAt(source, match.index ?? 0)}`;
+      if (reachable !== undefined && !reachable.has(symbol)) continue;
+      calls.set(`POST ${path}`, `frontend/src/lib/api/services/${file}`);
+    }
     SERVICE_CALL.lastIndex = 0;
     for (const match of source.matchAll(SERVICE_CALL)) {
       usedKeys.add(match[2]);

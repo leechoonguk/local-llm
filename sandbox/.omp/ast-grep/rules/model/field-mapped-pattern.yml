@@ -9,10 +9,15 @@ language: python
 # `models/integration.py` because it was the one file with relationships. Splitting
 # that aggregate into one file per table made the workaround visible: the rule was
 # too narrow, not the file special.
+#
+# The third form is the second as `ruff format` writes it when the name and the
+# annotation leave no room for `relationship(` on the line: the value wrapped in
+# parentheses. Same construct, one more node.
 rule:
   pattern: "$NAME: $TYPE = $VALUE"
   not:
     any:
       - pattern: "$NAME: Mapped[$FTYPE] = mapped_column($$$ARGS)"
       - pattern: "$NAME: Mapped[$FTYPE] = relationship($$$ARGS)"
+      - pattern: "$NAME: Mapped[$FTYPE] = (relationship($$$ARGS))"
 message: "model fields must use Mapped[X] = mapped_column(...) or Mapped[X] = relationship(...)"

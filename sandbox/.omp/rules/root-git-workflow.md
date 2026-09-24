@@ -24,7 +24,7 @@ alwaysApply: false
   status, report the harness issue; do not change project code to satisfy it.
 - 커밋·푸시는 사용자 소관이다 — `strict-no-vcs-publish.ts` 가 이 트리에서 둘 다 막는다. 이 트리에는 자체
   `.git` 이 없어 커밋은 바깥 저장소를 건드리고, 게이트는 커밋 직전이 아니라 **작업을 마치기 전에** 돌린다
-  (`make verify`). 커밋 직전에 게이트를 다시 돌리던 가드는 2026-08-30 에 제거했다 — 발화 이력이 없었고,
+  (`make verify`). 커밋 직전에 게이트를 다시 돌리던 가드는 제거했다 — 발화 이력이 없었고,
   같은 명령을 이미 다른 가드가 막고 있었다.
 - **The commit must be the verified tree.** `make verify` reads the worktree, so
   a commit with unstaged changes or untracked files publishes a tree that was

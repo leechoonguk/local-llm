@@ -56,7 +56,8 @@ const SCALARS: Record<string, string> = {
   time: "string",
   int: "number",
   float: "number",
-  Decimal: "number",
+  // Pydantic v2 serialises Decimal as a JSON string, so the client receives "250.000000".
+  Decimal: "string",
   bool: "boolean",
   object: "unknown",
 };

@@ -26,31 +26,42 @@ declared there, and every declared key is used. Values in **this** pair may
 differ — the example points at localhost while a developer's `api/.env` points
 at whatever serves them — because per-target is the whole purpose of the file.
 
-### Source Precedence: the File Wins
+### Source Precedence: the Environment Wins
 
-`pydantic-settings` defaults to the process environment outranking the dotenv
-file. That default cost this project twice — `alembic check` compared nothing and
-reported dormant, and a server answered 500 on `/health` — both times because a
-shell carried docker-compose's values and every local run silently pointed at
-hosts that resolve only inside compose.
+`pydantic-settings`' own order stands: **an environment variable outranks the
+dotenv file**, and `Settings` declares no `settings_customise_sources`. That is
+the deployment contract - compose injects every value into the container
+(`env_file`), the image carries no `.env` (`backend/.dockerignore`), and the
+file is the fallback for a process a developer starts by hand.
 
-`Settings.settings_customise_sources` therefore returns
-`(init, dotenv, env, secrets)`: **`backend/.env` outranks an exported variable**.
-The fix lives in the schema (1), not in the callers, so it holds for every entry
-point — `make` targets, a bare `uvicorn`, pytest in an editor, CI, or a
-process manager. Earlier revisions stripped the 16 owned keys with `env -u` in
-`backend/Makefile` and kept a hook to diff that list against `settings.py`; both
-were the same contract written a fourth and fifth time, and both are gone.
+It was reversed once, so that a shell which had exported compose's values could
+not point a local run at hosts only compose resolves. Two things changed the
+verdict. That run dies **loudly** ("nodename nor servname provided"), which is
+the right outcome for a polluted shell and now has a companion in the Makefile
+(`docker compose -p …` outranks the same shell). And the reversal made the
+test suite read a developer's `backend/.env` over the environment the suite
+declares for itself (`[tool.pytest.ini_options] env`): two auth tests passed
+locally on `COOKIE_SECURE=false` from the file and failed on a clean clone,
+and nothing said why. With the environment on top, the suite constructs the
+same `Settings` in a developer's shell, in a bare clone, and in CI - measured,
+the three runs agree.
 
-The container is unaffected: `backend/Dockerfile` copies `pyproject.toml`,
-`uv.lock`, `app`, `alembic`, `alembic.ini` and `scripts` — **no `.env`** — so the
-dotenv source is empty there and docker-compose's environment remains the only
-input. Defended by `backend/tests/core/test_settings.py`, not by a hook: it is a
+Defended by `backend/tests/core/test_settings.py`, not by a hook: it is a
 behaviour of the code, so a test is the honest place for it.
 
-**Consequence to know:** a per-process override (`ENV=… uvicorn …`) no longer
-wins over `backend/.env` for a key the file declares. Change the file, or remove
-the key from it.
+**The test suite declares its own environment.** `app.main` constructs
+`Settings()` when the conftest imports it, before any fixture runs, so the
+twelve required fields are declared under `[tool.pytest.ini_options] env`
+(pytest-env) and **forced**, not defaulted: a value the shell happens to export
+must not change what the suite constructs, which is the same leak
+`isolate_settings_environment` closes per test. A test that starts a
+subprocess is handed that environment back by the fixture that hid it.
+
+**The QA key is real.** `.env.qa` publishes on every interface and lists a
+public address in `ALLOWED_HOSTS`, so `check-environment` refuses a
+`SECRET_KEY` there that equals the template's, says `change-me`, or is under
+32 bytes: a token signed with the one key every clone can read is a forged
+session.
 
 ### docker-compose: the Backend Maps the File
 

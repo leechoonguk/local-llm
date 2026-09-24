@@ -63,12 +63,13 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
 
 { // H: finishing after mutations with no verification observed -> finish-check fires
-  // 기대 변경(2026-08-28): 한 파일 변경은 풀 게이트가 아니라 타깃 검증을 요구한다. 프롬프트 단위 실측에서
-  // 한 줄 docstring 프롬프트가 풀 게이트 3회(321초 중 ~171초)를 먹었다 — 요구를 변경 규모에 비례시켰다.
+  // 계약 변경(2026-09-24, fas 수렴): 비례 규칙(≤2파일이면 타깃 검증으로 마감, 2026-08-28)은 철회됐다.
+  // post 훅 자동 실행을 .omp/config.yml disabledExtensions 로 끈 뒤(실측 변이 호출당 3.8초·세션당 ~570초)
+  // 타깃 검증만으로 끝내면 하네스 검사 52개가 그 세션에서 한 번도 돌지 않는다 — 마감은 변경 규모와 무관하게 루트 게이트 하나다.
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx); // prose-only turn = finishing signal
-  check("H: 1 file + no gate ever + prose finish -> targeted FINISH-BLOCK", sent.length === 1 && /test-fast/.test(sent[0] ?? ""));
+  check("H: 1 file + no gate ever + prose finish -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // H2: 규모가 커지면 예전 그대로 풀 게이트를 요구한다 (벤치 셀은 13~15 파일이라 항상 이 경로)
@@ -78,12 +79,12 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   check("H2: 3 files + gate older than the change -> full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
-{ // H3: 작은 변경을 타깃 검증으로 덮었으면 마감은 조용하다
+{ // H3: 타깃 검증(make -C backend verify)은 루트 게이트가 아니다 — 작은 변경도 막는다(2026-09-24 계약)
   const { handlers, sent } = makePi();
   now += 30_000; editOk(handlers);
   now += 5_000; bash(handlers, "make -C backend verify", "3 passed");
   handlers.turn_end({}, ctx);
-  check("H3: 1 file + fast gate after the edit -> finish is SILENT", sent.length === 0);
+  check("H3: 1 file + backend-only gate after the edit -> still full-gate FINISH-BLOCK", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // H4: 타깃 검증이 편집보다 먼저면 덮은 게 아니다 — 다시 막는다
@@ -91,7 +92,7 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
   bash(handlers, "make -C backend verify", "3 passed");
   now += 30_000; editOk(handlers);
   handlers.turn_end({}, ctx);
-  check("H4: fast gate BEFORE the edit -> still blocked", sent.length === 1 && /test-fast/.test(sent[0] ?? ""));
+  check("H4: backend-only gate BEFORE the edit -> still blocked", sent.length === 1 && /has not run since your last change/.test(sent[0] ?? ""));
 }
 
 { // H5: 서 있는 check-* 경고가 있으면 작은 변경이라도 풀 게이트다
@@ -318,8 +319,8 @@ const check = (name, cond) => { console.log(`${cond ? "PASS" : "FAIL"}  ${name}`
 
   now += 30_000; editOk(p2.handlers, "b.py");              // 새 변경
   p2.handlers.turn_end({}, ctx);
-  check("X4: a change after the carried gate -> blocked again",
-    p2.sent.length === 1 && /test-fast/.test(p2.sent[0] ?? ""));
+  check("X4: a change after the carried gate -> blocked again (full gate)",
+    p2.sent.length === 1 && /has not run since your last change/.test(p2.sent[0] ?? ""));
 }
 
 

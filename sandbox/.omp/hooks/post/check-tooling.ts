@@ -196,7 +196,10 @@ function checkDatabaseAccess(): string[] {
   // it, and a policy that flags its own prose is a policy nobody keeps.
   const ARGV_PSQL = /,\s*"psql",/g;
   const SANCTIONED_ARGV = /"compose",\s*"exec",\s*"-T",\s*"postgres",\s*"psql",/;
-  const SANCTIONED_SHELL = /(?:docker\s+compose|\$\(DC\))\s+exec\s+-T\s+postgres\s+psql\b/;
+  // `$(DC…)` covers every stack's compose variable - `$(DC)` for development,
+  // `$(DC_QA)` for the QA project. They are the same spawn form with a different
+  // project name; what the rule refuses is a host `psql` or a bare `docker exec`.
+  const SANCTIONED_SHELL = /(?:docker\s+compose|\$\(DC[A-Z_]*\))\s+exec\s+-T\s+postgres\s+psql\b/;
   const DRIVER_IMPORT = /(?:from|require\()\s*["'](?:asyncpg|psycopg[\w.]*|pg)["']/;
   const spawners: string[] = [];
   for (const path of walk(projectRoot)) {
@@ -236,7 +239,9 @@ function checkDatabaseAccess(): string[] {
       if (!SANCTIONED_SHELL.test(target)) {
         issues.push(`Makefile: target '${name}' runs psql outside \`docker compose exec -T postgres psql\``);
       }
-      if (!/\bmigrate\b/.test(target)) {
+      // Either spelling of "bring it to head first": the development target calls
+      // `make -C backend migrate`, the QA one runs alembic inside its container.
+      if (!/\bmigrate\b/.test(target) && !/alembic\s+upgrade\s+head/.test(target)) {
         issues.push(
           `Makefile: target '${name}' queries the database without applying migrations first — ` +
             "an answer read from a database behind head is drift that is only a missing migrate",

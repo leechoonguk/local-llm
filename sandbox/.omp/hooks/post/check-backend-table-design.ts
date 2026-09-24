@@ -190,6 +190,39 @@ function checkModel(file: string, name: string, bases: string, body: string): st
   }
 
   issues.push(...checkColumns(where, name, body));
+  if (tableMatch !== null) {
+    issues.push(...checkConstraintNames(where, tableMatch[1], body));
+  }
+  return issues;
+}
+
+/** The kinds a name declares, and the identifier ceiling PostgreSQL enforces silently. */
+const NAMED_CONSTRAINT = /\bname="((ix|uq|ck|fk)_[a-z0-9_]+)"/g;
+const IDENTIFIER_LIMIT = 63;
+
+/**
+ * A constraint name carries its kind and its table, or says why it cannot.
+ *
+ * `uq_food_common_standard_natural_key` on `food_ledger_common_standard` is a
+ * name that points at a table that no longer exists - measured after the ledger
+ * rename, where `alembic check` stayed green because it compares indexes by name
+ * and constraints not at all. The one licence to deviate is PostgreSQL's 63-byte
+ * identifier limit, which truncates rather than refuses: a shorter name is
+ * allowed only where the full one would exceed it.
+ */
+function checkConstraintNames(where: string, table: string, body: string): string[] {
+  const issues: string[] = [];
+  for (const match of body.matchAll(NAMED_CONSTRAINT)) {
+    const [, constraint, kind] = match;
+    if (constraint.startsWith(`${kind}_${table}_`)) continue;
+    const shortest = `${kind}_${table}_x`;
+    if (shortest.length > IDENTIFIER_LIMIT && constraint.length <= IDENTIFIER_LIMIT) continue;
+    issues.push(
+      `${where}: constraint "${constraint}" does not name its table — ` +
+        `it must start with "${kind}_${table}_", so a reader of the schema is told ` +
+        "which table it belongs to (a shorter name is only for one that would pass 63 characters)",
+    );
+  }
   return issues;
 }
 

@@ -3,7 +3,7 @@
  *
  * Validates duplicate-blocks.md: 편집 직후, 방금 쓴 파일에 같은 줄 묶음이 두 벌이면
  * 즉시 알린다 — 게이트까지 기다리면 도메인 검사의 2차 증상(순번 어긋남 등)이 먼저 보여
- * 원인을 가린다(2026-09-01 재번호 루프 실측).
+ * 원인을 가린다(재번호 루프 실측).
  *
  * This is a read-only check — it does NOT block tool calls.
  */

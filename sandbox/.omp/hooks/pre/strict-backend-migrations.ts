@@ -41,7 +41,7 @@ export default function strictBackendMigrations(pi: ExtensionAPI): void {
       };
     }
 
-    // 경로 판독은 lib/hook-tool-paths.ts 한 곳이다(2026-08-31 fas 와 통합) — write 의 내용 태그
+    // 경로 판독은 lib/hook-tool-paths.ts 한 곳이다(fas 와 통합) — write 의 내용 태그
     // 스트립, edit 패치의 `[path#TAG]` 섹션 헤더 전부, MV 이동 대상까지. 이 가드가 자체 파서를
     // 갖고 있던 동안 fas 쪽에서는 edit 우회가 실측됐고(푸시 리비전 edit 재작성 무차단), 여기서는
     // 단일 경로만 읽어 다중 파일 패치의 둘째 파일부터 못 봤다. 빈 결과 = fail-open(훅은 안 던진다).

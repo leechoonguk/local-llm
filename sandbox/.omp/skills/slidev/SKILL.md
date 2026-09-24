@@ -1,6 +1,7 @@
 ---
 name: slidev
 description: Create and present web-based slidedecks for developers using Slidev with Markdown, Vue components, code highlighting, animations, and interactive features. Use when building technical presentations, conference talks, code walkthroughs, teaching materials, or developer decks.
+enforced-by: []
 ---
 
 # Slidev - Presentation Slides for Developers
@@ -11,6 +12,10 @@ Web-based slides maker built on Vite, Vue, and Markdown.
 > dev server가 실행되지 않는다 — [reveal-guide](references/reveal-guide.md)를
 > 먼저 읽고 reveal.js 파이프라인(`decks/Makefile`)을 사용하라. 아래 Slidev 문법
 > (마크다운/레이아웃/코드 하이라이트)은 reveal.js에서도 거의 동일하게 동작한다.
+
+This is a procedure skill: it owns no check of its own. A deck that lands
+under `decks/` answers to rule://decks-sync (`check-decks-sync` in
+`make verify`).
 
 ## When to Use
 

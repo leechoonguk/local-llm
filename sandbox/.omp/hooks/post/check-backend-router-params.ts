@@ -136,7 +136,79 @@ export function checkBackendRouterParamsSync(): string[] {
 
   issues.push(...checkQueryAliases(readLimitCap()));
   issues.push(...checkFiltersAreApplied());
+  issues.push(...checkExactFiltersHaveFacets());
   return issues;
+}
+
+/**
+ * A closed-vocabulary filter owes the list its values.
+ *
+ * `ExactFilterQuery` matches whole, so a caller has to have picked the value
+ * from the column's own list - that list is the endpoint's sibling `facets`
+ * route (rule://frontend-screens, Select filters). Without it the screen has
+ * a select with one entry, "all": measured on the raw material list, a select
+ * whose options came from nothing passed every gate and could filter nothing.
+ *
+ * Read per router: for each collection endpoint's `ExactFilterQuery`
+ * parameters, a `GET <same prefix>/facets` must exist and its response model
+ * must declare a field of that parameter's name.
+ */
+function checkExactFiltersHaveFacets(): string[] {
+  const issues: string[] = [];
+  if (!existsSync(routerDir)) return issues;
+  for (const file of readdirSync(routerDir).sort()) {
+    if (!file.endsWith(".py") || file === "__init__.py") continue;
+    const source = readFileSync(join(routerDir, file), "utf-8");
+    const endpoints = parseEndpoints(source);
+    for (const endpoint of endpoints) {
+      const exact = endpoint.parameters.filter((p) => p.annotation === "ExactFilterQuery");
+      if (exact.length === 0) continue;
+      const prefix = endpoint.path.replace(/\/$/, "");
+      const facets = endpoints.find((e) => e.path.replace(/\/$/, "") === `${prefix}/facets`);
+      if (facets === undefined) {
+        issues.push(
+          `${file}:${endpoint.name}: declares ExactFilterQuery (${exact.map((p) => p.name).join(", ")}) ` +
+            `but no GET ${prefix}/facets - a whole-value match is a value picked from the column's ` +
+            "own list, and without that list the screen's select offers only \"all\"",
+        );
+        continue;
+      }
+      const model = facets.returns.trim();
+      const schema = findSchema(model);
+      for (const parameter of exact) {
+        if (schema === null || new RegExp(`^\\s+${parameter.name}\\s*:`, "m").test(schema)) continue;
+        issues.push(
+          `${file}:${facets.name}: ${model} answers no ${parameter.name} - every ExactFilterQuery ` +
+            "column's own values are what the facets route is for",
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+/** A response model's class body, wherever under app/schemas/ it is declared. */
+function findSchema(model: string): string | null {
+  const schemasDir = join(projectRoot, "backend", "app", "schemas");
+  if (!existsSync(schemasDir)) return null;
+  const walk = (dir: string): string | null => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "__pycache__") continue;
+        const found = walk(path);
+        if (found !== null) return found;
+        continue;
+      }
+      if (!entry.name.endsWith(".py")) continue;
+      const content = readFileSync(path, "utf-8");
+      // Up to the next top-level class or banner; `$` under /m would end it at the first line.
+      const body = new RegExp(`^class ${model}\\b[\\s\\S]*?(?=\\nclass |\\n# =|$(?![\\s\\S]))`, "m").exec(content);
+      if (body !== null) return body[0];
+    }
+    return null;
+  };
+  return walk(schemasDir);
 }
 
 /**
@@ -193,6 +265,16 @@ function checkFiltersAreApplied(): string[] {
       current = file;
       // Direct predicates: `.where(Model.col.ilike(f"%{name}%"))`.
       for (const m of repo.matchAll(/\.ilike\(f"%\{(\w+)\}%"\)/g)) note(m[1], "contains");
+      // A narrowing that is neither equality nor a fragment - a bound, a
+      // prefix, a computed column - is written one at a time rather than in
+      // the pair loop, and it still reads the field: `if filters.<name> is not
+      // None: query = query.where(...)`. Measured on the event list's 사건일
+      // bounds and its 연도, which compare a substring.
+      for (const m of repo.matchAll(
+        /if filters\.(\w+) is not None:\n(?:[\s\S]{0,400}?)query = query\.where\(/g,
+      )) {
+        note(m[1], /ilike\(/.test(m[0]) ? "contains" : "equals");
+      }
       // Loops: `for column, value in (...)` with a body that says ilike or ==.
       // The header may span lines; the body is every line indented deeper than
       // the `for`, and stops at the first that is not - a second loop in the
@@ -391,6 +473,42 @@ function checkQuery(label: string, endpoint: Endpoint, source: string): string[]
       );
     }
   }
+  issues.push(...checkSort(label, endpoint, body));
+  return issues;
+}
+
+/**
+ * A grid's list sorts on the server: a top-level collection (no `{id}` in the
+ * path - the one a `<Domain>List` screen pages) declares `sort: <X>SortQuery =
+ * None` and `order: OrderQuery = "asc"`, and both reach the service call.
+ *
+ * Measured before the rule: every grid header sorted the ten loaded rows and
+ * called it the collection, with every gate green - the grid, the hook and the
+ * router were each correct about a sort that reached nothing. A sub-collection
+ * is read in a dialog table without sortable headers and stays unsorted.
+ */
+function checkSort(label: string, endpoint: Endpoint, body: string): string[] {
+  if (endpoint.path.includes("{")) return [];
+  const issues: string[] = [];
+  const sort = endpoint.parameters.find((candidate) => candidate.name === "sort");
+  const order = endpoint.parameters.find((candidate) => candidate.name === "order");
+  if (sort === undefined || !/^\w+SortQuery$/.test(sort.annotation) || sort.default !== "None") {
+    issues.push(
+      `${label}: top-level list read without sort: <Domain>SortQuery = None — a grid's header ` +
+        "sorts the collection on the server, or it sorts the loaded page and calls it the collection",
+    );
+  }
+  if (order === undefined || order.annotation !== "OrderQuery" || order.default !== '"asc"') {
+    issues.push(`${label}: top-level list read without order: OrderQuery = "asc"`);
+  }
+  for (const name of ["sort", "order"]) {
+    if (body !== "" && !new RegExp(`\\b${name}\\b`).test(body)) {
+      issues.push(
+        `${label}: ${name} is accepted but never used in the handler — pass it to the service ` +
+          "call so the order reaches the query",
+      );
+    }
+  }
   return issues;
 }
 
@@ -440,6 +558,8 @@ function checkQueryAliases(limitCap: number | null): string[] {
     return issues;
   }
 
+  issues.push(...checkSortAliases(source));
+
   // A configured page size above the cap makes every unpaginated list call 422.
   for (const envFile of [join(projectRoot, ".env"), join(projectRoot, "backend", ".env")]) {
     if (!existsSync(envFile)) continue;
@@ -454,6 +574,90 @@ function checkQueryAliases(limitCap: number | null): string[] {
     }
   }
   return issues;
+}
+
+/**
+ * Every `<X>SortQuery` is `Annotated[Literal[...] | None, Query()]`, and every
+ * member of the Literal is a mapped column somewhere under `app/models/` -
+ * `ordered()` reaches the column by name, so a member that is not one is a
+ * 500 on the first click of that header.
+ *
+ * One exception, and it is declared rather than guessed: a repository may sort
+ * on a value the table has no column for (the events a product carries, counted
+ * per row) by naming it `<KEY>_SORT = "<key>"` and ordering by it itself. The
+ * constant is what makes the key reachable - a member neither a column nor a
+ * declared key is still the 500 this check exists for.
+ */
+/** Sort keys a repository declares for itself: `<KEY>_SORT = "<key>"`. */
+function derivedSortKeys(): Set<string> {
+  const keys = new Set<string>();
+  const repositories = join(projectRoot, "backend", "app", "repositories");
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".py")) {
+        const content = readFileSync(path, "utf-8");
+        for (const hit of content.matchAll(/^[A-Z][A-Z0-9_]*_SORT\s*=\s*"(\w+)"/gm)) keys.add(hit[1]);
+      }
+    }
+  };
+  if (existsSync(repositories)) walk(repositories); // existence-ok: check-backend-domain reports a missing layer
+  return keys;
+}
+
+function checkSortAliases(source: string): string[] {
+  const issues: string[] = [];
+  const columns = mappedColumns();
+  for (const alias of source.matchAll(/^(\w+SortQuery)\s*=\s*Annotated\[/gm)) {
+    const name = alias[1];
+    // The alias spans lines once the Literal is long: walk to the bracket that closes it.
+    const open = (alias.index ?? 0) + alias[0].length - 1;
+    let depth = 0;
+    let close = open;
+    for (; close < source.length; close += 1) {
+      if (source[close] === "[") depth += 1;
+      if (source[close] === "]") depth -= 1;
+      if (depth === 0) break;
+    }
+    const inner = source.slice(open + 1, close);
+    const literal = /Literal\[([\s\S]*?)\]\s*\|\s*None\s*,\s*Query\(\)/.exec(inner);
+    if (literal === null) {
+      issues.push(
+        `dependencies/query.py: ${name} must be Annotated[Literal[...] | None, Query()] — the ` +
+          "Literal closes the columns a grid may sort; a bare str is one getattr from a 500",
+      );
+      continue;
+    }
+    const derived = derivedSortKeys();
+    for (const member of literal[1].matchAll(/"(\w+)"/g)) {
+      if (columns.has(member[1]) || derived.has(member[1])) continue;
+      issues.push(
+        `dependencies/query.py: ${name} names ${member[1]}, which no model maps as a column — ` +
+          "ordered() would raise on the first click of that header",
+      );
+    }
+  }
+  return issues;
+}
+
+/** Every `name: Mapped[...] = mapped_column(` under app/models/, by name. */
+function mappedColumns(): Set<string> {
+  const names = new Set<string>();
+  const modelsDir = join(projectRoot, "backend", "app", "models");
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith(".py")) {
+        for (const hit of readFileSync(path, "utf-8").matchAll(/^\s+(\w+):\s*Mapped\[[^\n]*=\s*mapped_column\(/gm)) {
+          names.add(hit[1]);
+        }
+      }
+    }
+  };
+  if (existsSync(modelsDir)) walk(modelsDir);
+  return names;
 }
 
 // ============================================================

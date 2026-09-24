@@ -96,7 +96,7 @@ function backendPort(): string {
  * fixed verb: the method is DERIVED from the `*UpdateRequest` schema — every
  * field optional (partial update) demands PATCH, a full-resource body demands
  * PUT. "PUT 또는 PATCH 아무거나" 로 완화하는 것이 아니라 요청 의미가 메서드를
- * 결정한다(2026-08-31 표준 개정). `expectedUpdateMethod()` 가 판정한다.
+ * 결정한다(표준으로 확정). `expectedUpdateMethod()` 가 판정한다.
  */
 const UPDATE_METHODS = ["PUT", "PATCH"];
 const CRUD_ENDPOINTS = [
@@ -118,7 +118,7 @@ function readOrNull(p: string): string | null {
 
 export function expectedUpdateMethod(schemaPath: string): "PUT" | "PATCH" | null {
   // 도메인 폴더 분할(schemas/<name>/*.py — fas 의 integration)을 지원한다: 플랫 파일이 없거나
-  // UpdateRequest 가 없으면 폴더에서 그 클래스를 가진 첫 파일을 쓴다. 실측(2026-08-31): 이
+  // UpdateRequest 가 없으면 폴더에서 그 클래스를 가진 첫 파일을 쓴다. 실측: 이
   // 조회가 플랫 파일만 볼 때 fas 의 all-optional IntegrationUpdateRequest 뒤의 PUT 이 침묵 통과했다.
   let text: string | null = readOrNull(schemaPath);
   if (text === null || !/class \w+UpdateRequest\(/.test(text)) {
@@ -196,7 +196,7 @@ export function checkDomainApiHttp(): string[] {
     const name = file.replace(/\.py$/, "");
     const group = byRouter.get(name);
     if (group?.primary === undefined || group?.primary === null) {
-      // 요구 방향(2026-08-30 감사): `.http` 는 라우터가 **마운트된 뒤**에 owed 다. 라우터 파일이
+      // 요구 방향(감사 실측): `.http` 는 라우터가 **마운트된 뒤**에 owed 다. 라우터 파일이
       // 막 생긴 시점에 요구하면 배선 전 단계에서 다음 걸음을 요구하게 된다. 마운트되지 않은
       // 라우터는 check-backend-app-setup 이 "router exists but is never mounted" 로 따로 잡는다.
       if (!isMounted(projectRoot, name)) continue;
@@ -213,12 +213,12 @@ export function checkDomainApiHttp(): string[] {
 
     // update 메서드는 요청 의미에서 파생된다: `*UpdateRequest` 가 전 필드 optional 이면
     // 부분 갱신 = PATCH, 하나라도 필수면 전체 교체 = PUT. 라우터의 실제 메서드가 스키마와
-    // 어긋나면 여기서 잡는다 — "둘 다 허용" 이 아니다(2026-08-31 표준 개정).
+    // 어긋나면 여기서 잡는다 — "둘 다 허용" 이 아니다(표준으로 확정).
     const expected = expectedUpdateMethod(join(base, "schemas", `${name}.py`));
     if (expected !== null) {
       // item 루트(`/<name>/{id}`)만 UpdateRequest 와 비교한다. 하위 리소스는 자기 계약을 가진다 —
       // fas 의 `PUT /{id}/secrets/{name}` 은 명명 시크릿의 전체 교체라 의미상 올바른 PUT 인데,
-      // 경로 끝 {param} 만 보면 도메인 UpdateRequest 와 비교돼 오탐이 난다(실측 2026-08-31).
+      // 경로 끝 {param} 만 보면 도메인 UpdateRequest 와 비교돼 오탐이 난다(실측).
       const itemRoot = new RegExp(`^/${name}/\\{[^}]+\\}/?$`);
       for (const e of endpoints.filter((e) => UPDATE_METHODS.includes(e.method) && itemRoot.test(e.path))) {
         if (e.method !== expected) {
@@ -671,7 +671,7 @@ function checkStructure(
   if (sections.length === 0) {
     issues.push(`${name}.http: request blocks must open with "### N. <title>" sections`);
   } else {
-    // Duplicated blocks come first (measured 2026-09-01: after a stale full
+    // Duplicated blocks come first (measured: after a stale full
     // rewrite plus partial edits, the same section run appeared twice; the
     // out-of-sequence cascade below then reads as "fix the numbers" and drove
     // a renumbering loop). A number or title seen twice means a repeated

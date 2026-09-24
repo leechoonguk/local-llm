@@ -20,64 +20,293 @@ fork it.
 Machine-checked by `check-frontend-screens.ts` (`make check-frontend-screens`)
 plus `ast-grep/rules/frontend-screen/`.
 
+## What A Row Is Decides Whose Screen It Is
+
+A table hangs off an owner or it does not, and the answer is not the foreign
+key - it is whose statement the row is. A 신고 is the product's own (its
+history tab); a 검사·조치 이력 row is an authority's finding or action about the
+product, read by date, kind and verdict across everything, so it is a list
+screen of its own and the product's section states what its own rows add up to.
+
+The measurement that decides it is how often the owner has any: a few hundred
+events over millions of products is a column that is zero on 99.95% of rows and a
+filter with nothing to type, and the same rows are a screen a reader can scan.
+
+**A tab named for a shape it does not draw is the same defect one level up.**
+The product dialog had one 이력 tab over one table of seven columns, and the
+two registries fill different halves of it: a 수입식품 declares crossings
+(처리일자, 수출국, 소비기한) and every other registry declares a year's figures
+(보고년도, 생산량, 연간생산능력). No product carries both shapes, so three or
+four cells of every row were an em dash, and the section under the tab was
+headed "수입신고 이력" on a domestic product, which files no 수입신고 at all.
+The registry chooses the tab's name and its columns, not just its wording.
+
+**An action attaches to an event, never to an aggregate.** The authority's
+조치 column belongs on the 수입신고 table, where a recall sits on one crossing;
+a 생산실적 row is a year's total and nothing an authority did lands on it. A
+column that paired them would be joining two facts that share only a year. The
+asymmetry between the two tables is the asymmetry of what is being declared.
+
+**A guarded count is not a hidden section.** The guard below is about the
+*number*: "검사·조치 0" beside 1.9 M products is noise. Whether the product has
+been inspected at all is not noise - 84,212 of 1,856,644 carry a record
+(4.5 %), and for the rest a screen that draws nothing reads as "this screen
+has no such thing" rather than "nothing was published". So the section is
+drawn either way and says which: rows when there are rows, one sentence when
+there are none. The sentence names the key it is true of - 이 제품 **번호로**
+공표된 이력이 없다 - because two thirds of 수거검사 rows carry no 품목보고번호
+at all, and "no inspection" would be a claim the data does not support. The
+label card and the history tab already answer this way; the record section was
+the one that vanished.
+
+`checkSectionsAnswerWhenEmpty` refuses `{x_count > 0 && <Section/>}` with no
+`x_count === 0` branch. Only a **section** owes the answer - a
+`DetailSection`, a `PagedTableSection`, or a tab. An `Alert` exists because
+there is something to warn about, an inner `Stack` sits inside a card already
+drawn, and a `Typography` is part of a sentence; the first version of this
+check required all of them to have an empty twin and fired on three screens
+that had done nothing wrong.
+
+**Presence is mechanical, wording is not.** What the section then *says* is
+the component's business and no hook governs it: the history tab draws
+수입신고 with six columns for an import and 생산실적 with three for a domestic
+report, one section reading two registries. That is a difference of what the
+row is, decided where the registry is known - not a section appearing and
+disappearing.
+
+## A Zero Is Not Information, A Date Is Not Digits
+
+Two readings a screen owes its reader, both refused mechanically by
+`check-frontend-screens`:
+
+- **A count is drawn when there is something to count.** The product dialog drew
+  "신고 건수 0 · 검사·조치 0" on every product while a fraction of products carry
+  a record (84,129 of 1.9 M), so that card said zero most of the time and the
+  rows it existed for were below it. A `*_count` is rendered inside its own `> 0`
+  guard - the guard is looked for in the JSX block that draws it, not in the
+  lines nearby, because a sibling block's guard is not this one's.
+- **A registry's date is eight digits; a screen's is a date.** The ledgers store
+  `20260915` verbatim, which is what a ledger is for. A field or cell holding a
+  `*_date` reads it through `formatPortalDate`, and a `*_at` through
+  `formatDateTime`.
+
+  **A grid column is the same rule and was the gap.** The first check read the
+  JSX (`<ClippedText text={row.event_date}>`), and a list has none: it declares
+  a column and `ServerDataGrid` injects the cell, so the raw value never appears
+  beside a component name. `/food/item-report` printed `20260915` under 보고일자
+  and the 검사·조치 이력 list did the same under 기록일, both green. Now the column itself
+  is read: a `*_date`/`*_at` field must name its formatter in `valueFormatter`
+  or `renderCell`.
+
+- **No two columns of one grid carry the same header.** A header is the only
+  name a column has. The 검사·조치 이력 list headed both `record_kind` and `report_kind`
+  구분 - an authority's action and the registry the product is in, under one
+  word - and every gate passed because each key existed and each was translated.
+  The headers are resolved per locale, because a collision in either language is
+  a screen somebody reads.
+
+## A Column Fits What It Prints
+
+Two things in a table cannot shrink, and both are checked mechanically - no
+browser, no eye:
+
+- a **badge** (`Label` is `white-space: nowrap`, so a narrow column cuts it
+  behind the cell's overflow),
+- a **header name** (the grid ellipsises it, and a header nobody can read is a
+  column nobody can sort).
+
+`check-frontend-screens` turns each column's declared width back into pixels -
+a grid column's `floor`, a dialog column's percentage of
+`RECORD_SURFACE.TABLE_WIDTH` - and compares it with the ink of what the cell
+prints: the header's locale string in **either** language, and every value of
+the badge's vocabulary (the keys under the prefix the cell reads,
+`t(\`item_report.kind.${row.report_kind}\`)`). The per-character ink was measured
+in the running app through the canvas API (grid header `600 14px`,
+badge `700 12px`) and each character class is rounded up, so the check asks for
+a pixel more than the browser needs and never for less.
+
+Measured before the rule: `/food/item-report` printed `국내 제조 식…` on every
+row (the badge needs 124px, the column floored at 90), `등급 · 기관` lost its
+last character on the event list, and five headers of the declarations table did
+not fit their share at the English reading. Thirty-three columns across five
+screens and five dialog tables were short; none of them failed any gate.
+
+The dialog opens at `RECORD_SURFACE.DIALOG_MAX_WIDTH` for the same reason: at
+`md` the seven-column declarations table had 820px to divide and needed 1,066.
+
 ## Screen Types
 
 | Type | File | Exemplar |
 |---|---|---|
 | List + CRUD | `sections/<domain>/<Domain>List.tsx` | `sections/user/UserList.tsx` |
-| Ledger list (read-only) | `sections/<domain>/<Domain><Table>LedgerList.tsx` | `sections/food/FoodRawMaterialLedgerList.tsx` |
+| Derived list (read-only) | `sections/<domain>/<Domain><Table>DerivedList.tsx` | `sections/food/FoodItemReportDerivedList.tsx` |
 | Form dialog | `sections/<domain>/<Domain>FormDialog.tsx` | `sections/user/UserFormDialog.tsx` |
 | Detail + tabs | `sections/<domain>/<Domain>DetailDialog.tsx` + `detail/*Tab.tsx` | `sections/integration/` |
 | Run history | `sections/<domain>/<Domain>RunsDialog.tsx` | `sections/batch/BatchRunsDialog.tsx` |
 | Dashboard | `sections/dashboard/DashboardView.tsx` | independent widgets |
 | Auth | `sections/auth/LoginForm.tsx` | session, not a resource |
 
+## Streaming Screen
+
+A screen whose answer arrives over time - the 식품 챗 - is not a list and not a
+record: no collection, no page, no filter, so none of the list template's five
+pieces apply. What it owns is a transcript, one input, and the single request
+in flight.
+
+| Piece | Owns |
+|---|---|
+| `use<Domain>Chat` (`lib/api/hooks/`) | the transport: one turn's stream and its `AbortController` |
+| `ChatConversationsProvider` (`components/chat/`) | the conversations, which one is open, and where tokens land |
+| `sections/<domain>/<Domain>ChatConversation.tsx` | **both columns**: the history, the transcript, the input, the send/stop pair |
+| `pages/<Domain>ChatPage.tsx` | the header and the breadcrumb, nothing else |
+
+**One card, two columns** — the reference's chat, with its left column changed
+for what this app actually has. The reference lists *people*; nobody is on the
+other end here but the model, so the column lists the **conversations**, each
+titled by the first thing the reader said in it and carrying the newest line
+under that. The right column is the open conversation with the composer pinned
+beneath it, which is why the card has a height: a composer that moves down as the
+answer grows makes the reader chase the box they are typing into.
+
+**The history lives in the screen, not in the sidebar.** It was a list of one
+screen's destinations sitting among the app's destinations, and it paid for that
+by having to fold itself away whenever the reader was somewhere else — a caret,
+a route watcher and a render-time reset for a list that belongs to one screen.
+Inside the screen it is simply always there, and the nav is a list of screens
+again.
+
+**The conversations still live above the screen** (`ChatConversationsProvider`),
+because the provider is what survives navigating away and back. They are **in
+memory on purpose**: no table stands behind chat and no history is sent with a
+turn, so a reload starts with one empty conversation; persisting them here would
+be the screen claiming a memory the server does not have. An empty conversation
+is never listed — it is what the "new" button creates.
+
+**Every turn ends on an event.** A `token` appends to the open turn, one `end`
+closes it with the server's own whole answer (the authority, in case a token
+was dropped), and `error` closes it with the sentence its code words. A stream
+that simply stopped could not be told from a lost network, so the server never
+ends one that way (rule://backend-sse). The reader's own stop is an abort, not
+a failure: the turn keeps what arrived and says nothing.
+
+Verified on screen: a turn's bubble grows character by character over frames
+200ms apart - the tokens land, they do not appear at once - and stopping
+mid-answer leaves what had arrived, with the send button back and no toast.
+
 ## Column Width
 
-Every grid column has a **floor** and, if it may grow, a **share**: `width`, or
-`flex` with `minWidth`. MUI's default is 100px with no floor, which clipped
-14-character codes and `식품원료(A코드)` on the raw material ledger; `flex` on
-two columns alone piled a 1920px screen's spare width into those two while the
-rest stayed clipped. The floor is the width at which the column's widest
-measured value stops clipping; the share is how much of a reader's attention the
-column earns. A screen with many columns keeps them in one table
-(`COLUMN = { field: { floor, share } }`) and spreads it with `sized(field)`,
-so the numbers sit together and every column is sized by construction.
+Every grid column has a **floor** and a **share**, and every list screen keeps
+them in one table - the 품목제조보고 list's shape, copied:
 
-`check-frontend-screens` fails a column literal with neither `width` nor
-`flex`+`minWidth`; a `...sized(...)` spread is exempt because its table's type
-requires both.
+```tsx
+const COLUMN: Record<string, { floor: number; share: number }> = {
+  username: { floor: 140, share: 1 },
+  created_at: { floor: TIMESTAMP_COLUMN_FLOOR, share: 0.8 },
+}
+const sized = (field: keyof typeof COLUMN) => ({
+  field,
+  flex: COLUMN[field].share,
+  minWidth: COLUMN[field].floor,
+})
+```
 
-## Ledger List
+The floor is the width at which the column's widest measured value stops
+clipping; the share is how much of a reader's attention the column earns, and
+spare width is spread by share across **all** columns. MUI's default is 100px
+with no floor, which clipped 14-character codes and `식품원료(A코드)` on the raw
+material ledger; `flex` on two columns alone piled a 1920px screen's spare
+width into those two while the rest stayed clipped; and a `width:` literal is a
+column that cannot grow, so on a wide screen it sat at its floor while the flex
+columns beside it took everything. A table puts every number in one place and
+sizes every column by construction; a column spelled with its own `width`,
+`flex` or a `*_WIDTH` constant is one the table does not know about.
 
-The list template with its write half removed. A ledger is a table a nightly
-provider job replaces with a whole pass of its feed (a `Feed` of
-`backend/app/batch/sync_<provider>_ledgers.py`), so a row typed on this screen
-would be overwritten by morning - and the backend has no verb to accept it
-(`backend-domain.md`, "Ledger Domains Are Read-Only Over HTTP").
+**The timestamp floor is shared.** `formatDateTime` writes the same string on
+every screen, so its floor is one number, `TIMESTAMP_COLUMN_FLOOR` in
+`config.ts` - measured: `2026. 8. 30. 오후 10:57` needs 182px of cell at the
+body size, and a `width: 180` on the user list clipped it to `10:...` while the
+report list beside it, at 185, did not. Every `*_at` entry reads the constant.
 
-Four hooks, in this order, and nothing else holds state:
+**A column says what it shows, not how it clips.** `ServerDataGrid` injects
+`ClippedText` into every column without its own `renderCell`, so a name or a
+URL that overflows its share is reachable on hover by construction; a column
+that spells `renderCell: <ClippedText>` itself is the grid's own default
+written a second time. A `renderCell` is for a value that is not text as
+stored - a badge, a formatted timestamp, a mask.
+
+`check-frontend-screens` fails a list screen without a `COLUMN` table, a column
+literal not spread from `sized(...)` (the actions column, spread from
+`rowActionsColumn`, sizes itself), a `*_WIDTH` constant, and a `*_at` floor
+that is not `TIMESTAMP_COLUMN_FLOOR`.
+
+**A grid with buttons fits the card; a read-only grid may scroll.** The visible
+floors plus the actions column are what the grid asks for, and the card leaves
+1,080px beside the nav at 1440px. Past that a horizontal scroll opens, and the
+actions column is **last** - so what falls off is the controls, and a button a
+reader has to scroll sideways to find is a button they do not know exists.
+Measured on `/batch`: seven floors totalling 1,132, with 실행 and 중지 outside
+the card. A grid that renders no actions is not held to the
+budget: the 품목 보고 list asks for 1,690px of nine columns and scrolling a wide
+registry is how it is read - nothing there is unreachable, only unread.
+`checkGridsFitTheirCard` computes the actions width from `rowActionsColumn`'s
+own arithmetic rather than a copy of it, so a change to the button metrics
+moves the budget with it.
+
+The fix is a column, not a smaller floor: a floor is the widest measured value,
+so trimming one clips what it prints. `/batch` carried a `name` beside its
+`code`, and on all 33 rows the name was the code restyled
+(`sync_food_ledger_recall` / "Sync food_ledger_recall") - a 217px column
+carrying no fact. Dropping it end to end (column, inline edit, filter, create
+field, and the table column) bought the fit and left `cron` room to stop
+ellipsising `30 20 * * 0` into `30 20 * ...`.
+
+## Derived List
+
+The list template with its write half removed. A derived table is a function
+of the ledgers, rebuilt whole by the derive job every night (a `Derivation` of
+`backend/app/batch/derive_*.py`, rule://backend-ledger), so a row typed on this
+screen would be gone by morning - and the backend has no verb to accept it
+(`backend-domain.md`, "Ledgers Have No Route; Derived Tables Are Read-Only Over
+HTTP"). A ledger itself has no screen: what a reader sees is the derived table.
+
+Four hooks, in this order, plus the one door's state:
 
 ```tsx
 const grid = useDataGridState()
 const filters = useListFilters(FILTER_FIELDS, grid.resetPage)
 const query = use<Domain><Table>List({ ...grid.params, ...filters.params })
+const [openId, setOpenId] = useState<string | null>(null)
 useQueryErrorToast(query, tCommon('messages.load_failed'))
 ```
 
-What it keeps: `ListCardHead` (without `add`), `ListFilters`, `ServerDataGrid`,
-`emptyTitle`, the toolbar refresh. What it refuses: `useCrudDialog`, `useToast`,
-`rowActionsColumn`, `processRowUpdate`, any mutation, any form dialog. Every
-column of the ledger is a grid column - the column selector is the detail view,
-so there is no detail dialog and no GET-by-id.
+What it keeps: `ListCardHead` (without `add`), `ListFilters`, `ServerDataGrid`
+with `onRowClick`, `emptyTitle`, the toolbar refresh. **The row is the door**:
+a row nobody edits has one verb, opening its record, so the click lands on the
+row and there is no actions column to find first; the pointer cursor says so.
+The door opens a read-only record dialog (`<Domain><Table>DetailDialog.tsx`,
+tabs that present the record's edges through `PagedTableSection` with no
+`onCreate` and no `actions`). What it refuses: `useCrudDialog`, `useToast`,
+`rowActionsColumn`, `processRowUpdate`, any mutation, any form dialog.
+
+A closed vocabulary the *schema* fixes (`ReportKind`, a `Literal` on the
+server) is a select whose options are the contract's constant
+(`types/<domain>.ts`), not a facets read - the values cannot change overnight,
+so there is nothing to fetch. **Its options are codes, and a code owes
+`optionLabel`**: a facets value is the row's own text and reads as itself, but
+`food` in a Korean select is not a word (measured: it shipped that way with
+every gate green, because the i18n check reads literal text and the option was
+a value). `check-frontend-screens` demands `optionLabel` on any field whose
+`options:` is not a `.data` read. `check-frontend-screens` reads the router's
+alias for each filter off `app/dependencies/query.py` by shape: a free string
+with a length floor matches by contains, everything else matches whole.
 
 **The suffix is a claim the backend must back.** `check-frontend-screens` holds
-`<Domain><Table>LedgerList.tsx` to a feed whose service is
-`app/services/<domain>/<table>.py` (`hooks/lib/backend-ledger-feeds.ts`); a
-table nothing syncs is edited by people and
-gets the CRUD template. Measured before the rule: the CRUD check demanded
-`useCrudDialog` on the raw material screen, and the only way to satisfy it was a
-dialog that edited rows the next sync would erase.
+`<Domain><Table>DerivedList.tsx` to a derivation whose service is
+`app/services/<domain>/<table>.py` (`hooks/lib/backend-derivations.ts`); a
+table nothing derives is edited by people and gets the CRUD template. Measured
+before the rule: the CRUD check demanded `useCrudDialog` on the raw material
+screen, and the only way to satisfy it was a dialog that edited rows the next
+sync would erase.
 
 ## List Screen
 
@@ -101,10 +330,60 @@ Required parts:
   puts a row in *this* table, so it is an icon on the table's row, and density
   changed how rows look and nothing about what they are.
 - `ListFilters` + `useListFilters` — one labelled box per filterable column
-- `ServerDataGrid` — never MUI's `DataGrid` directly
+- `ServerDataGrid` — never MUI's `DataGrid` directly, wired to
+  `grid.sortModel` / `grid.setSortModel`, and `loading={query.isFetching}` —
+  every list keeps the previous page on screen while the next one loads
+  (`placeholderData: (previous) => previous`), so `query.isLoading` is `true`
+  only on the very first mount. A filter box, a header sort or a page click all
+  set `isFetching` without ever setting `isLoading` again — `loading={query.isLoading}`
+  showed rows aging silently on a slow connection with no sign a request was in
+  flight (measured: 700ms latency, six checks 150ms apart, no overlay). MUI's
+  own `GridLoadingOverlay` draws a `linear-progress` bar over the existing rows
+  when `loading` is `true` and the grid already has rows.
+
+  **The same window locks what would ask again - paging and sorting, never
+  the filter boxes.** Two requests for the same screen in flight at once
+  race, and the one that lands second silently wins the footer's total and
+  the rows shown. So `ServerDataGrid` carries
+  `slotProps={{ basePagination: { disabled: loading } }}` (`pagination` is the
+  wrong slot key; `GridPagination` reads `basePagination`) and
+  `disableColumnSorting={loading}` (the sort affordance disappears rather than
+  sitting there disabled-looking but clickable). The filter boxes stay live:
+  the fetch fires 300ms after the last keystroke, and a box that locked then
+  cut the word still being typed (measured: `밀가` sent, `루` dropped). The
+  race a locked box would close is closed by the query key instead - a newer
+  key supersedes the older answer - so `ListFilters` takes no `disabled`.
+
+  **A dialog's table is the same contract.** `ServerPagedTable` - the runs
+  log, a material's products - draws its own `LinearProgress` and locks its
+  `TablePagination` from one `loading` prop, and every caller passes the
+  query's `isFetching`. Measured before the prop existed: the runs dialog's
+  next-page button stayed live with no bar while a page was in flight - the
+  hook watched only the grid, and the dialog table was a second surface
+  with the same failure. Verified by throttling the network to 900ms and
+  reading each control's state mid-flight.
+
 - `useQueryErrorToast` — a failed page otherwise renders as an empty list, the
   one state a user cannot tell from success
 - `emptyTitle` — the empty state needs a sentence
+
+### Sorting
+
+**The header sorts the collection, on the server.** `useDataGridState` keeps
+the one sorted column and sends it as `sort` and `order`; a sort change lands
+on page one, because page 4 of a list sorted one way is not page 4 of it sorted
+the other. `ServerDataGrid` runs `sortingMode="server"`, so the grid never
+sorts the loaded page itself - measured before the rule: every list sorted its
+ten rows on a header click and called it the collection, with every gate
+green, because the grid, the router and the hook were each correct about a
+sort that reached nothing.
+
+The columns a grid may sort are the router's to close: `<Domain>SortQuery` in
+`app/dependencies/query.py` is a `Literal` of them (rule://backend-router-params).
+A column the server does not sort - the password mask, a scheduler state, a
+count of children - says `sortable: false`, or its header's first click answers
+422. `check-frontend-screens` demands the wiring and holds every `sized(...)`
+column not marked `sortable: false` to the Literal.
 
 ### Filtering
 
@@ -112,6 +391,34 @@ Required parts:
 list of parameter names (`['username', 'email']`), and the boxes are built from
 it — so a box, its label and what it sends cannot drift apart, and a name the
 router does not read fails `check-frontend-types` instead of filtering nothing.
+
+**The label is looked up, never branched.** `FILTER_LABEL_KEYS` maps every
+field to its locale key and the box reads `t(FILTER_LABEL_KEYS[field])`. A
+ternary on the field name (`field === 'code' ? t('filter.code') : t(...)`) is
+right for two fields and silently wrong for the third: the else branch labels
+whatever is added next. `check-frontend-screens` demands the map, one key per
+`FILTER_FIELDS` entry, and the lookup in the `label:`.
+
+**One query parameter, one control.** A list narrows through a single params
+object, so the controls on the screen *are* the answer to "why am I seeing these
+rows". Drive one parameter from two of them and the screen holds two answers for
+one column while neither control shows the other's value.
+
+Measured: a tab strip was built over `record_kind` while that column still had its
+filter box. Clicking 회수·판매중지 and then typing 검사부적합 into the box left the page
+narrowed by the box, the strip highlighting the other kind, and nothing on screen
+saying which had won — with every gate green, because the field was in
+`FILTER_FIELDS`, the parameter reached the repository and the types matched.
+
+The check is structural rather than about tabs: a parameter written **literally**
+into the screen's params object may not also be in `FILTER_FIELDS`, and
+`FILTER_FIELDS` may not name a column twice. A spread (`...filters.params`) is
+another control's contribution and carries no literal key, so it is not a second
+control over itself. Both shapes were planted and both fire.
+
+So a control that *replaces* a box — a tab strip, a segmented switch — removes
+that field from `FILTER_FIELDS` in the same edit. Adding one beside the box is
+the defect this refuses.
 
 A single keyword box over several columns is not the standard: it cannot say
 which column matched, and the reader who wants "the account whose *email*
@@ -138,8 +445,18 @@ screen:
 | free text (a code, a name, an alias list) | search field | contains (`ilike`) | the reader types it |
 | a closed vocabulary (a class, a status) | **select** | **equals** | a `facets` endpoint: the column's own distinct values |
 
-A field becomes a select by carrying `options` (`ListFilters`). The options are
-**fetched, never typed into the screen**: the portal owns those vocabularies and
+A field becomes a select by carrying `options` (`ListFilters`), and the select
+is an `Autocomplete`: **the reader types to narrow it**. The vocabularies are
+the columns' own values and some are long - hundreds of 식품유형 on the item
+report list, dozens of 상태 on the raw material one - so a plain
+dropdown makes a reader who knows their value hunt for it. Typing filters the
+options by contains, and what the box sends is still one of them, so the
+router's equals holds; clearing is "all", and `allLabel` is what the empty box
+says. Verified end to end on screen: typing narrows the options to one,
+picking it answers exactly the SQL count for that value, and the clear button
+puts the whole table back. Both popups are bounded by `SELECT_MENU_MAX_HEIGHT`
+(rule://frontend-design), so a long vocabulary scrolls under its box instead of
+taking the viewport. The options are **fetched, never typed into the screen**: the portal owns those vocabularies and
 the sync brings a new value the night it appears, so a list written into the
 component would offer yesterday's choices. The screen names the select columns
 in `SELECT_FIELDS`, reads `use<Domain><Table>Facets()`, and passes each column's
@@ -153,17 +470,34 @@ picked the first did not ask for the second. The backend spells the two kinds as
 `TextFilterQuery` and `ExactFilterQuery` on the router, and applies them from one
 filter model so the page and its total narrow together.
 
-Measured on the raw material ledger (2026-09-05): 7 large classes, 30 medium
-classes, 85 status names; `식품첨가물(B코드)` + status `-` answered 6,722 on the
-screen and 6,722 in SQL.
+Verified against SQL: a class + status pair picked on the screen answers the
+same count the equivalent SQL does.
+
+**A vocabulary the schema itself closes is the one exception.** `use_yn` is
+`Literal["Y", "N"]` on the server, so its two values are the contract's, not a
+read: the screen names that column (`const CODE_FIELD = 'use_yn'`), offers the
+type's constant (`USE_FLAGS`), and owes `optionLabel` - a code is not a word a
+reader knows, and `Y` prints as `Y` in every language. Every other select
+column's values are its own rows', which only `facets` has.
 
 **Machine-checked** (`check-frontend-screens`): an `options:` expression that
-contains a quoted array literal fails (vocabularies are fetched); every
-`SELECT_FIELDS` name must be `ExactFilterQuery` and every other `FILTER_FIELDS`
-name `TextFilterQuery` in `backend/app/routers/<domain>.py` (the screen's kind
-and the router's match agree); a `CASCADE` declaration owes
-`setInput(CASCADE.child, '')`; and `ListCardHead`'s filter row carries
-`flexWrap="wrap"`.
+contains a quoted array literal fails (vocabularies are fetched); a select
+column not named as a `CODE_FIELD` must take its options from `facets.data`,
+and a screen whose options name `facets.data` must call
+`use<Domain><Table>Facets()`, and `ListFilters` must render `Autocomplete` rather
+than a plain `TextField select` - measured by planting each: a select whose
+options came from nothing, and one reading a `facets` that was never fetched,
+both passed every gate before these; every `SELECT_FIELDS` name must be
+`ExactFilterQuery` and every other `FILTER_FIELDS` name `TextFilterQuery` in
+`backend/app/routers/<domain>.py` (the screen's kind and the router's match
+agree); a `CASCADE` declaration owes `setInput(CASCADE.child, '')`; and
+`ListCardHead`'s filter boxes never leave the row (a wrapping flex row or an
+`auto-fit` grid - the property, not the spelling).
+
+**Machine-checked on the server too** (`check-backend-router-params`): a list
+endpoint that declares `ExactFilterQuery` owes a `GET <prefix>/facets`, and
+that route's response model owes a field per such column - a whole-value match
+is a value picked from a list, and the list is what the route is for.
 
 **Cascading selects.** When one closed vocabulary is a child of another (the
 medium class under the large class - measured: 1 to 8 children per parent
@@ -177,9 +511,15 @@ which is domain knowledge, and the component renders what it is handed.
 Measured: `건강기능식품(C코드)` → 3 children, `개별인정` → 976; switching the
 parent to `위생용품(E코드)` cleared the child and answered 1,118.
 
-The filter row wraps (`ListCardHead`): six boxes at 1400px ran past the card and
-the last select sat at x=1530, off-screen - a filter nobody can reach is a
-filter that does not exist.
+The filter boxes are a grid of equal cells (`ListCardHead`, `repeat(auto-fit,
+minmax(FILTER_MIN, 1fr))`), one column below `sm`: as many per row as fit, and
+the cells stretch to the card's edge. Fixed widths failed twice - six boxes at
+1400px ran past the card and the last select sat at x=1530, off-screen (a
+filter nobody can reach is a filter that does not exist), and at 900px they
+folded into 3+3 with a ragged right edge and the reset stranded beside the gap.
+The reset lives with the refresh in the head's action row, not among the boxes:
+it acts on the whole head, and as a seventh cell it fell alone onto a third row
+whenever the boxes filled their rows exactly.
 
 ### Editing In Place
 
@@ -189,14 +529,26 @@ already shows. `ServerDataGrid` takes the row-edit props; `editMode` is fixed to
 `row` there, because cell-at-a-time editing would send one PUT per cell to an
 endpoint that takes the whole resource.
 
+`useRowEditor` owns the mechanism — the modes map, `startEdit`/`commitEdit`/
+`cancelEdit`, the deferred caret move, and the `reported` flag that stops a
+refused save being explained twice. Three screens carried it and 24 of their 26
+row-edit lines were byte-identical, which is a mechanism, not a decision.
+A screen that edits rows without handing its refusal to that hook fails
+`check-frontend-screens`.
+
 What the screen still owns:
 
-- `rowModesModel` — controlled, so an action can start and stop the edit
+- `problemOf` and `refusal` — what *this* domain refuses, in its own words: a
+  password is required on a draft row and never on a saved one
 - `processRowUpdate` — one mutation, returning the server's row so the grid shows
-  the new `version`; throwing is what makes the grid revert and stay open
-- `onProcessRowUpdateError` — the failure needs the same sentence a dialog gave
-- `apiRef` + a **refusal**: see below
-- `preProcessEditCellProps` — the same rule the refusal states in words
+  the new `version`, wrapped in `editor.guardRowUpdate`
+- `apiRef` — created in the screen and handed to both the hook and the grid, so
+  the pending values the hook reads are the ones the grid is showing
+- `preProcessEditCellProps` — `problemOf` again, so a red cell and the refused
+  save can never disagree
+- `onRefused`/`onCommitted`/`onCancelled` when the screen keeps more than modes:
+  the user list marks refused rows, and drops a cancelled draft instead of
+  reverting it to a version no endpoint ever stored
 
 ### Creating In The Row
 
@@ -256,9 +608,25 @@ mistakes.
 Every intent a row can serve is a button in its last column — detail, edit,
 delete, and the save/cancel pair while editing — built by `rowActionsColumn`,
 which returns MUI's own `type: 'actions'` column so the grid owns focus and
-`tabIndex` for the buttons. A grid has no row click: `ServerDataGrid` does not
-take `onRowClick`, because a row that opens a record when clicked cannot also be
-a row a user types into.
+`tabIndex` for the buttons.
+
+**A row may also be a door, and the door is guarded in the grid.** The rule used
+to be that an editable list takes no `onRowClick` at all, which put the decision
+in the wrong place: the collision is MUI's, and it is two collisions. A click in
+the actions cell is reported as a row click as well, so a door would open a
+dialog on the way to `삭제`; and a cell double-click starts an editor whose first
+click had already opened that dialog. `ServerDataGrid` answers both once — a row
+in edit mode has no door, a click inside `[data-field="actions"]` belongs to its
+button, and double-click editing is off wherever a door is set, so editing
+starts at the row's own button. `check-frontend-screens` reads those three
+guards on the grid, not the ban on each screen.
+
+**One intent, one control.** A door replaces the button it duplicates rather
+than sitting beside it: `BatchList`'s row opens its run log, and the `실행 이력`
+button is gone — the reader finds the row without looking for an icon, and the
+actions column dropped from five verbs to four, giving the width back to the
+data columns. What keeps its button is what a row click cannot mean: run, stop,
+edit, delete.
 
 **`count` is the widest branch, and it is the column's width.** The number is not
 documentation of the array beside it: `rowActionColumnWidth(count)` is what the
@@ -354,6 +722,15 @@ lived in the mutation's `data` and the failure in a second state.
 tab that fetches refetches on every tab switch and can show a different version
 of the row than its siblings.
 
+**One exception, and it is declared, not argued**: an **execution log**
+(`EXECUTION_LOG` in `hooks/lib/hook-product-areas.ts`, rule://product-areas) is not
+part of the entity — a row per call for ever, server-paged, written by whatever
+exercised the configuration — so it cannot arrive as a prop from the entity read
+its siblings share, and there is no second version of those rows to disagree
+with. `IntegrationCallsTab` reads `useIntegrationCallList` for that reason.
+`check-frontend-screens` permits exactly the declared log hooks: a tab that also
+imports its entity's own hook still fails.
+
 **A record is addressed by the key the server keeps unique**, never by the object
 — in the exemplar an operation by `code` and a credential by `name`. `PUT`
 replaces the whole nested array, so a held object is a stale row with a new id
@@ -383,6 +760,30 @@ one place, because two panels wrote it separately and drifted.
 **A row carries one door, not two**: open and delete. A pencil beside the eye was
 a second route into the same panel, differing only in the mode it landed in —
 "edit" is the button inside the record.
+
+**A value that is a sentence is read whole; a table clips.** A table earns its
+place when every cell is a word or a number and the row is the unit of reading.
+When the value *is* the content - a clause of the Food Code, a condition and a
+sentence and a judgement per row - a table with `ClippedText` hides exactly
+what the reader opened the record for (measured: the standards table showed
+`제품은 고유의 형태, 색택을 가…` and `…` on every row, and its heading
+column clipped at the three levels every row shares). Such a value is an
+outline: grouped under the structure the source has (the Code's headings, in
+the source's order), the shared prefix printed once, each entry printed whole
+and wrapped, folded by group past a measured size (`FOLD_OVER`), no paging - an
+outline is read, not browsed. Decide by the value's measured length, not by
+whether a table was easier to write.
+
+**A row's key is the row's identity, never its words.** `rowKey` is what
+React keeps a row's DOM by; built from rendered values (`type:item:clause`) it
+collides the moment the server writes two rows alike - which the Food Code
+does (가공식품 lists 금속성이물 twice under one heading with the same clause and
+detail) - and a collided key keeps a stale row on every page after the first
+(measured: nineteen rows on a page of ten). So every `rowKey` reads
+`.id`, a prefix beside it allowed; `check-frontend-screens` refuses one that
+does not, following a named key function to its body. The other half is the
+server's: every row read carries `id: UUID` beside `version` (`backend-domain`),
+so a nested read never leaves the client with only the row's words.
 
 **Every table pages, and the footer shows whenever there are rows.** Hiding it
 under the first page size reads as an inconsistency: a reader who sees the total
@@ -553,7 +954,8 @@ in JSX — `check-frontend-screens` fails on both.
 - Report a failed read in the body — no `<Alert>`, no `isError` branch in JSX
 - Hold form field state in `useState`
 - Skip `methods.reset` in a dialog that is reused across rows
-- Fetch inside a detail tab or inside a page component
+- Fetch inside a detail tab (other than its domain's declared execution log) or
+  inside a page component
 - Await a mutation without reporting failure — route it through
   `applyServerError` (`lib/api/formErrors.ts`), which translates the server's
   `code` via `errors.<code>` and puts the sentence on the field that owns it,

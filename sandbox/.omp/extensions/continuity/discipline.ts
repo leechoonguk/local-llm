@@ -1,5 +1,6 @@
 /**
- * Session Discipline — zero-base redesign (2026-08-27) from measured lessons.
+ * Session Discipline — zero-base redesign from measured lessons
+ * (측정 이력: `decks/harness-history`).
  *
  * Design system (every principle carries its measurement):
  *  1. Knowledge lives in docs. The rulebook checklist + Exemplar Map took the
@@ -32,29 +33,27 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { resolve } from "node:path";
 
 const FULL_GATE_RE = /\bmake\b[^|;&]*\bverify\b(?!-fast)|\bmake\b[^|;&]*\btest\b(?!-fast)/;
-// 하위 디렉터리로 좁힌 게이트는 풀 게이트가 아니다. 실측 2026-08-29: 피험자가
+// 하위 디렉터리로 좁힌 게이트는 풀 게이트가 아니다. 실측: 피험자가
 // `cd …/sandbox/backend && make verify` 를 11회 돌리고 루트 게이트는 0회였는데 하네스가 초록으로
 // 셌고, 최종 루트 게이트는 `notice: router exists but api/notice.http is missing` 로 exit 2 였다.
-const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (하위 디렉터리 게이트는 full 게이트가 아니다, 2026-08-28)
-// 절대 상한(2026-08-30): 성장 기반 예산만으로는 **정체된 세션**을 못 잡는다 — 축소판 첫 셀에서
+const SUBDIR_GATE_RE = /\bcd\s+[^\s;&|]*\/(backend|frontend|api|decks)\b|\bmake\b[^|;&]*\s-C\s+(backend|frontend|api|decks)\b/; // full-gate command shapes (하위 디렉터리 게이트는 full 게이트가 아니다)
+// 절대 상한: 성장 기반 예산만으로는 **정체된 세션**을 못 잡는다 — 축소판 첫 셀에서
 // ctx 96,074·턴 183초까지 갔는데 컷이 한 번도 안 걸렸다(증가폭이 예산에 못 미쳐서다).
 // 질병 컷을 되살리지 않고 같은 구멍을 막는 최소 장치다. 창을 모르면(0) 적용하지 않는다.
 // 창의 이 비율을 넘으면 성장과 무관하게 컷. 셀마다 켜고 끌 수 있게 환경변수로 뺀다(0 이면 끔) —
-// 하네스를 고치지 않고 같은 조건에서 두 팔을 번갈아 돌리기 위해서다(2026-08-30 rest 분산 판정용).
+// 하네스를 고치지 않고 같은 조건에서 두 팔을 번갈아 돌리기 위해서다(rest 분산 판정용).
 const END_GATE_MAX = 2;              // red-finish re-drives
-// 하드 finish-block 의 상한(2026-09-02 실측): 퇴행 루프(툴 0, 같은 사설 반복)에 무제한
+// 하드 finish-block 의 상한(실측): 퇴행 루프(툴 0, 같은 사설 반복)에 무제한
 // 게이트가 물리면 차단 104회 × ~25s 로 캡을 태우고, 차단 프롬프트 자체가 ctx 를 91k 까지
 // 밀어 올려 모델 창 초과 오류로 끝났다. 상한 뒤에는 빨간 채로 끝나게 둔다 — 그 행이 측정이다.
 const FINISH_BLOCK_MAX = 8;
-const SMALL_FOOTPRINT = 2;           // 프롬프트 단위 작업에서 타깃 검증으로 마감 가능한 변경 파일 수 (2026-08-28 실측: 한 줄 docstring 편집 한 건에 풀 게이트가 강제돼 104초 중 59초를 먹었다)
-const FAST_GATE_RE = /\bmake\b[^|;&]*(-C\s+backend\s+verify\b|\btest-fast\b)|\bcd\s+[^\s;&|]*backend\b[^|]*\bmake\s+verify\b|\bpytest\b/; // 타깃/백엔드 검증 명령 모양 — verify-fast 복합 타깃은 2026-09-01 제거(backend verify 가 0.5s 차이로 더 엄격), test-fast 만 남는다(전역 100% 커버리지 addopts 아래에서 타깃 실행을 성립시키는 유일한 경로)
-const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (7th observation: services.py User->Notice wholesale swap, 2026-08-28)
+const REG_FILES = [ // registration/wiring files under watch — line-replacement is this model's chronic habit (repeated observation: services.py User->Notice wholesale swap)
   "backend/alembic/env.py",
   "backend/tests/conftest.py",
   "backend/app/dependencies/services.py",
   "backend/app/main.py",
 ];
-const REG_WATCH_MAX = 3;             // registration-loss messages **per watched file**(2026-08-28: 세션 상한이 앞선 파일들에서 소진돼 main.py 소실 때 침묵했다 — 회귀 1건)
+const REG_WATCH_MAX = 3;             // registration-loss messages **per watched file**(실측: 세션 상한이 앞선 파일들에서 소진돼 main.py 소실 때 침묵했다 — 회귀 1건)
 
 export function registerDiscipline(pi: any): void {
   const logPath = process.env.STUCK_RESET_LOG || "";
@@ -64,7 +63,7 @@ export function registerDiscipline(pi: any): void {
   let mutatedEver = false;
   const persisted = loadPersisted();
   let lastGateAt = persisted.lastGateAt ?? 0, lastNoticeAt = persisted.lastNoticeAt ?? 0, gateBlocks = 0, turnCount = 0;
-  let lastFastGateAt = 0, lastMutationAt = 0;
+  let lastMutationAt = 0;
   const unverified = new Set<string>();
   const srcWritten = new Set<string>();
   const testWritten = new Set<string>();
@@ -121,22 +120,21 @@ export function registerDiscipline(pi: any): void {
             unverified.add(wp); mutatedEver = true; lastMutationAt = Date.now(); regCheck(wp);
           }
         }
-        if (!truncated && !fullGate && !event.isError && FAST_GATE_RE.test(cmdStr)) lastFastGateAt = Date.now();
         // 성공한 게이트만 검증으로 센다. 실패한 게이트까지 밀면 마감 판정이 참이 되어 차단이 침묵한다
-        // (2026-08-29 실측: 마지막 게이트가 빨간 채 종료, 최종 루트 게이트 exit 2).
+        // (실측: 마지막 게이트가 빨간 채 종료, 최종 루트 게이트 exit 2).
         if (fullGate && !event.isError && !f) {
           lastGateAt = Date.now(); unverified.clear(); savePersisted({ lastGateAt });
         }
         if (f) {
           // 시그니처 교체 = 다른 실패로 전진 중 — same-signature 시계를 절반만 남기고
           // 연장한다(총상한 RED_TOTAL_MS). 실측: gatefix-a2 에서 4개 시그니처가 12분간
-          // 전진 중인데 컷이 원래 시계로 발화했다(토의 2026-08-27).
+          // 전진 중인데 컷이 원래 시계로 발화했다(실측 토의).
           redSig = f; redCmdTk = cmdTk; log(`red: ${f.slice(0, 100)}`);
         }
         if (!event.isError && (fullGate || (!truncated && redSig && redCmdTk && jaccard(cmdTk, redCmdTk) >= 0.5))) {
           if (f) { /* red run — not a clear */ } else {
           // 전체 게이트 성공은 가장 강한 초록 증거 — Jaccard 무관 clear.
-          // 실측: 성공 셀에서 stale red 가 END-GATE 2발을 소진시켰다(토의 2026-08-27).
+          // 실측: 성공 셀에서 stale red 가 END-GATE 2발을 소진시켰다.
           if (redSig) log(fullGate ? "green — red cleared (full-gate success)" : "green — red cleared (same-command success)");
           redSig = null; redCmdTk = null;
           }
@@ -149,7 +147,7 @@ export function registerDiscipline(pi: any): void {
         else if (/^bash/i.test(event.toolName)) regCheck(norm(str(event.input)).slice(0, 300));
         // 스키마 무관 백스톱: 패치형 결과는 입력에 path 가 없어도 결과 텍스트에
         // [path#TAG] 로 파일명을 남긴다 — 실셀에서 입력 트리거만으로 env.py
-        // 회귀를 놓친 실측(2026-08-27)이 근거.
+        // 회귀를 놓친 실측이 근거다.
         regCheck(content.slice(0, 500));
       }
     } catch (e) { log(`tool_result ERR ${String(e)}`); }
@@ -163,7 +161,7 @@ export function registerDiscipline(pi: any): void {
       log(`turn dt=${((now - lastTurnAt) / 1000).toFixed(1)}s ctx=${used}`);   // 계측만 남긴다 — 컷은 omp 소관
       lastTurnAt = now;
 
-      // 중단된 턴의 처리는 **중단 주체**에 따라 갈린다(2026-09-01 실측으로 분리).
+      // 중단된 턴의 처리는 **중단 주체**에 따라 갈린다(실측으로 분리).
       //  - `aborted` = 사용자의 Esc. "끝냈다"가 아니므로 침묵한다 — 신호를 내면 방금 취소한
       //    작업을 다시 굴려서 Esc 가 먹지 않는 것처럼 보인다(사용자 보고 → 프루프 S1).
       //  - `error` = 런타임/제공자 오류. 여기서도 침묵했더니 **작업이 미완인 채 세션이 조용히
@@ -198,30 +196,21 @@ export function registerDiscipline(pi: any): void {
         } else if (mutatedEver && (lastGateAt < lastMutationAt || (lastNoticeAt > 0 && lastNoticeAt > lastGateAt))) {
           // 하드 finish-block(무제한·멱등): 널 블록에서 full 게이트 무실행 종료와
           // backend 스코프 초록 + 서 있는 check-* 경고 위 종료가 finish-check ×2 를
-          // 통과했다(2026-08-28 부검). 게이트의 완료 정의를 기계로 집행한다.
-          // 비례 규칙(2026-08-28): 아직 풀 게이트가 한 번도 안 돈 세션에서 변경이 SMALL_FOOTPRINT 이하이고
-          // 서 있는 check-* 경고가 없으면, 마감 조건은 풀 게이트가 아니라 타깃 검증이다. 프롬프트 단위 작업에서
-          // 한 파일 편집에 40분 셀용 풀 게이트를 물리면 그 프롬프트 시간의 절반 이상이 게이트로 간다(실측 59/104초).
-          // 벤치 셀은 변경이 13~15 파일이라 이 경로로 새지 않는다.
+          // 통과했다(부검 실측). 게이트의 완료 정의를 기계로 집행한다.
+          // 비례 규칙(변경이 작으면 타깃 검증으로 마감)은 철회했다.
+          // 그 규칙은 post 훅 52개가 편집마다 돌아 하네스 검사를 이미 끝내 놓은 상태를 전제했다.
+          // 그 자동 실행을 `.omp/config.yml` 의 `disabledExtensions` 로 껐으므로(실측 `make hook-report`:
+          // 변이 도구 호출 1건당 3.8초, 세션당 ~570초), `make -C backend verify` 로 끝내면 52개 검사가
+          // 그 세션에서 한 번도 돌지 않는다. 마감 조건은 변경 규모와 무관하게 루트 게이트 하나다(직렬 87초, 1회).
           const noticeStanding = lastNoticeAt > 0 && lastNoticeAt > lastGateAt;
-          const small = !noticeStanding && unverified.size > 0 && unverified.size <= SMALL_FOOTPRINT;
-          if (small && lastFastGateAt > lastMutationAt) {
-            log(`FINISH-OK targeted (${unverified.size} file(s), fast gate after the last edit)`);
-          } else {
-            gateBlocks++;
-            if (small) {
-              pi.sendUserMessage(`You are finishing after changing ${unverified.size} file(s) with nothing verified since. Run the check that covers what you touched — \`make -C backend verify\`, or \`make -C backend test-fast t="tests/<touched>"\` — and fix what it reports before finishing.`);
-              log(`FINISH-BLOCK #${gateBlocks} (targeted, ${unverified.size} file)`);
-            } else {
-              const why = noticeStanding
-                ? "a harness check notice was raised after your last full verification run"
-                : "the full verification has not run since your last change";
-              let bmsg = `You are finishing, but ${why}. Run \`make verify\` from the sandbox root end-to-end now, address anything it or a standing system-notice reports, and only then finish.`;
-              if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
-              pi.sendUserMessage(bmsg);
-              log(`FINISH-BLOCK #${gateBlocks}`);
-            }
-          }
+          gateBlocks++;
+          const why = noticeStanding
+            ? "a harness check notice was raised after your last full verification run"
+            : "the full verification has not run since your last change";
+          let bmsg = `You are finishing, but ${why}. Run \`make verify\` from the sandbox root end-to-end now, address anything it or a standing system-notice reports, and only then finish.`;
+          if (gateBlocks >= 3) bmsg += ` The single next action is exactly: make verify`;
+          pi.sendUserMessage(bmsg);
+          log(`FINISH-BLOCK #${gateBlocks}`);
         }
       }
     } catch (e2) { log(`turn_end ERR ${String(e2)}`); }
@@ -243,7 +232,7 @@ function importLines(content: string): Set<string> {
     || /\binclude_router\(/.test(l)));
 }
 
-// 프롬프트 간 상태(2026-08-29 실측): 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나라
+// 프롬프트 간 상태(실측): 인터랙티브에서 프롬프트 하나 = omp 프로세스 하나라
 // lastGateAt·브리핑 여부가 매 프롬프트 초기화됐다. 4프롬프트 세션에서 p2·p3 이 게이트를 15회
 // 돌았는데 p4 가 "이 세션은 풀 검증을 한 번도 안 돌렸다"며 다시 막았다. 벤치 러너는 셀마다
 // .omp/state 를 지우므로 셀은 영향을 받지 않는다.

@@ -85,6 +85,21 @@ so every endpoint reads the same.
 
 ## Query and Pagination
 
+- A filter on a column the schema closes with a `Literal` (`ReportKind`) gets its
+  own alias in `app/dependencies/query.py` (`ReportKindQuery = Annotated[ReportKind |
+  None, Query()]`): the `Literal` is the validator, so a value outside it is a 422
+  at the boundary and the filter object never holds a string it cannot switch on.
+  `check-frontend-screens` classifies every `*Query` alias by shape - a free
+  string with a length floor matches by contains, everything else whole - so the
+  screen's select and the router's predicate agree without either naming the other.
+
+- **An `ExactFilterQuery` column owes a `facets` route.** The value matches
+  whole because the caller picked it from the column's own values, and
+  `GET <prefix>/facets` is where those come from; its response model declares a
+  field per such column. `check-backend-router-params` fails the missing route
+  and the missing field - without them the screen's select offers only "all",
+  which is a filter that cannot filter.
+
 - Bounds are declared **once**, in `app/dependencies/query.py`:
 
   ```python
@@ -121,6 +136,29 @@ so every endpoint reads the same.
   (`offset`/`limit` aliases) → service (`offset: int = 0, limit: int = 100`) →
   repository (`.offset(offset).limit(limit)`). A router that accepts pagination
   and drops it before the query is worse than none: the caller is told it worked.
+- **A grid's list sorts on the server.** Every top-level collection read (a
+  `Page[...]` whose path names no `{id}` - the one a `<Domain>List` screen
+  pages) declares the sorted column and its direction after the filters:
+
+  ```python
+  sort: UserSortQuery = None,
+  order: OrderQuery = "asc",
+  ```
+
+  `OrderQuery` is one closed pair. `<Domain>SortQuery` is one alias per list, a
+  `Literal` of the columns the grid may sort - closed, because a `sort` open
+  to any string is one `getattr` away from a 500, and `None` is the endpoint's
+  own order, the one it paged by before sorting existed. The pair flows through
+  the layers like pagination and lands in `app/core/sorting.ordered`, which puts
+  the named column first and the endpoint's own order after it as the tiebreak
+  (a page cut through a run of equal values must land on the same rows twice).
+  Measured before the rule: every grid header sorted the ten loaded rows and
+  called it the collection. `check-backend-router-params` demands the pair on
+  every such endpoint, that both reach the service call, and that every
+  `Literal` member is a column of the router's model; `check-frontend-screens`
+  holds each grid's sortable columns to the same `Literal`, and a column outside
+  it says `sortable: false`. A sub-collection (`GET /{id}/runs`) is read in a
+  dialog table without sortable headers and stays unsorted.
 - Routers never declare their own `Annotated` alias, and never call `Query()`,
   `Depends()`, `Path()`, `Body()` or `Header()` inline — the alias is the single
   place a parameter's validation lives.
@@ -134,6 +172,7 @@ so every endpoint reads the same.
 - Take two body parameters, or name the body anything but `data`
 - Put a body on `GET`/`DELETE`
 - Ship any `Page[...]` endpoint without `offset`/`limit`, sub-collection included
+- Ship a top-level `Page[...]` endpoint without `sort`/`order`, or open `sort` to a bare `str`
 - Return a bare `list[...]` from a read — the total is part of the answer
 - Default `limit` to a literal instead of `settings.items_per_user`
 - Accept `offset`/`limit` in a router and not pass them to the query

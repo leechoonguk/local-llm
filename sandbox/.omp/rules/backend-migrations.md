@@ -179,6 +179,30 @@ a published revision changes what every other checkout has already applied.
 make migrate          # alembic upgrade head
 ```
 
+## Schema Is Only Ever Migrated
+
+**Every schema object - a column, a constraint, an index - is declared on the
+model and reaches a database through a revision.** Nothing else creates one:
+not `psql`, not a script, not application code at runtime.
+
+An index typed into a shell works on the machine it was typed on, is in no
+revision, and the next environment is built without it - with the slow plan
+and nothing saying why. Measured: the products-of-a-material read
+needed `(material_code, report_kind, item_report_no)` on
+`food_item_report_ingredient`; the single-column index made the planner spill
+its bitmap lossy (seconds a page), and the fix is a
+revision generated from the `Index(...)` in the model's `__table_args__`,
+never a hand-run `CREATE INDEX`.
+
+Two checks, one per half. `alembic check` sees a database that holds something
+the models do not (planted: a hand-made `ix_probe_hand_made` failed at once),
+and `check-backend-migrations` refuses DDL inside `backend/app/` - the half no
+comparison would ever see, because the statement runs only when that code path
+does. `LedgerStage`'s staging table is the one exception: a temporary the pass
+creates and drops through SQLAlchemy's `CreateTable`/`DropTable`, never a
+string. `ANALYZE` after a whole-table rewrite is not DDL and is required
+there - a table rebuilt whole carries statistics for rows it no longer holds.
+
 ## ORM ↔ DB Sync Check
 
 `check-backend-migrations.ts` runs `alembic check` (autogenerate diff) on every
@@ -196,6 +220,59 @@ tool result and flags drift:
 
 Fix drift with `make migrate-gen m="..."` then `make migrate`. Run
 `make check-backend-migrations` to verify sync on demand.
+
+## A Mixin Column Is One Revision
+
+A revision targets exactly one table - unless the column it changes belongs to a
+**mixin**, in which case the unit is the mixin and the revision walks every table
+carrying it (read off `information_schema`, not listed by hand). `AuditMixin`
+puts `created_by`/`updated_by` on 54 tables; widening them one table per revision
+is 54 revisions of one decision, and any subset of them applied is a database
+where the same actor name fits in one table and not the next. Revision 268 is
+that shape, and `check-backend-migrations` recognises it by the mixin's name
+plus the `information_schema` read.
+
+Measured before the widening: three jobs renamed after
+their ledgers signed their rows `batch:<code>` past the column's
+`String(50)`, and each died writing its first call log - before the portal was
+called. `check-backend-batch` now compares every job code against the column
+that stores it.
+
+## A Server Default Is Part Of The Schema
+
+`alembic check` compares server defaults only when `env.py` asks it to, and it
+did not. Measured: three ledger revisions wrote a `version` column
+`nullable=False` with no `server_default`,
+every gate stayed green for weeks, and the first pass to fill one of them walked
+its whole feed (hundreds of windows, no refusal) and then died
+replacing the ledger on the NOT NULL constraint.
+
+`compare_server_default` is on from that day. It is a callable rather than
+`True` for one type: the comparison asks the database `SELECT <inspected> =
+<rendered>`, and for a JSON column that is `'{}'::json = '{}'`, which Postgres
+has no operator for - so a JSON default reads as unchanged and every other
+column is compared.
+
+## A CHECK Body Is Invisible To Alembic
+
+`alembic check` compares tables, columns, indexes and a constraint's
+**presence** — never the set inside a `CHECK (col IN (...))`. Measured:
+`SKIPPED` was added to `batch_run.status` in the model, the schema
+`Literal` and the TypeScript union, no revision touched `ck_batch_run_status`,
+and every gate passed. The first run that ended SKIPPED was refused by the
+database, its ending was never written, and two derive runs sat RUNNING for
+ever — which the next fire then read as "a derivation is already running" and
+stood down from.
+
+So a changed vocabulary is a revision of its own, `drop_constraint` +
+`create_check_constraint` over the one table, and two readers watch it:
+
+- `check-backend-migrations` fails when a model's `CheckConstraint` set differs
+  from the upstream revision of that file and no unpushed revision names the
+  constraint.
+- `check-backend-domain` compares every model `CheckConstraint` with
+  `pg_constraint` in the running database, and reports `DORMANT` rather than a
+  pass when it cannot reach one.
 
 ## Rollback
 
@@ -240,6 +317,19 @@ rewritten under everyone who already ran them.
 - Ship a `downgrade()` whose body is a silent no-op
 - Declare a module constant after the first function, or in lower case
 - Rename a revision file without updating its `revision:` value
+- Call `op.rename_table` without renaming the table's primary key in the same
+  revision. PostgreSQL leaves every index, constraint and the pkey under the old
+  name; `alembic check` compares indexes by name and pkeys not at all, so the
+  pkey is the one that drifts unseen. Measured here: eleven ledgers renamed at
+  revisions 136-146 kept `food_<old>_pkey`, every gate stayed green, and the next
+  table to take one of those names was created as `food_item_report_pkey1`.
+  `check-backend-migrations` refuses a rename that does not carry its pkey:
+
+  ```python
+  op.rename_table("food_nutrition", "food_ledger_nutrition")
+  op.drop_constraint("food_nutrition_pkey", "food_ledger_nutrition", type_="primary")
+  op.create_primary_key("food_ledger_nutrition_pkey", "food_ledger_nutrition", ["id"])
+  ```
 
 ## A Skipped Comparison Is Not a Pass
 

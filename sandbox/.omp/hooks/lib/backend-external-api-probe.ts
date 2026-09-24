@@ -107,7 +107,7 @@ function encodeExpression(expression: string): string {
     .join("&");
 }
 
-/** `20240101` -> `2024-01-01`: the shape a provider's own docs often reject. */
+/** `20240101` -> `2024-01-01`: the shape a provider's own docs often reject. (history-ok: format example) */
 function dashed(value: string): string {
   return /^\d{8}$/.test(value)
     ? `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6)}`

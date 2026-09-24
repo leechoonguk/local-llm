@@ -46,11 +46,16 @@ Service layer → IntegrationClient.from_database() → IntegrationClient.execut
 | Error mapping | `IntegrationError` 502, `IntegrationTimeoutError` 504, `IntegrationRateLimitError` 429 |
 | Failure detail | the error carries `status_code` + scrubbed `body` when the provider answered: the non-2xx raise, the 429 raise, and every mapping/parse/envelope refusal through one `try/except` around the response normalisation call. A timeout and an unreachable host carry neither |
 | Result | `IntegrationExecutionResult(canonical_payload, metadata, status_code)` |
+| File operations | `stream()` reads a `CSV` operation in chunks of `page_size` records - same rendering, same retries before the first byte, one call record after the last chunk. A failure after the first chunk is not retried: the reader was already handed records. `execute()` on a file answers the download (name, type, bytes, rows) and an empty page |
 | Logging | provider, operation, attempt, status, duration only — never body, header values, or secrets |
 
 The body travels to the caller and nowhere else: `UPSTREAM_BODY_LIMIT` caps it,
 every secret the call resolved is replaced by `***` **before** truncation (cutting
 first hands back the front half of a key), and the logs still carry none of it.
+The transport's own loggers are held to WARNING (`TRANSPORT_LOGGERS`, named
+beside the client and applied by `configure_logging`): at INFO it prints every request's full URL, and a
+provider's key travels in the URL — measured: thousands of lines of it in
+one night's stdout under the INFO root.
 One choke point rather than six signatures: the envelope refusal, the unparseable
 body, the root that is not a page and the missing required column each raise from a
 helper that was handed the payload, not the response — and each is a verdict about

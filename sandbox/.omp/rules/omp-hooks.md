@@ -73,7 +73,9 @@ post hook after every edit.
 | `backend-model-files.md` | — | `check-backend-model-files.ts` |
 | `backend-repository-files.md` | — | `check-backend-repository-files.ts` |
 | `backend-service-injection.md` | — | `check-backend-service-injection.ts` |
+| `backend-relations.md` | — | `check-backend-relations.ts` |
 | `backend-batch.md` | — | `check-backend-batch.ts` |
+| `backend-ledger.md` | — | `check-backend-ledger.ts` |
 | `backend-testing.md` | — | `check-backend-tests.ts` |
 | `backend-middleware.md` | — | `check-backend-middleware.ts` |
 | `backend-app-setup.md` | — | `check-backend-app-setup.ts` |
@@ -103,6 +105,7 @@ post hook after every edit.
 | `frontend-i18n.md` | — | `check-frontend-i18n.ts` |
 | `frontend-design.md` | — | `check-frontend-design.ts` |
 | `frontend-components.md` | — | `check-frontend-components.ts` |
+| `product-areas.md` | — | `check-product-areas.ts` |
 | `code-layout.md` | — | `check-code-layout.ts` |
 | `duplicate-blocks.md` | — | `check-duplicate-blocks.ts` |
 | `tooling.md` | `strict-tooling.ts` | `check-tooling.ts` + `check-omp-types.ts` (its TypeScript type-checks) |
@@ -216,6 +219,24 @@ zero locales, is not a clean state — it is input the check cannot read, and th
 check's own blindness is the finding. The same shape guards dormancy
 (`A Skipped Comparison Is Not a Pass`) and the layer walk above: silence must be
 earned by looking, never by failing to look.
+
+**A parser that reads one half of a pair proves nothing about the other.** The
+zero case above is the easy one - a check that reads *something* looks awake
+while the comparison it exists for never runs. A dialog table is columns and
+cells: the column reader worked, the cell reader understood one of the two
+forms the codebase writes (`cells={(row) => [ … ]}` but not
+`renderCells={(row) => (<>…</>)}`), and `cells[index]` came back `undefined` on
+nine files, each of which skipped to the next column without a word. A badge
+clipped by 1px sat on screen through a green gate the whole time.
+
+Where two parses must agree, **compare their counts and fail on a mismatch**:
+N columns declared and M cells read is a file the check misread, whichever of
+the two is larger. That one assertion, added after the fact, immediately found
+a second bug in the same function - column keys matched `[a-z0-9_]+`, so every
+camelCase key (`rotationGroup`, `createdAt`, `fieldCount`) had been dropped -
+and behind it a real defect the dropped column was hiding, an English header
+clipped at 78px against its 83px of ink. A check's blindness is discovered by
+asking it what it saw, never by watching it pass.
 
 ## Scope Equals The Claim
 
@@ -353,6 +374,7 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
   +-- check-backend-model-files.ts # Read-only: validates one table / one class / one file
   +-- check-backend-repository-files.ts # Read-only: validates one repository / one table / named after it
   +-- check-backend-service-injection.ts # Read-only: validates a service imports no other service
+  +-- check-backend-relations.ts   # Read-only: validates no ledger is an edge's endpoint, edges are viewonly with a primaryjoin, no ForeignKey, no join by class
   +-- check-backend-auth.ts        # Read-only: validates auth + domain exceptions
   +-- check-backend-exceptions.ts  # Read-only: validates the core exception policy (raise/handler/body)
   +-- check-backend-api-http.ts    # Read-only: validates api/*.http structure + runnable sequencing
@@ -360,6 +382,7 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
   +-- check-backend-naming.ts      # Read-only: validates naming conventions
   +-- check-backend-transaction.ts # Read-only: validates transaction placement
   +-- check-backend-batch.ts       # Read-only: validates batch job conventions
+  +-- check-backend-ledger.ts      # Read-only: validates feeds sync their ledgers through the stage and derived tables are derivations
   +-- check-backend-tests.ts       # Read-only: validates test standard (per-domain, 10 cases, auth, conftest)
   +-- check-backend-middleware.ts   # Read-only: validates CORS/security headers/request ID/logging
   +-- check-backend-app-setup.ts   # Read-only: validates health/OpenAPI metadata/API versioning
@@ -389,6 +412,7 @@ in `.omp/ast-grep/rules/<scope>/` and executed by post hooks via the shared runn
   +-- check-code-layout.ts        # Read-only: validates comments, banners, constant placement, class member order (all code)
   +-- check-tooling.ts            # Read-only: validates the tooling language policy (TypeScript hooks, no Python scripts)
   +-- check-makefiles.ts           # Read-only: Makefile targets consistency check
+  +-- check-product-areas.ts       # Read-only: each nav area's pattern (record / operations / derived)
   +-- check-decks-sync.ts          # Read-only: decks mention all rules/hooks/AST dirs
   +-- check-ast-rules.ts           # Read-only: proves every ast-grep rule fires (valid/invalid cases)
   +-- check-omp-types.ts           # Read-only: tsc --noEmit over .omp/tsconfig.json
@@ -409,6 +433,17 @@ All hooks follow a strict naming convention:
 
 Pre hooks use `strict-<scope>-<name>.ts` — omit `<scope>` when cross-cutting across all projects.
 Post hooks use `check-<scope>-<name>.ts` — omit `<scope>` when covering all domains.
+
+**The `<name>` slot can carry a skill.** A domain skill's harness is the post
+hook named after it: when `<name>`'s hyphen tokens contain a skill's name
+contiguously (`ledger` → `check-backend-ledger.ts`, `integration` →
+`check-backend-integration-configuration.ts`), that hook **is** the skill's
+mechanical enforcement, must appear in the skill's `enforced-by` frontmatter,
+and must be a `verify` prerequisite — held both ways by `check-omp-skills`
+(rule://omp-skills, "Skill Harness"). The `<scope>` prefix is untouched by
+this: a skill is not a scope, and the hook's prefix still follows the paths it
+reads. Naming a new hook after a skill is therefore a claim with teeth — do it
+on purpose or pick another `<name>`.
 
 **The prefix is machine-checked, not stylistic.** Every post-hook contract check
 in `check-omp-hooks` is keyed by `check-`, so `post/foo.ts` would be validated by
@@ -459,7 +494,13 @@ classification onto whoever writes the site, not onto the next audit.
    when the Makefile and the documented row disagree (see
    `root-makefile.md` → Verify Membership)
 
-5. **Run `make check-omp-hooks`** to validate consistency (part of `make verify`)
+5. **Disable its automatic execution (post hooks only)** — add
+   `- hook:post:<file-without-.ts>:<file>.ts` to `disabledExtensions` in
+   `.omp/config.yml`. Post hooks are the closing gate, not a per-tool-call tax:
+   see *Post-Hooks → Execution Model*. `check-omp-hooks` fails when a post hook
+   is missing from that list, or when the list names a file that no longer exists.
+
+6. **Run `make check-omp-hooks`** to validate consistency (part of `make verify`)
 
 ## Pre-Hooks
 
@@ -545,6 +586,48 @@ Read-only hooks that listen to `tool_result` events. Never block tool calls.
 - Validation: `make verify` (or the individual `make check-*` targets) runs
   the same checks on demand via CLI.
 
+### Execution Model — the closing gate, not a per-tool-call tax
+
+Post hooks do **not** run automatically. Every file in `.omp/hooks/post/` is
+listed in `disabledExtensions` in `.omp/config.yml`, so the runtime never loads
+it as a `tool_result` listener; the checks reach the tree exactly once, through
+the root `make verify` (every post hook is a `verify:` prerequisite target).
+
+Measured (`make hook-report`, 125 sessions / 18,760 mutating tool calls): the 52
+post hooks cost 3.8s per tool call and 71,543s in total — `check-verify` 47% of
+it, the three whole-tree scanners (`check-backend-api-http`,
+`check-backend-integration-configuration`, `check-backend-ledger`) another 33%.
+One root `make verify` costs 52s (measured green twice: 52.2s / 53.1s; `make -j8
+verify` is 21.0s). Break-even is 14 mutating calls; a session averages ~150.
+
+Two changes bought that number down from 85s, and both hold only because the
+work is genuinely independent:
+
+- `make test` runs `pytest -q -n auto` (xdist workers). The suite is 545 tests
+  in 36s serial — no single test above 0.89s, so the cost is per-test fixture
+  setup, which is what parallelism removes. Safe because each test builds its
+  own in-memory sqlite engine (`backend/tests/conftest.py`). Measured 12.6s,
+  coverage still 100%.
+- `check-verify` runs the backend and frontend gates side by side through one
+  `sh` (see its own docstring). 52.3s → 19.4s; per-side labels and diagnostic
+  tails are preserved by giving each side its own output and status file.
+
+What this changes for an author:
+
+- A new post hook needs its `hook:post:<tool>:<file>` id in `.omp/config.yml`.
+  The id format is the hook capability's `toExtensionId`
+  (`hook:<type>:<tool>:<name>`, `<tool>` = filename without its extension) —
+  see `omp://extension-loading.md`.
+- A check now reports only when the gate runs, so its message must stand alone
+  without the tool call that caused it — the *Every warning says where it
+  applies* contract is what keeps it readable.
+- The finish gate in `.omp/extensions/continuity/discipline.ts` is what forces
+  that single run: finishing after a change with no successful root `make
+  verify` since is blocked. There is no proportional/targeted exemption —
+  `make -C backend verify` does not run any of the 52 checks.
+- Pre hooks (`.omp/hooks/pre/strict-*.ts`) stay loaded. They *block* destructive
+  calls before they land, which no after-the-fact gate can undo.
+
 ### Post-Hook Validation Scope
 
 Each post hook owns a single concern and runs after eligible mutating tools.
@@ -559,6 +642,7 @@ drifted out of it.
 |`check-backend-model-files.ts`|Model files in `backend/app/models/`|One `__tablename__` per file, the file named after its table, one mapped class per file — measured: four tables in one file forced a filename exception into three separate readers|
 |`check-backend-repository-files.ts`|Repository files in `backend/app/repositories/`|A file's own `select(Model)` targets only the table its name declares; child-table column projections and aggregate-root child construction are exempt|
 |`check-backend-service-injection.ts`|Service files in `backend/app/services/`|No `from app.services` import — a service composes repositories, never another service|
+|`check-backend-relations.ts`|The models under `models/food/` and every query layer|No model declares a `ForeignKey` (one feed's pass must not fail on another's gaps — measured: a quarter of the rows dangled on I2600→I2590); **a ledger is no edge's endpoint** — no `food_ledger_*` model declares a `relationship()` (measured: fourteen were declared and none was read outside the tests) and none is the target of one, because what a ledger holds reaches a derived table as a column its feed's pass fills, where the gap can be counted; every relationship is `viewonly=True` with a `primaryjoin=` that marks a `foreign(...)` side (without a constraint the mapper cannot tell the direction); a `Mapped[list[...]]` edge says `uselist=True` (measured: `foreign()` on the local side reads as many-to-one and hands back one object); no query layer joins a `Food…` model by its class — the edge is spelled once, on the derived model, and a query joins along the attribute; every relationship carries a dated count (`YYYY-MM-DD` and a number) in the comment block above it - an edge without a constraint is a claim, and the claim is the measurement|
 |`check-backend-exceptions.ts`|Core exception policy across `backend/app/`|`ast-grep/rules/exceptions/` (no builtin raise outside a Pydantic validator, no `HTTPException` raised **or constructed**, no `raise stored_instance`); every raised class defined in `app/core/exceptions.py`; class ↔ `@app.exception_handler` both ways with a parent-handler allowance for subclasses; one handler per class; uniform body (`detail`, `code`, `request_id`) with an explicit `status_code`; every code a snake_case identifier (it is the locale key `errors.<code>`, not prose); **a class carrying only `detail` is not raised for two different reasons** — the difference would live solely in the string no screen may render, so the causes reach the user as one sentence (measured: `ConflictError` had 8 raise sites all answering `conflict`, and a form had guessed `conflict: 'name'` for failures about no field at all; exempt by construction — no `detail`, an existing `code` parameter, structured fields beyond `detail`, or a single raise site); `*Error` naming; third-party mappings (`StaleDataError`) declared in the allowlist|
 |`check-backend-api-http.ts`|`api/*.http` structure, runnable sequencing, endpoint + external API coverage|File ↔ router both ways and location (`api/`, not `backend/api/`); structure (`### <Name> API` title, `### 전제:`, `@base`, named login block before the first token use, sections numbered 1..n with the status declared after a dash); Bearer on non-public requests (a `— 401` block omits it on purpose); one request block per `@router.<method>`; no literal UUID in a request line; CRUD sequencing (create → list → get → update → [409] → delete → [404]) with the id chained from the named create block and a dynamic create body when the model declares uniqueness; **state neutrality** — balanced `— 201` creates vs `— 200` deletes per collection, the actor contract — `auth.http` alone creates/deletes the account it logs in as, every domain file logs in as the seeded actor (`@actorUsername`/`@actorPassword`, `make db-init` named in `### 전제:`; the row comes from `57_seed_api_actor_user.py`), and seeded rows never deleted; a success-path (`— 200`) execute block per seeded integration operation; **runtime proof** — `lib/backend-api-flow.ts` and the `check-api-flow` target must exist and be wired to each other|
 |`check-backend-router-params.ts`|Router parameter standard in `backend/app/routers/`|Four parameter kinds (path / `*Request` body named `data` / `*Dep` dependency / `*Query` alias) and nothing else; route template ↔ signature both ways; `*_id` path params typed `UUID` with no default; one body on writes only, none on GET/DELETE (form dependency is the documented exception); root `GET /` list reads paginated through `OffsetQuery`/`LimitQuery` (parent-scoped sub-collections exempt but must be path-scoped); `LimitQuery` declares `ge=`+`le=` and `ITEMS_PER_USER` ≤ the cap; signature order path → body → dependencies → query; routers declare no local `Annotated` alias|
@@ -566,7 +650,8 @@ drifted out of it.
 |`check-backend-naming.ts`|Naming + encapsulation in `backend/app/`|File/variable naming AST rules; module-private functions prefixed `_`, class-private methods prefixed `_` in the five encapsulated layers (the module check is anchored at column zero and never looked inside a class), and a `_` name never imported by another module (otherwise the prefix is a rename away from meaningless); repository access forbidden outside its owning service|
 |`check-backend-transaction.ts`|`session.begin()` placement|`transaction/service-only.yml` — bare, `self.`, and aliased (`svc.session.begin()`) forms forbidden outside services (incl. `app/batch/`); `domain/` write-only transaction rules|
 |`check-backend-migrations.ts`|ORM ↔ DB sync and migration scope|`alembic check` autogenerate diff (ORM drift and DB drift); skipped silently when the database is unreachable|
-|`check-backend-batch.ts`|Batch job conventions in `backend/app/batch/`|module named after its single public job (`app/batch/<job_code>.py`) and `BATCH_JOBS` keyed by that same name; `engine` used directly; `Service(session)` constructor; `service.repository` access (never raw session); meaningful count/status return; `async def`; the schedule chain (registry → seeded `batch`/`batch_schedule` row → scheduler options); the lifespan loads the schedule **and sweeps orphaned runs** (`update_interrupted_runs` — main.py is outside coverage, so a deleted sweep call fails nowhere else); the run contract (a job that walks a provider records a step, and a step is recorded only under `current_run_id`); the provider-job shape of `sync_<provider>_ledgers.py` (the four facts `PROVIDER_CODE`/`PAGE_SIZE`/`END_CODES`/`SYNCED_BY`, a nonempty `FEEDS` whose every `Feed` names a seeded operation of that provider and the `replace_<table>_ledger` of a known ledger service — read by `lib/backend-ledger-feeds.ts` — every walk passing `page_size=PAGE_SIZE`/`end_codes=END_CODES`, one paging family per job, `LedgerFloorError` caught, the retired names `MAX_PAGE_SIZE`/`DEFAULT_MAX_*`/`total_count`/`find_checkpoint` absent outside docstrings); each feed's `from_record` reads every seeded response key or lists it in `UNSTORED_KEYS`; both ways between seeds and jobs — a `Feed` names an operation of the job's own provider (operation → provider read off the seed's `PROVIDER_ID`, renames followed), and every configured operation that pages (`range_start`/`page_no` among caller inputs) is a `Feed` of some `sync_*_ledgers.py`, the message naming the job it belongs in|
+|`check-backend-batch.ts`|Batch job conventions in `backend/app/batch/`|module named after its single public job (`app/batch/<job_code>.py`) and `BATCH_JOBS` keyed by that same name; `engine` used directly; `Service(session)` constructor; `service.repository` access (never raw session); meaningful count/status return; `async def`; the schedule chain (registry → seeded `batch`/`batch_schedule` row → scheduler options); the lifespan loads the schedule **and sweeps orphaned runs** (`update_interrupted_runs` — main.py is outside coverage, so a deleted sweep call fails nowhere else); the run contract (a job that walks a provider records a step, and a step is recorded only under `current_run_id`); every knob an `UPPER_SNAKE` constant that is some parameter's default. What a provider job syncs and a derive job rebuilds is `check-backend-ledger.ts`|
+|`check-backend-ledger.ts`|The feed → ledger → derived chain: `backend/app/batch/sync_*.py`, `derive_*.py`, and the `food/` models, schemas and services they name|the provider-job shape of `sync_<provider>_ledgers.py` (`PROVIDER_CODE`/`PAGE_SIZE`/`END_CODES`/`SYNCED_BY`/`FEEDS`, name held to the provider code, no `MAX_*`/cursor/`total_count`); every `Feed` replaces its own table through `replace_<table>_ledger`; every walk passes `page_size=PAGE_SIZE` and `end_codes=END_CODES`; `LedgerFloorError` caught so feeds fail alone; the provider and every feed are seeded by some revision, of that provider, and page by one family; the ledger's `from_record` reads exactly the seeded response keys minus `UNSTORED_KEYS`; a sync sends no seeded caller input outside the paging keys; a ledger's `from_record` builds through `cls.model_validate` and wraps no `record.get()` in a helper (the wire dialect is the field's `Annotated` type; `cls.key_text` and a `_private` per-column helper are the two exceptions); every seeded paging operation is somebody's feed; every derived model (`models/food/` without `ledger_`) is a `Derivation(<Svc>, <Svc>.rebuild_<table>)` of some `derive_*.py`; a derived service imports from `app.models.food` only `ledger_*` modules and its own (read off the imports — a `scan_table(` call names a loop variable as easily as a class); its rebuild is `async def rebuild_<table>(self, synced_by: str) -> int`. Readers: `lib/backend-ledger-feeds.ts` (`FEEDS`), `lib/backend-derivations.ts` (`DERIVATIONS`)|
 |`check-backend-tests.ts`|Backend test standard in `backend/tests/`|Every CRUD model has `test_<name>.py`; each covers 10 standard API cases and asserts status 201/401/404/422; auth standard in `test_auth.py`; conftest swaps `async_session_factory` (real `get_session()`, no override)|
 |`check-backend-app-setup.ts`|App setup in `main.py`|`GET /health` (DB ping, 503); `FastAPI(title=...)`; routers under `/api/v1`|
 |`check-backend-core-config.ts`|Core config in `app/core/`|`@field_validator` decorator in settings; `pool_size`/`max_overflow`/`pool_timeout` in `core/database.py`; `code`/`request_id` in error schema|
@@ -593,7 +678,8 @@ drifted out of it.
 |`check-frontend-contract.ts`|Backend ↔ frontend contract|`<Domain>ReadResponse` fields ↔ `interface <Domain>` (inherited fields resolved, both directions); `AuditMixin` + id ↔ `AuditedResource`; the uniform error body (`detail`, `code`, `request_id`) ↔ `ApiErrorBody`; **route coverage** — every `@router.<verb>` in *any* router module ↔ the (verb, path) a service call **a screen can reach** (service fn → query hook → screen; `auth` is consumed by `JwtContext` by design), both ways, paths normalised to `{}`: a route with no caller is a screen missing or an endpoint that should not be published (declare it in `NOT_FROM_BROWSER` with its reason, and an exemption whose route disappears fails too), a call no router serves is a 404 the user finds, an `<X>_ENDPOINTS` entry no service uses is dead, a service function no hook calls is dead, and a hook no screen renders is a feature never built — measured: secrets create/delete had no caller and `DELETE_SECRET` was declared and never called; **validation parity** — lengths from `Field(min_length/max_length)` on `<Domain>CreateRequest` (module constants and inheritance resolved) ↔ the `yup` chain in `<Domain>FormDialog`, and *shape* rules both ways: a form pattern (`.matches`/`.email`/`.url`) requires a server one — Pydantic `pattern=` **or** a service rule (`*_PATTERN.fullmatch(field)`, `urlsplit(field)`) — a server shape rule requires a form one, and **required runs both ways** (no server default ⇒ `.required()`; a server default ⇒ not required; booleans exempt, a checkbox always submits). a dialog whose resolver yields zero parseable yup rules is reported instead of silently compared against nothing. A **folder domain** reads as the concatenation of its modules — `schemas/batch.py` had become `schemas/batch/*.py`, so the lookup returned null and two of the three domains were never compared while the check reported PASS. Measured: a client-only rule let `curl` store `not-an-email` with a one-character password (201); an invented `code` pattern blocked the app's own seeded provider; and reading only Pydantic left the form with no pattern while the service refused `BAD Code` with a 422. **Panels are forms too** — the dialogs hold only strings, so every numeric bound lives on a nested record: a `<Name>Panel.tsx` control declares the bound its `<Name>CreateRequest` field declares (`ScalarField` → `maxLength`, `NumberField` → `min`/`max`), and only the bounds the control can violate (`NumberField` strips non-digits, so `ge=0` is already guaranteed and `gt=0` is not — `0` is what an emptied input returns). Measured: two capped strings and two `gt=0` timeouts declared nothing|
 |`check-frontend-types.ts`|Typed backend ↔ frontend contract|Only models that **cross the wire**: roots are the bodies the routers accept (`data: <X>Request`) and the models they return (`-> Page[X]` unwrapped), closed transitively through field annotations so a nested `IntegrationOperationCreateRequest` stays in — a schema set the domain rule requires but no endpoint takes or sends (`batch_run`, `batch_step`) has no client shape to declare. Request bodies (`<Domain>CreateRequest`/`UpdateRequest` ↔ the TS interface of the same name: required fields present, optional ones may be omitted, no extra client field); **types** — every annotation maps to one TS type (`str`/`UUID`/`datetime` → `string`, `int`/`float` → `number`, `bool` → `boolean`, `list[X]` → `X[]`, `dict`/`JsonObject` → `Record<string, unknown>`, `object` → `unknown`, `Literal[...]` → the same union, `<X>ReadResponse` → `X`), inheritance resolved across `types/api.ts`; **nullability** — `X \| None` in a response is `T \| null`; **optionality** — a request field with a default is `field?:` (a bare `= Field(...)` is not a default); **verbs** — the method a service calls is a method the route declares (endpoint keys read per `<DOMAIN>_ENDPOINTS` block, because `LIST`/`DETAIL` repeat and a flat map hid a wrong verb); **query params** — every `Annotated[int, Query(...)]` parameter exists in a params type; **request guarantees** — the generic a service passes matches the handler return annotation (`list[X]` -> `X[]`, `dict[str, bool]` -> `OkResponse`), a `Form(...)`/`OAuth2PasswordRequestForm` handler is called form-encoded and no other one is, an endpoint constant takes exactly as many arguments as its route has path parameters, and every page size the UI offers is inside `Query(ge=, le=)`. An annotation the parser cannot read is reported, never assumed equal|
 |`check-frontend-i18n.ts`|Translation contract in `frontend/src/locales/` and its call sites|`ko` ↔ `en` key parity both ways (a `.d.ts` is not a locale — `i18next.d.ts` declares the *types* of the files beside it, and reading it as a language would demand a locale named `i18next`); every literal `t('key')` resolved through the namespace its alias was bound to (`useTranslation('ns')`, default `common`); no Hangul outside `locales/`; **error-code parity** — every code the backend can emit (handler literals, `code=` at a raise site, `<THING>_CODE` module constants) has `errors.<code>` in every locale and no `errors.*` key is dead, with `errors.unknown` always present for a failure that never reached a handler; **no server string on screen** — `apiError.message` / `toApiError(error).message` / `.detail` never reach a toast or JSX (`lib/`, `components/hook-form/` and `formState` reads exempt). an existing `i18n.ts` that yields no locales is reported, never looped over as an empty set. Key *existence* is the compiler's job, not this hook's: `locales/i18next.d.ts` types the resources, so a missing or composed-from-`string` key fails `tsc`|
-|`check-duplicate-blocks.ts`|Duplicated block runs in source files just written (backend, frontend `src/`, `api/*.http`, `decks/scripts`; data formats exempt)|A non-overlapping repeat of 24+ identical consecutive lines is a duplicated block — report it at write time and instruct deletion, not renumbering (2026-09-01 renumbering-loop incident)|
+|`check-product-areas.ts`|Product areas across both halves (`NAV_GROUPS`, `sections/`, `lib/api/`, `routers/`)|Every named nav group maps to a pattern in `lib/hook-product-areas.ts` (`AREA_PATTERNS`); the **record** area creates in the row (no `*FormDialog.tsx`, editable columns, no door); the **operations** area carries three legs — configuration edited in the row, an exercise verb (`POST /{id}/…`), and an execution log that is read (`GET /{id}/<collection>`), reachable (endpoint entry + the declared `EXECUTION_LOG` hook) and shown by a screen, with the row as its door and no view/history button beside it; the **derived** area's lists are `*DerivedList.tsx`. Measured: `integration_call` was written on every external call and read by nothing — every file-level check passed because none of them knew batch and integration were the same kind of thing|
+|`check-duplicate-blocks.ts`|Duplicated block runs in source files just written (backend, frontend `src/`, `api/*.http`, `decks/scripts`; data formats exempt)|A non-overlapping repeat of 24+ identical consecutive lines is a duplicated block — report it at write time and instruct deletion, not renumbering (the renumbering-loop incident)|
 |`check-code-layout.ts`|Code layout across **every** code surface (backend Python incl. `scripts/`, frontend `src/` + package-root config, `decks/scripts/*.mjs`, `.omp/hooks/`)|Comments (no commented-out code, no parked-work markers, JSDoc header on every hook/lib); section banners in `backend/app` + `backend/scripts` (vocabulary, order, `Imports` first — empty `__init__.py` exempt); module constants under the `Constants` banner above the first class, and `const` never `let` in TS/JS; Python class member order (declarative config → fields → relationships → properties → `__init__` → public → private, dunders exempt); TS/JS class member order (fields → constructor → public → private); file layout (imports, constants, `export default`, then helpers)|
 |`check-makefiles.ts`|Makefile target consistency (backend, frontend, root, check-verify)|`.PHONY` targets implemented; `##` documented targets in `.PHONY`; documented targets exist in Makefile; actual targets documented — compared against rule markdown tables; **verify membership** — every post-hook-backed `check-*` target is a prerequisite of `verify`, and the prerequisite list equals the `make verify` row in `root-makefile.md` (both directions)|
 |`check-decks-sync.ts`|Decks ↔ harness sync (decks/harness-rules/slides.md)|Every rule file, pre/post hook, and AST rule dir is mentioned in the deck source (additive check — missing artifacts flagged)|
@@ -601,8 +687,8 @@ drifted out of it.
 |`check-omp-types.ts`|Harness TypeScript type-checks|`tsc --noEmit` over `.omp/tsconfig.json` (62 files); reports the first 3 `error TS` lines|
 |`check-omp-hooks.ts`|`.omp/hooks/` ↔ `omp-hooks.md` directory-structure sync + hook functional contract + rule↔hook mapping|Every hook listed in `omp-hooks.md` exists on disk (dangling ref); every actual `.omp/hooks/**/*.ts` file is listed in `omp-hooks.md` (orphan); the file-name prefix (`post/check-*`, `pre/strict-*`) that every contract check is keyed by; post hooks must call `buildSafeWarning` + `wrapWarning` and must not implement `lastWarning`; the guard call shape — `buildSafeWarning(event.toolName, "<hook>", issues, fixHint)` with the hook's own name used in `buildSafeWarning`/`wrapWarning`/`resetSuppression` (a dropped argument used to kill the hook with `visible.map is not a function`); the crash-guard contract — `guarded` imported from `lib/hook-visibility.ts`, one wrapper counted per `pi.on("tool_result")` registration, and the name it declares equal to the file's; `lib/hook-visibility.ts` itself logs the crash, appends to the original content, and never rethrows; `MUTATING_TOOLS` filter required; pre hooks `return { block: true }` (deny execution); every rule maps to ≥1 hook and every hook to ≥1 rule plus the authoring meta-checks: layer traversal (`layerFiles()` or `// layer-flat-ok:`), silent prerequisites (`// existence-ok:` or a reported absence)|
 |`check-ast-rules.ts`|Per-rule proof of the ast-grep rule set|Every rule under `.omp/ast-grep/rules/` declares an `id:` and has a case file in `.omp/ast-grep/tests/`; `ast-grep test` passes (every `invalid:` snippet matches, every `valid:` snippet does not); ast-grep itself is present — a missing binary means no structural rule ran, which is a failure, not a pass|
-|`check-omp-rules.ts`|Dynamic rule-loading contract|`AGENTS.md` has no `@rules/` imports; no `rules/RULES.md` shadow; valid frontmatter (`description`, `globs`, `alwaysApply=false`); always-apply set ≤ 2|
-|`check-omp-skills.ts`|`.omp/rules/omp-skills.md` ↔ `.omp/skills/` catalog|Every discovered direct-child `SKILL.md` has one catalog row; `name` matches its directory; `description`, Trigger, Verification, and Lifecycle are non-empty; Lifecycle is project metadata limited to `active` or `deprecated`|
+|`check-omp-rules.ts`|Dynamic rule-loading contract|`AGENTS.md` has no `@rules/` imports; no `rules/RULES.md` shadow; valid frontmatter (`description`, `globs`, `alwaysApply=false`); always-apply set ≤ 2; **no dated history** — a `YYYY-MM-DD` anywhere under `.omp/` (rules, hooks, skills, extensions, ast-grep) is an incident log wearing a rule's clothes and belongs in `decks/harness-history`; a deliberate format/wire-data example marks its line `history-ok`|
+|`check-omp-skills.ts`|`.omp/rules/omp-skills.md` ↔ `.omp/skills/` catalog|Every discovered direct-child `SKILL.md` has one catalog row; `name` matches its directory; `description`, Trigger, Verification, and Lifecycle are non-empty; Lifecycle is project metadata limited to `active` or `deprecated`; **skill harness contract** — ownership is name-derived (a post hook whose hyphen tokens contain the skill's name contiguously is its harness), the frontmatter `enforced-by` list equals that set, every declared hook exists and is a prerequisite of the root `verify`, and a procedure skill (`enforced-by: []`) references at least one `rule://` domain|
 |`check-verify.ts`|Backend + frontend verify execution|Runs `make verify` in backend/ (lint, typecheck, test) and frontend/ (lint, typecheck, build)|
 
 ### Crash Visibility
@@ -749,7 +835,7 @@ such as `lib/backend-integration-configuration.ts`. Prefix-less hooks are cross-
    `touchesPath` (path-bearing events only; shells pass) or `touchesStrict`
    (also reads the shell command) from `lib/hook-scope.ts` and gate right after
    the tool filter; a hook that must see everything says so with a
-   `// hook-scope: global — <reason>` comment. Measured 2026-08-29 (sandbox):
+   `// hook-scope: global — <reason>` comment. Measured in a sandbox session:
    one mutating tool result cost 6.8s across the 36 post hooks (write) and 4.9s
    (bash), and 3.3s of that was harness meta checks firing on a `backend/` edit.
 
@@ -861,7 +947,9 @@ Post hooks surface drift **immediately** after an edit; `make verify` (or indivi
 - `make check-backend-model-files` → `node .omp/hooks/post/check-backend-model-files.ts`
 - `make check-backend-repository-files` → `node .omp/hooks/post/check-backend-repository-files.ts`
 - `make check-backend-service-injection` → `node .omp/hooks/post/check-backend-service-injection.ts`
+- `make check-backend-relations` → `node .omp/hooks/post/check-backend-relations.ts`
 - `make check-backend-batch` → `node .omp/hooks/post/check-backend-batch.ts`
+- `make check-backend-ledger` → `node .omp/hooks/post/check-backend-ledger.ts`
 - `make check-backend-tests` → `node .omp/hooks/post/check-backend-tests.ts`
 - `make check-backend-middleware` → `node .omp/hooks/post/check-backend-middleware.ts`
 - `make check-backend-app-setup` → `node .omp/hooks/post/check-backend-app-setup.ts`
@@ -913,7 +1001,7 @@ These exist because the harness's own measurements say each class can grow. From
 | Invariant | Why | Measured |
 |---|---|---|
 | Every post hook gates on `MUTATING_TOOLS` | a check that runs after a read spends context on a turn that changed nothing | 36/36 already comply — this holds the line |
-| Every post hook declares a path scope (`touchesPath`/`touchesStrict`) or a `// hook-scope: global — <reason>` | a check that runs on events outside its domain spends the agent's wall clock, not just context | one write cost 6.8s of hook time; the meta checks in it (2.7s `check-omp-hooks`, 0.4s `check-omp-types`) had nothing to do with the edited file (2026-08-29, sandbox) |
+| Every post hook declares a path scope (`touchesPath`/`touchesStrict`) or a `// hook-scope: global — <reason>` | a check that runs on events outside its domain spends the agent's wall clock, not just context | one write cost 6.8s of hook time; the meta checks in it (2.7s `check-omp-hooks`, 0.4s `check-omp-types`) had nothing to do with the edited file (sandbox measurement) |
 | Only `post/check-verify.ts` may execute the project gate (`make`, `pytest`, `ruff`, `pyright`, `npm`, `uv`) | the gate is 54% of all hook time (1,120s of 2,058s) and a second runner races the agent's own `make` | one owner today |
 
 records the kinds its own cases produce and fails on any declared kind that never

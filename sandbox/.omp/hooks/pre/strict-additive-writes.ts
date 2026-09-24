@@ -9,7 +9,7 @@
  * twin is a `>` truncation. Both are blocked with guidance toward targeted
  * edits — `edit` changes survive, wholesale rewrites forget.
  *
- * 등록/배선의 판정 기준(2026-08-30 재정립): **줄의 모양이 아니라 항목의 생존**이다. 편집 뒤에도
+ * 등록/배선의 판정 기준(재정립): **줄의 모양이 아니라 항목의 생존**이다. 편집 뒤에도
  * 같은 형태의 항목이 파일 어딘가에 남으면(중복 제거, 같은 패치 안의 이동) 손실이 아니다. 마지막
  * 하나가 사라질 때만 막는다. 그리고 조용히 사라지는 곳에서만 막는다 — 테스트 파일의 import 소실은
  * 수집 단계에서 즉시 터지므로 이 가드의 대상이 아니다.
@@ -42,14 +42,14 @@ export default function strictAdditiveWrites(pi: any) {
     }
 
     if (toolName === "edit" && typeof (event.input as any).input === "string") {
-      // omp 18 patch form, measured 2026-08-28: {path, input: "[rel#TAG]\nPUT 12.:\n+line..."}.
+      // omp 18 patch form, measured: {path, input: "[rel#TAG]\nPUT 12.:\n+line..."}.
       // Grammar observed in sessions: `PUT N:`/`PUT N.:` REPLACE line N; `PUT N+k@:`/`PUT N+k:`
       // INSERT after line N. The services.py wholesale swap (User->Notice, 7th observation of
       // the replace-instead-of-add habit — frontier models do it in omp too) arrived as a
       // replace-form PUT on the user import line. Destruction is blocked, not advised.
       const patch = String((event.input as any).input);
       // 경로는 세 곳에 있을 수 있다: `path`(깨끗), `path`+내용 태그(`main.py#0D77`), 또는 패치 본문의
-      // `[상대경로#TAG]` 헤더. 전수 점검(2026-08-30): 편집 2,923건 중 2,230건은 `path` 자체가 없고
+      // `[상대경로#TAG]` 헤더. 전수 점검: 편집 2,923건 중 2,230건은 `path` 자체가 없고
       // 440건은 태그가 붙어 있었다 — 둘 다 fail-open 으로 빠져서 이 가드는 **91% 무동작**이었다.
       const header = /^\s*\[([^\]\n#]+)/.exec(patch);
       const rawPath = String(event.input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "") || (header?.[1] ?? "");
@@ -64,14 +64,14 @@ export default function strictAdditiveWrites(pi: any) {
         .flatMap((m) => m[1].split("\n").map((l) => l.replace(/^\+/, "").trim()).filter(Boolean));
       // 등록 보호는 **조용히 사라지는 곳** 에만 건다. 테스트 파일에서 import 가 없어지면 수집 단계에서
       // 즉시 터지고(F821·ImportError) 게이트가 초 단위로 잡는다 — 거기서까지 막으면 자기 파일을 고치는
-      // 정당한 편집이 갇힌다(2026-08-30 실측: 방금 자기가 쓴 test_notice.py 의 import 를 고치다 2회 연속 차단).
+      // 정당한 편집이 갇힌다(실측: 방금 자기가 쓴 test_notice.py 의 import 를 고치다 2회 연속 차단).
       const isTestPath = /(^|\/)tests?\//.test(path) || /(^|\/)test_[^/]*\.py$/.test(path) || /\.(spec|test)\.[jt]sx?$/.test(path);
-      // 의도 프로토콜(사용자 설계 2026-08-28): 차단은 "실수 교체"만 걸러내는 장치다.
+      // 의도 프로토콜(사용자 설계): 차단은 "실수 교체"만 걸러내는 장치다.
       // 진짜 교체 의도는 편집에 `# intent: replace` 마커를 실어 명시하면 통과한다 —
       // 추가를 원하면 삽입형으로, 교체를 원하면 선언하고 교체한다.
       const intendedReplace = /#\s*intent:\s*replace/i.test(patch);
       // 본문 줄의 `+` 접두는 **선택**이다 — 배포 셀에서 접두 없는 형식(`PUT 233:\n api_router...`)
-      // 으로 등록 줄이 교체됐는데 파서가 통째로 놓쳤다(2026-08-28 실측, 회귀 1건).
+      // 으로 등록 줄이 교체됐는데 파서가 통째로 놓쳤다(실측, 회귀 1건).
       // 삭제형(`CUT N`, `CUT N.=M`)은 문법에 아예 없었다 — 등록 줄을 지우는 가장 직접적인 형태인데
       // 통과했다(전수 점검에서 154건/66세션). 지운 줄이 등록·import 면 막는다.
       if (!intendedReplace && !isTestPath) {
@@ -118,11 +118,11 @@ export default function strictAdditiveWrites(pi: any) {
         // compute(y)->compute(z) 는 통과 — 오탐 경계는 프루프 15-19.)
         // 등록/배선 줄은 **누적되는 것**이라 교체 자체가 사고다 — 식별자 하나만 바뀌어도
         // (include_router(user) → include_router(notice)) 다른 도메인이 라우팅에서 사라진다.
-        // 2026-08-28 배포 셀에서 정확히 이 형태로 회귀 1건이 났고, 형제치환 규칙(식별자 2개
+        // 배포 셀에서 정확히 이 형태로 회귀 1건이 났고, 형제치환 규칙(식별자 2개
         // 이상)에는 안 걸렸다. 경로 목록이 아니라 **줄 모양**으로 판정한다(프레임워크 무관).
         // 등록 줄은 **누적된다** — 그래서 판정은 "같은가"가 아니라 "잃었는가"다. 한 줄짜리 import
         // 목록에 이름을 더하려면 그 줄을 고칠 수밖에 없으므로, 글자 동일성을 요구하면 정당한 배선이
-        // 통째로 막힌다(2026-08-30 실측: 그 상태에서 세션이 라우터 등록을 끝내지 못했다).
+        // 통째로 막힌다(실측: 그 상태에서 세션이 라우터 등록을 끝내지 못했다).
         const sibling = bodyLines.find((b) => siblingSwap(target, b));
         if (sibling) {
           return {
@@ -228,7 +228,7 @@ export default function strictAdditiveWrites(pi: any) {
  *
  * 형태를 붙이는 이유: `include_router(user.router)` 를 `include_router(notice.router)` 로 바꾸면
  * `user` 는 파일 위쪽 import 목록에 글자로는 여전히 있다. 형태를 무시하고 "파일 어딘가에 있나"만
- * 보면 실측된 회귀(라우터 등록 소실, 2026-08-28)가 그대로 통과한다.
+ * 보면 실측된 회귀(라우터 등록 소실)가 그대로 통과한다.
  */
 function entryKeys(line: string): string[] {
   const t = line.trim();
@@ -246,7 +246,7 @@ function entryKeys(line: string): string[] {
 /**
  * `from`..`to` 행을 지우거나 갈아끼운 뒤, **이 파일 어디에도 남지 않는** 등록 항목.
  *
- * 판정이 "이 줄이 등록인가" 였을 때 정당한 편집 셋이 갇혔다(2026-08-30 실측):
+ * 판정이 "이 줄이 등록인가" 였을 때 정당한 편집 셋이 갇혔다(실측):
  *  - 자기가 실수로 넣은 중복 등록(`include_router(health.router)` 가 이미 아래에 있는데 위에 또)을
  *    지우지 못했다 — 잃는 것이 없는데도 "그 줄은 등록이다" 로 막혔다.
  *  - 한 패치에서 옮기는 편집(여기서 CUT, 저기에 PUT)이 CUT 만 보고 막혔다.
@@ -277,7 +277,7 @@ function siblingSwap(oldLine: string, newLine: string): boolean {
 }
 
 // 훅은 절대 던지지 않는다 — omp 는 훅 예외를 도구 실패로 승격시켜 edit 자체를
-// 죽인다(실측 2026-08-28: EISDIR 크래시 13/13 로 한 셀의 edit 이 전멸, ~10분 낭비).
+// 죽인다(실측: EISDIR 크래시 13/13 로 한 셀의 edit 이 전멸, ~10분 낭비).
 // 읽을 수 없거나 파일이 아니면 null → 검사를 조용히 통과(fail-open).
 function safeRead(p: string): string | null {
   try {

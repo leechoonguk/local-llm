@@ -1,9 +1,11 @@
 ---
 name: ledger
-description: Adopt a seeded provider operation into a local table as one feed of its provider's nightly sync job - measure the whole feed, build the layers, add the Feed, and prove it with row counts from a live pass. Use when the user asks to migrate an external feed into a table, add a sync/batch job for a provider operation, or extend an existing ledger.
+description: Adopt a seeded provider operation into a local table as one feed of its provider's nightly sync job - measure the whole feed, build the layers, add the Feed, and prove it with row counts from a live pass. Then, when a table is a function of the ledgers rather than a feed, add it as a derivation of the derive job. Use when the user asks to sync an external feed into a table, add a sync/batch job for a provider operation, extend an existing ledger, or add a table derived from the ledgers.
+enforced-by:
+  - check-backend-ledger
 ---
 
-# Provider Feed → Ledger
+# Provider Feed → Ledger → Derived Table
 
 `integration` ends where this begins: the provider, the operation and its fields
 are seeded rows, and one recorded fixture proves the response shape. This skill
@@ -33,7 +35,7 @@ skill first: `check-backend-batch` refuses a job whose `PROVIDER_CODE` or a
 `Feed` operation no migration inserts. The same check asks the reverse - every
 seeded operation that pages must be a `Feed` of its provider's job - so a red
 `make verify` naming an operation and a job is this skill's starting point, and
-lists what is missing (`backend-batch.md`, "An Integration Target Is A Ledger").
+lists what is missing (`backend-ledger.md`, "An Integration Target Is A Ledger").
 
 **The REQUEST list decides which provider job the feed belongs in.** Two paging
 families exist here (`paging_family` in `core/integration.py`):
@@ -42,6 +44,11 @@ families exist here (`paging_family` in `core/integration.py`):
 |---|---|---|
 | RANGE | `range_start`, `range_end` | a row interval, `PAGE_SIZE` wide |
 | PAGE | `page_no`, `num_of_rows` | a page number, `PAGE_SIZE` rows |
+
+An operation with **no** paging inputs is not a feed: its pass would be one call
+per record. That shape was built and deleted here - see rule://backend-ledger,
+"One Call Per Record Is Not A Feed" - because 1.09M records at one call each is
+25 days against 66 minutes for the same records published in bulk.
 
 `search-food-raw-material` is RANGE; `search-food-nutrition` is PAGE. The walk
 (`IntegrationOperationService.walk_operation`) reads the family off the seeded
@@ -59,16 +66,30 @@ num_of_rows=100 → 100 rows      num_of_rows=501  → 0 rows, HTTP 200
 num_of_rows=500 → 500 rows      num_of_rows=1000 → 0 rows, HTTP 200
 ```
 
-Measured on `search-food-nutrition` (2026-09-05). **An over-wide window answers
+Measured on `search-food-nutrition`. **An over-wide window answers
 with the same shape as the end of the feed**, so a job configured at 1000 would
 import nothing and stop on its "short" first page. Bisect the ceiling and make it
 the provider job's `PAGE_SIZE`, the one width every feed of that job is walked
-at. The floor is the guard behind the ceiling: `LedgerStage.merge` refuses an
+at. The floor is the guard behind the ceiling: `LedgerStage.replace` refuses an
 empty pass whatever the ledger holds, so the misconfigured night fails loudly
 instead of reporting success.
 
 A RANGE feed has the same ceiling with a louder answer (`ERROR-336`), which is
 why this trap belongs to the page family in particular.
+
+A **screen** feed (`transport = HTML_FORM`) has the opposite shape: measured on
+수입식품조회, limit 100 / 1,000 / 5,000 / 10,000 all answered that
+many rows and every call took 16-27 s whatever the width - the screen counts
+the whole window before it draws a page, so the cost is per call, not per row.
+The widest *measured* width is the job's (`PAGE_SIZE = 10000`, 109 windows,
+~40 min); a wider one is not assumed. Its end is the placeholder page the row
+selector excludes (an empty page), and its printed total is `0` from page 2 -
+one more feed nothing reads `total_count` for.
+
+**Do not write under `backend/` while a live pass runs.** The dev server reloads
+on any file there - a probe script saved beside `app/` interrupted a pass at
+window 7 of 109 (`INTERRUPTED`). Rules, hooks and decks are outside
+it; edit those while the night runs.
 
 **Also measure how many calls an hour buys.** `search-food-item-report` allows
 100 unfiltered calls per hour (`INFO-320`), against a 1,072-window feed.
@@ -83,14 +104,42 @@ neither an end nor a failure: the walk rotates to the next key of the pool
 (`integration_secret.rotation_group`) and, with every key spent, sleeps until
 the earliest `retry_at` and asks for the same window again. A full pass of this
 portal is 2,258 windows; at 100 calls an hour per key it is 6 h 05 m with three
-keys, all of it inside one run (first cron night, 2026-09-07). The walk that
+keys, all of it inside one run (the first cron night). The walk that
 measured the widths spent the quota, so the first live run waited an hour on
 window 1 - which is the right behaviour.
 
-**Do not turn the migration into a date filter to dodge the quota.** A
+**Do not turn the sync into a date filter to dodge the quota.** A
 `change_date` filter reads what changed (measured: 5,800 rows since 9/1 against
 1,071,979), and the portal refuses dates older than a few days (`ERROR-303` at
-8/25, accepted at 8/31). A migration is everything; the quota is paid in runs.
+8/25, accepted at 8/31). A sync is everything; the quota is paid in runs.
+
+**Per-window latency is a feed's own number, not the provider's.** Measured
+over one mfds night it spans 50x, 0.2 s to 10.4 s per window, on one host and
+one key pool - so the window count alone does not say what a feed costs. Size a
+nightly slot, or a quota estimate, from the table in
+`decks/ledger-measurements` §2, and add this feed's own row to it once walked.
+
+### 2b. Divide before you build
+
+The window width is the **operation's** (`integration_operation.page_size`), not the
+job's: measured, one gateway's narrowest service (100) was making its
+widest (500) walk 10,878 windows instead of 2,176, and because a window there
+costs more the deeper it is (363 ms at pages 1-200, 1,441 ms at page 1,400) that
+integrates to 13 hours against 66 minutes for the same rows.
+
+A feed's pass length is its record count over the records a call answers, and that
+division is the first thing measured - before a table, a job or a seed exists.
+Measured: the same 1.09M 수입신고 cost 109 calls through the list screen,
+2,176 through the bulk API, and 1,088,673 through the detail screen - 48 minutes,
+66 minutes and 25 days for the same rows. A screen is read only for what nothing
+publishes in bulk, and a host's rate is measured by ramping until it stops
+answering (the `integration` skill's step 1b).
+
+**Standing decision from that arithmetic: the 수입식품 ledgers are fed by the
+data.go.kr APIs, never by the portal's screens** - the API pass takes about an
+hour where the screens would take weeks for the same records
+(`decks/ledger-measurements` §5). The screen transport stays in the codebase
+with no operation using it (rule://backend-integration-configuration).
 
 ### 3. Measure the **whole** feed before choosing a column type
 
@@ -112,7 +161,7 @@ while True:
     start += 1000
 ```
 
-Measured on I2520 (2026-09-05), and this is the trap:
+Measured on I2520, and this is the trap:
 
 | Range measured | `raw_material_alias` | `scientific_name` | `english_name` |
 |---|---|---|---|
@@ -162,13 +211,27 @@ the nutrition feed is 319,060 foods x ~70 filled measurements ≈ 22M records
 upserted one by one every night. Wide won there; a feed with genuinely repeated
 values of one meaning would not.
 
-`models/food/barcode.py` and its siblings are the worked example. The natural key
-is whatever the provider identifies a record by — one column (`raw_material_code`)
-or a pair (`(barcode_no, report_no)`) — and it is `unique`, because the merge
-joins the stage to the ledger on it and nothing else. The service exposes one
-method, `replace_<table>_ledger(pages, synced_by, *, floor)`, that stages every
-page of the walk into a TEMP table and merges it (`core/ledger.py`); the row
-ids survive a pass, so a bookmark joined by natural key stays valid.
+`models/food/ledger_item_report_raw_material.py` and its siblings are the worked example.
+The natural key is whatever the provider identifies a record by — one column
+(`raw_material_code`, `item_report_no`), a pair (the retired barcode ledger's
+`(barcode_no, report_no)`), or a number a screen keeps only in a link
+(`receipt_no` out of `detail_link` through `MfdsRecord.link_number`; a row whose
+link has no number is dropped like any keyless record) — and it is `unique`, because the stage dedupes
+the pass on it and mints the row's `id` from it (`uuid5`) and nothing else.
+The service exposes one method, `replace_<table>_ledger(pages, synced_by, *,
+floor)`, that stages every page of the walk into a TEMP table and writes it
+over the ledger — every row deleted, every staged row inserted, one
+transaction (`core/ledger.py`, `LedgerStage.replace`); the ids survive a pass
+because they come from the key, so a bookmark joined by natural key stays
+valid. A key the feed sends twice is staged once — the latest reading when
+the feed carries revisions (`newest="source_updated_at"`, as C002 and C006:
+one number, several `CHNG_DT`), the first otherwise. A list the portal joins
+with commas (`RAWMTRL_NM`) stays one column on the ledger: the ledger keeps the
+wire's shape, and the split into rows is a *derived* table
+(`food_item_report_ingredient`) the derive job rebuilds off the ledger, never
+the pass — not a `Feed`; it is the second half of this skill (*Derived
+tables*, below; rule://backend-ledger "A Derived Table Is A Function Of The
+Ledgers").
 
 **When the domain gains its second table, the layers become folders.** Three
 checks say so, in this order:
@@ -176,24 +239,32 @@ checks say so, in this order:
 ```
 check-backend-repository-files  repositories/: food owns 2 files → repositories/food/
 check-backend-model-files       models/: same
-check-backend-domain            food_barcode: services layer exists but no model file
+check-backend-domain            food_ledger_raw_material: services layer exists but no model file
 ```
 
 Move `models/`, `repositories/`, `schemas/`, `services/` **and** the mirrored
 tests into `<domain>/`, then repoint every import. A folder domain needs no root
-entity: `FoodBarcode*` and `FoodRawMaterial*` with no `Food*` is a complete
+entity: `FoodLedgerItemReport*` and `FoodLedgerRawMaterial*` with no `Food*` is a complete
 answer (`backend-domain.md`).
 
-Shared decoding — a portal's timestamp convention, its empty-string handling —
-goes in `core/`, not in a schema: the schema layer's public surface is its
-Pydantic classes plus `to_read`/`to_read_list`, and `check-backend-domain`
-enforces it. There is no `utils/` to put it in, and opening one would create a
-home no check governs.
+Shared decoding - a portal's timestamp convention, its empty-string handling -
+is a **type**, not a function: `schemas/mfds.py` declares `MfdsText`,
+`MfdsKeyText` and `MfdsDatetime` (`Annotated[..., BeforeValidator]`), the
+ledger's `*Mutable` model inherits `MfdsRecord`, and `from_record` hands
+`record.get("<key>")` over raw - the field's type normalises it. The schema
+layer's public surface is its Pydantic classes plus `to_read`/`to_read_list`
+(`check-backend-domain`), and a type is a class; a shared helper *function*
+would have to live in `core/`, which knows processes and not portals. There
+is no `utils/`, and opening one would create a home no check governs.
 
-**Name that module after the source, not the domain.** `core/mfds_source.py`,
-because what it knows is one portal's wire dialect; called `food_source.py` it
+**Name that module after the publisher, not the gateway or the domain.**
+`schemas/mfds.py`, because what it knows is how 식약처 writes a record, and
+that holds whether the record came from 식품안전나라 or through data.go.kr (the
+영양성분DB does, and reads through the same types); called `food_source.py` it
 reads as a fact about the ledger and has to be renamed the first time another
-domain of the same portal arrives.
+domain of the same publisher arrives. A list a portal joins with commas is not
+wire decoding but a derivation's split, and lives in that derivation's service
+(`_ingredients` in `services/food/item_report_ingredient.py`).
 
 ### 5. The feed, the job, and the schedule row
 
@@ -218,7 +289,7 @@ same change:
 - A migration seeding one `batch_schedule` row. A job in no database runs in no
   environment; `check-backend-batch` fails a code no revision seeds.
 
-Each feed is one `batch_step` (calls, rows received, rows changed); feeds fail
+Each feed is one `batch_step` per window (calls, rows received); feeds fail
 alone, and the first failure is raised after the last feed ran, so a floor
 refusal on one ledger never costs the others their night.
 
@@ -247,18 +318,32 @@ numbers (`53k rows`, a date, a row count) and replace every one with this feed's
 own, or delete the claim. A fabricated measurement in a docstring outlives the
 person who copied it.
 
+**The proof pass walks the new feed, not the job.** The job's feed order is the
+rule's (smallest first), so a new feed of an existing provider sits behind every
+sibling: starting the job to prove one feed waits out the whole provider. The
+measured cost of getting this wrong is a lost hour (`decks/ledger-measurements`
+§2, §4). Walk the one
+feed instead — a throwaway script under `backend/tests/` that calls
+`IntegrationOperationService.walk_operation` and hands the pages to the ledger
+service's own `replace_…` — then delete the script. The stage table is a
+session-temporary one, so the script must pin the session to a single
+connection (`AsyncSession(bind=await engine.connect())`); a pooled session loses
+the stage at the first commit. The job's own order stays as it is.
+
 Then run it for real, and report the numbers:
 
 ```
-first pass:   received: 43609  changed: 43609   (44 calls, 129s)
-second pass:  received: 43609  changed: 0       max(version) = 1
+first pass:   received: 43609  written: 43609   (44 calls, 129s)
+second pass:  received: 43609  written: 43609   count(*) = 43609, max(version) = 1
+              same id on every row as the night before (join on the key)
 stored:       max(length(raw_material_alias)) = 1130
 ```
 
-`changed: 0` with `max(version)` unchanged is the merge contract: every row was
-staged, compared (`IS DISTINCT FROM`), and left alone. A second pass that
-changes rows the portal did not change means the comparison is broken, and
-`updated_at` stops meaning "the portal changed this".
+`written = count(*)` after the second pass, with every `id` the same as the
+first night's, is the overwrite contract: the ledger *is* the pass, and the id
+is the key's, not the night's. A second pass whose `count(*)` differs from
+`written`, or that hands a row a new id, means a stage skipped or minted
+wrong — not that the portal changed something (nothing here can tell).
 
 ### 7. Gate
 
@@ -266,7 +351,79 @@ changes rows the portal did not change means the comparison is broken, and
 make verify
 ```
 
+## Derived tables
+
+A table no operation answers but that is read off the ledgers - a slice, a
+split, a filtered tree, or a whole copy that exists so its edges can live on
+it (rule://backend-relations) - is a **derivation**, and the order is the
+feed's order in miniature. The contract is rule://backend-ledger; this is the
+sequence.
+
+### 1. Measure what the table keeps and drops, on the live ledgers
+
+Ask the question the table answers as SQL against the ledgers (`make db-query
+q="..."`; a name join over millions of rows wants the aggregate first, or it
+runs for hours), and write the counts down with the date: how many ledger rows
+the derivation keeps, how many it drops and why (`6,156 of 9,633: retired
+nodes and the Z root`), and for every edge the table will carry, what share of
+its rows resolves. Those numbers are the model docstring and the edge comments;
+a derivation without them is a guess with a table.
+
+### 2. The model, without the `ledger_` prefix
+
+`models/food/<table>.py`, `__tablename__ = "food_<table>"`, `NATURAL_KEY` on the
+model (nothing but the derive job writes it, so no request schema states the
+columns). Columns: the ledger's own where the table is a copy or a slice - copy
+the block from the ledger model, then the computed ones (`report_kind`,
+`base_code`) with a comment saying what computes them. Edges here, never on the
+ledger, `viewonly=True` with a `primaryjoin` and the measured coverage beside
+them. Register it in `alembic/env.py` and `tests/conftest.py` beside the
+others, then `make migrate-gen m="add food <table> derived table"` - one table
+per revision, applied at once (`make migrate`), `make check-backend-migrations`.
+
+### 3. The service, one method
+
+`services/food/<table>.py`: `rebuild_<table>(self, synced_by: str) -> int`.
+Copy the nearest derivation by *shape* - a whole copy (`test_item.py`), a
+filtered copy (`product_classification.py`), a slice of two ledgers
+(`item_report.py`), a split (`item_report_ingredient.py`). `SYNCED_COLUMNS =
+synced_columns(Model, NATURAL_KEY)`; the ledger columns it reads are those
+minus the computed ones; `scan_table` the ledgers in keyed pages, `stage.add`
+the rows the predicate keeps, `stage.replace(synced_by, floor=None)`. It
+imports ledger models and its own; `check-backend-ledger` refuses another
+derived model in the import list.
+
+### 4. The registration, in read order
+
+`Derivation(<Svc>, <Svc>.rebuild_<table>)` in `DERIVATIONS` of
+`app/batch/derive_food_tables.py`, placed **after every table its edges point
+at** - a reader after the run finds every target rebuilt no later than its
+source. `make check-backend-ledger` proves the shape and the signature.
+
+### 5. Tests, then the live run
+
+`tests/services/food/test_<table>.py`: the rebuild copies what it should and a
+rerun replaces (same count twice), and one test per edge that a consumer
+observes - a resolved row, an unresolved one, a list where the data has
+several. `make -C backend test-fast t="tests/services/food/test_<table>.py
+tests/batch/test_derive_food_tables.py"` (the job test counts every
+derivation's rows; it grows by the new table's fixture row).
+
+Then the run: `POST /batch/{id}/run` on `derive_food_tables` through the API
+with an actor's token, poll the run to `SUCCEEDED`, and read the counts back
+off the table - rows, and the edge coverage from step 1 re-measured on the
+derived tables. Those are the deliverable.
+
+### 6. Gate
+
+`make verify` at the root, then `make build` in `decks/` if a rule or hook
+moved.
+
 ## Never Do These
+
+- Write a derived table inside a ledger's pass, or scan another derived table
+  in a derivation.
+- Add an edge to a derived table without the measured coverage beside it.
 
 - **Take the first page's widths as the contract.** Two bounds were chosen that
   way and both were exceeded further down the feed.
@@ -279,7 +436,7 @@ make verify
   counts from a live pass are the evidence.
 - **`migrate-down` past the ledger's `create_table` to revise an earlier
   unpushed revision.** The downgrade drops the table, and the rows a day of
-  quota paid for go with it - measured 2026-09-06: 1,072,054 rows, seven hours
+  quota paid for go with it - measured: 1,072,054 rows, seven hours
   of three keys, gone to re-seed a quota code two revisions back. Revise the
   earlier revision, then re-apply it with a *new* revision that carries the
   same change forward, or accept the reload before typing the command.

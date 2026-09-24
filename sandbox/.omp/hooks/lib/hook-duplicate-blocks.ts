@@ -1,7 +1,7 @@
 /**
  * Duplicated block runs — 파일 안에 같은 줄 묶음이 두 벌.
  *
- * 실측(2026-09-01, notice 셀 중단): 앵커 편집 실패 → stale 전체 재작성 → 부분 편집이
+ * 실측(notice 셀 중단): 앵커 편집 실패 → stale 전체 재작성 → 부분 편집이
  * 겹치며 섹션 묶음이 두 벌 들어갔고, 도메인 검사의 순번 캐스케이드는 "번호를 고쳐라"로
  * 읽혀 재번호 루프를 유발했다. 이 실패 모드는 .http 만이 아니라 모든 코드 파일에서
  * 가능하다 — 그래서 탐지는 공통 계층이다: 연속 W줄 이상이 파일 안에 그대로 다시
@@ -15,7 +15,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, extname } from "node:path";
 import { WALK_EXCLUDES } from "./hook-project-root.ts";
 
-const WINDOW = 24;      // 연속 동일 줄 최소 길이 — 정상 코드의 실측 최대 반복(마이그레이션 upgrade/downgrade 대칭 17줄, 2026-09-01 전수 스캔) 위로 잡는다
+const WINDOW = 24;      // 연속 동일 줄 최소 길이 — 정상 코드의 실측 최대 반복(마이그레이션 upgrade/downgrade 대칭 17줄, 전수 스캔) 위로 잡는다
 const MIN_UNIQUE = 8;   // 창 안 서로 다른 비공백 줄 최소 개수(단순 반복 데이터 배제)
 const MAX_BYTES = 512 * 1024;
 

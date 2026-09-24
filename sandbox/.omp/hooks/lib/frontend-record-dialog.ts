@@ -412,3 +412,57 @@ export function checkColumnShares(): string[] {
   }
   return issues;
 }
+
+/**
+ * A section of a record's screen is drawn whether or not it has rows.
+ *
+ * `{report.record_count > 0 && <FoodSafetyRecordsTab …/>}` is how 검사·조치 이력
+ * disappeared from 95.5% of products (84,212 of 1,856,644 carry a record). The
+ * reader could not tell "nothing was published about this product" from "this
+ * screen does not know about inspections" — and every neighbouring section, the
+ * label card and the declarations tab, already answered the first way.
+ *
+ * Narrow on purpose, and this is the part that took two passes to get right:
+ * only a **section** is required to answer. An `Alert` exists because there is
+ * something to warn about, an inner `Stack` of 주의사항 sits inside a card that
+ * is itself already drawn, and a `Typography` prefix is part of a sentence.
+ * Requiring those to have an empty twin fired on three screens that had done
+ * nothing wrong, so the trigger is the element the guard renders: a
+ * `DetailSection`, a `PagedTableSection`, or a tab component.
+ *
+ * What the check does *not* govern is what the section then says. The history
+ * tab reads 수입신고 for an import and 생산실적 for a domestic report - different
+ * title, different columns, same section - and that choice lives inside the
+ * component where the registry is known. Presence is mechanical; wording is not.
+ */
+const SECTION_GUARD = /\{([^{}\n]*?)&&\s*\(\s*\n\s*<([A-Z][A-Za-z0-9]*)/g;
+
+/** `x.rows_count > 0`, `x.items.length > 0` — the guard that can empty a screen. */
+const PRESENCE_TEST = /((?:\w+\??\.)*\w*_count|(?:\w+\??\.)+length)\s*(?:>\s*0|!==\s*0)/;
+
+/** A section is a thing the reader sees the outline of, not an element inside one. */
+const SECTION_ELEMENT = /^(?:DetailSection|PagedTableSection|\w*Tab)$/;
+
+export function checkSectionsAnswerWhenEmpty(): string[] {
+  const issues: string[] = [];
+  const files = [...readSources(SRC_DIRECTORIES.sections), ...readSources(SRC_DIRECTORIES.components)];
+  for (const file of files) {
+    const code = stripComments(file.content);
+    for (const guard of code.matchAll(SECTION_GUARD)) {
+      if (!SECTION_ELEMENT.test(guard[2])) continue;
+      const present = PRESENCE_TEST.exec(guard[1]);
+      if (present === null) continue;
+
+      const counted = present[1].replace(/[.?]/g, "\\$&");
+      const answered = new RegExp(`${counted}\\s*(?:===\\s*0|<\\s*1)|!${counted}\\b`);
+      if (answered.test(code)) continue;
+      issues.push(
+        `${file.label}: <${guard[2]}> is drawn only when ${present[1]} > 0, and nothing is ` +
+          `drawn when it is 0 — the section vanishes instead of saying it is empty, which ` +
+          `reads as "this screen has no such thing" rather than "nothing was recorded". ` +
+          `Add the ${present[1]} === 0 branch with one sentence (rule://frontend-screens)`,
+      );
+    }
+  }
+  return issues;
+}

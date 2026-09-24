@@ -6,6 +6,7 @@ import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { runAstRules } from "../lib/ast-rules.ts";
 import { aggregateDomains, belongsToAggregateDomain, checkClosedVocabularyExposed, checkColumnLengthParity, checkDomainStructure, checkNoGenericStaleFinder, checkRelationshipLoading, checkSchemaSurface } from "../lib/backend-domain-structure.ts";
+import { checkVocabulariesMatchTheDatabase, lastSkipReason as vocabularySkipReason } from "../lib/backend-closed-vocab.ts";
 import { layerFiles } from "../lib/backend-layout.ts";
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
@@ -67,7 +68,7 @@ function checkBackendDomainSync(): string[] {
   // hardcoded `integration.py` skip is what silently stopped matching in
   // fast-api-standard the day that file became five files.
   // (fast-api-standard 쪽은 field-mapped-pattern.yml 이 relationship() 을 알아 무필터로 돌린다 —
-  // 이 트리의 yml 은 아직 몰라서 측정 필터를 유지한다. 트리별 차이 2026-08-31.)
+  // 이 트리의 yml 은 아직 몰라서 측정 필터를 유지한다. 트리별 차이.)
   const modelRules = join(projectRoot, ".omp", "ast-grep", "rules", "model");
   const modelsDir = join(base, "models");
   if (existsSync(modelRules) && existsSync(modelsDir)) {
@@ -97,6 +98,9 @@ function checkBackendDomainSync(): string[] {
   issues.push(...checkRelationshipLoading(base));
   issues.push(...checkSchemaSurface(base));
   issues.push(...checkClosedVocabularyExposed(base));
+  // The CHECK bodies against the database itself: `alembic check` compares a
+  // constraint's presence, never the set inside it.
+  issues.push(...checkVocabulariesMatchTheDatabase());
   issues.push(...checkColumnLengthParity(base));
   issues.push(...checkNoGenericStaleFinder(base));
 
@@ -117,6 +121,13 @@ if (typeof process !== "undefined" && process.argv[1]?.endsWith("check-backend-d
   console.log("==> check-backend-domain");
   if (issues.length === 0) {
     console.log("    PASS: all backend CRUD domains follow the 5-layer pattern");
+    if (vocabularySkipReason !== null) {
+      // A comparison that did not happen is not a pass: say which one.
+      console.log(
+        "    DORMANT: closed vocabularies were not compared against the database " +
+          `(${vocabularySkipReason})`,
+      );
+    }
     process.exit(0);
   }
   for (const issue of issues) {

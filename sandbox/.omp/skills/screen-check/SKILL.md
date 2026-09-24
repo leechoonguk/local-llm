@@ -1,6 +1,7 @@
 ---
 name: screen-check
 description: Prove a frontend change on the running screen - drive the real browser, click with a real pointer from a fresh entry, and report numbers that moved instead of an opinion. Use when the user asks to verify, fix, or refine anything visible in the web UI: layout, alignment, spacing, colour states, dialogs, grids, or whether a button actually works.
+enforced-by: []
 ---
 
 # Screen Check
@@ -8,6 +9,10 @@ description: Prove a frontend change on the running screen - drive the real brow
 A frontend claim is only as good as the number behind it. This skill is the order
 that works and the traps that were measured — every rule below exists because a
 plausible-looking verification passed while the screen was broken.
+
+This is a procedure skill: it owns no check of its own, and the invariants it
+proves on screen are enforced by rule://frontend-screens and
+rule://frontend-design through their `check-*` hooks in `make verify`.
 
 ## Workflow
 
@@ -64,6 +69,24 @@ await page.mouse.click(b.x + b.width / 2, b.y + b.height / 2)
 once. Repeating a click on a page you already interacted with hides the entire
 class of first-interaction bugs — focus, mount, refetch, node replacement.
 
+**Three widths, every time the shell or a list is touched.** Open the screen at
+390×844 (phone), 820×1180 (tablet portrait) and 1180×820 (tablet landscape) as
+well as the desktop, and read the same rects on each: the card's `x` and width,
+each filter box's width, the document's `scrollWidth` against `innerWidth`.
+Measured: a permanent 280px nav left a phone's content 78px wide and
+a tablet's two thirds, and every gate was green because none of them has a
+viewport. The shell's rule is one breakpoint - the header's `lg` - below which
+the nav is a drawer behind the header's menu button; a list's filter boxes are
+full-width below `sm` and their reset sits at the right with the refresh.
+
+**A report from a tab that was open while the code changed is not yet a bug.**
+Vite's HMR swaps a module under a mounted dialog and, when the swap fails,
+leaves the old one rendering with the new one's data; measured: a
+paging bug fixed and proven from a fresh load was reported again from a tab
+that had the dialog open through the fix, with the pre-fix DOM (nineteen rows on
+a page of ten). Reproduce from a hard reload before touching code, and when the
+fresh load is clean, say so and ask for the report number and page.
+
 ### 4. Measure numbers, not impressions
 
 A screenshot shows that something is wrong; a number says what and by how much,
@@ -77,6 +100,7 @@ and survives being wrong later. Read rects and computed styles:
 | "the row is in edit mode" | `.MuiDataGrid-row--editing` count, plus the computed `backgroundColor` |
 | "it refetched" | `performance.getEntriesByType('resource')` filtered by the endpoint |
 | "nothing is clipped" | whether a child rect falls outside the cell's **border box** — `scrollWidth > clientWidth` is true for any content that overruns padding on purpose, and reports clipping that is not there |
+| "it stands out from the page" | **pixels across the edge**, not the declared `boxShadow` — screenshot a 1px strip through the boundary and read the rows (§ 4c) |
 
 Four traps that cost real time here:
 
@@ -111,6 +135,49 @@ the file and pass the function. `make verify` cannot run them — this repo has 
 browser automation dependency, and adding one would put a Chromium download inside
 every gate run. That is the reason geometry and interaction are measured here and
 not asserted there.
+
+### 4c. A render result is read off pixels, and only here
+
+Geometry, counts and computed styles all come from the DOM, and a check can read
+them. **Whether the thing is visible cannot be**: the surface, the shadow and the
+page compose in the compositor, and every gate in this repo is text over source.
+So a claim like "the toast is hard to see" is settled in this skill or not at all.
+
+The measurement is a **1px strip across the boundary**, screenshotted and decoded
+in the page itself:
+
+```js
+const r = el.getBoundingClientRect()
+const strip = await page.screenshot({
+  clip: { x: r.x + r.width / 2, y: r.y - 8, width: 1, height: 16 },
+  encoding: 'base64', type: 'png',
+})
+// decode in the tab: draw it on a canvas and read the rows
+const rows = await page.evaluate(async (src) => {
+  const img = new Image(); img.src = src; await img.decode()
+  const c = document.createElement('canvas')
+  c.width = img.width; c.height = img.height
+  c.getContext('2d').drawImage(img, 0, 0)
+  const d = c.getContext('2d').getImageData(0, 0, img.width, img.height).data
+  return [...Array(img.height)].map((_, y) => [d[y * 4 * img.width], d[y * 4 * img.width + 1], d[y * 4 * img.width + 2]])
+}, 'data:image/png;base64,' + strip)
+```
+
+Measured on the toast: outside the box `252,252,253`, inside `255,255,255`, and
+the edge row **`255,255,255`** — the surface only got *brighter*, so there was no
+boundary at all. The declared style said `boxShadow: customShadows.z16`, which
+reads as a shadow and is `0 16px 32px **-4px**`: the offset pushes it down and the
+negative spread pulls it inward, so nothing is drawn above the box. After `z8`
+(spread 0) plus a 1px hairline the edge row read `237,239,241`.
+
+Two rules this leaves:
+
+- **Read the pixels, not the property.** A `boxShadow` that exists proves
+  nothing; its offset and spread decide whether any of it lands where you are
+  looking.
+- **Falsify in the same run.** Put the previous style back on the live node
+  (`el.style.boxShadow = …`), re-read the same strip, and report both numbers.
+  Without the before, an edge row of `237` is a number with nothing to beat.
 
 ### 5. When an event disappears, record a timeline
 

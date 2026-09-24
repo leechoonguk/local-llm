@@ -1,5 +1,5 @@
 # The compose project name, and therefore the prefix on every container, volume
-# and network this stack creates (`fast-api-standard_pgdata`, …). Declared
+# and network this stack creates (`local-llm-sandbox_pgdata`, …). Declared
 # rather than derived: without it compose uses the directory name, so renaming
 # the checkout or cloning it elsewhere silently creates a second, empty set of
 # volumes and the database looks wiped. A sibling stack on this machine pins its
@@ -8,16 +8,23 @@ name: local-llm-sandbox
 
 services:
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     ports:
       # Host side is configurable: a developer with a local PostgreSQL cannot
-      # start the stack when 25432 is taken. The container side is fixed — every
+      # start the stack when 15432 is taken. The container side is fixed — every
       # in-network URL (DATABASE_URL, Phoenix) names it.
-      - "${POSTGRES_PORT:-25432}:5432"
+      #
+      # Required, never defaulted. `check-environment` holds `.env` and `.env.qa`
+      # to one key set with different `*_PORT` values, so a default could only
+      # fire on a file that already failed the gate - and it would fire by
+      # publishing the development port from the QA stack, which is the one
+      # outcome the two-project split exists to prevent. `:?` stops compose with
+      # the reason instead.
+      - "${POSTGRES_PORT:?set it in .env / .env.qa - the two stacks must not share a host port}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -28,9 +35,9 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:7-alpine
+    image: redis:7-alpine@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
     ports:
-      - "${REDIS_PORT:-26379}:6379"
+      - "${REDIS_PORT:?set it in .env / .env.qa}:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -41,14 +48,14 @@ services:
     restart: unless-stopped
 
   phoenix:
-    image: arizephoenix/phoenix:latest
+    image: arizephoenix/phoenix:latest@sha256:efe384846200a01eb632df64efbc0ab9dc51d667ea5e5bc8cca0ed49f82c52d6
     environment:
       PHOENIX_SQL_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       PHOENIX_SQL_DATABASE_SCHEMA: ${PHOENIX_SQL_DATABASE_SCHEMA}
       PHOENIX_HOST: "0.0.0.0"
     ports:
-      - "${PHOENIX_UI_PORT:-26006}:6006"     # UI + OTLP HTTP collector
-      - "${PHOENIX_GRPC_PORT:-24317}:4317"   # OTLP gRPC collector
+      - "${PHOENIX_UI_PORT:?set it in .env / .env.qa}:6006"     # UI + OTLP HTTP collector
+      - "${PHOENIX_GRPC_PORT:?set it in .env / .env.qa}:4317"   # OTLP gRPC collector
     depends_on:
       postgres:
         condition: service_healthy
@@ -66,21 +73,40 @@ services:
     env_file:
       - .env
     ports:
-      - "${BACKEND_PORT:-28000}:8000"
+      - "${BACKEND_PORT:?set it in .env / .env.qa}:8000"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # "Ready" is "migrated and serving": start.sh runs `alembic upgrade head`
+    # before uvicorn, so a 200 from /health means the schema is at head too.
+    # This is the one signal a deploy can wait on (`up --wait`) - without it
+    # the only way to know the stack was up was to sleep and hope. The probe
+    # is the venv's own python rather than curl, which the slim image lacks.
+    # Retries are generous because a migration on a large ledger takes longer
+    # than a start; a failed migration exits the container, which the probe
+    # never has to detect.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=2)"
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 10s
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
     ports:
-      - "${FRONTEND_PORT:-25173}:80"
+      - "${FRONTEND_PORT:?set it in .env / .env.qa}:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

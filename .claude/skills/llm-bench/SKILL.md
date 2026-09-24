@@ -45,7 +45,7 @@ description: 로컬 모델에게 sandbox/(최소 FastAPI baseline)의 실제 CRU
 - **로컬 모델은 대상 모델만 상주해야 한다(러너가 보장·검증).** 세 겹이다:
   1. **시작 격리** — `omlx/` 셀은 `bash omlx/ensure-app-server.sh`(앱 소유 관문)를 통과시키고, `ollama/` 셀은 다른 모델을 `ollama stop`. 이전 셀 잔재 제거.
   2. **aux 역할 고정** — omp 의 `modelRoles.tiny/smol` 을 셀 동안 **실제 4B aux(`omlx/Qwen3.5-4B-4bit`)로 고정**한다(`--config` 오버레이 + `--smol`). 코더가 아니라 실사용 aux 로 고정하는 것 — 코더에 제목·메모리를 시키는 비현실적 구성이 아니라 실제 환경 그대로 잰다. **코더 설정(thinking·샘플링)은 불변**이고 `--model` 외 튜닝이 아니다.
-  3. **구성상 보장** — 위 두 겹으로, 셀 동안 로드될 수 있는 물리 모델은 {대상 코더, (MTP 모델이면) 드래프터, 4B aux} 셋으로 한정된다(compaction 은 별도 모델 없이 세션 모델 자신이 수행한다 — 2026-08-30 확인). 엉뚱한 코더가 상주할 수 없다. 검증이 아니라 **구성**이 보장한다 — 코더(23GB)+aux(4B)가 함께 들어가려면 `iogpu.wired_limit_mb`(RAM−8GB, `omlx/install.sh` 가 부팅 지속으로 설정)가 맞아야 한다.
+  3. **구성상 보장** — 위 두 겹으로, 셀 동안 로드될 수 있는 물리 모델은 {대상 코더, (MTP 모델이면) 드래프터, 4B aux} 셋으로 한정된다(compaction 은 별도 모델 없이 세션 모델 자신이 수행한다 — 2026-08-30 확인). 엉뚱한 코더가 상주할 수 없다. 검증이 아니라 **구성**이 보장한다 — 코더(23GB)+aux(4B)가 함께 들어가려면 `iogpu.wired_limit_mb`(RAM−8GB, 관문 `omlx/ensure-app-server.sh` 가 기동 시 올린다 — 2026-09-24, 러너 행 `residency.wired_ok`)가 맞아야 한다.
   4. **기록** — 러너가 상주를 실측해 행 `residency` 에 남긴다: oMLX `/health` 의 `loaded_count`·`current_model_memory`, Ollama `ollama ps`. `loaded_count` 가 예상(코더+드래프터+aux=1~3)을 벗어나면 `ok:false` 로 경고(재시작 실패·설정 누락 신호) → 재실행. 클라우드 모델은 `residency:null`.
 - thinking 조건을 **명시**한다. 3.6 은 `reasoning_effort` no-op → 무제한/`thinking_budget` 중 무엇인지, 3.8 은 값이 무엇인지 `omp/models.yml` 에서 확인해 결과 `.md` 조건 절에 적는다. 러너는 `--model` 외 플래그를 omp 에 주지 않는다 — 측정 대상은 "실제로 쓰는 설정"이다.
 
@@ -100,7 +100,7 @@ node .claude/skills/llm-bench/runner.ts --revert-only                         # 
 이 하네스의 최종 사용처는 40분 무인 셀이 아니라 사람이 프롬프트를 주는 인터랙티브다. 프롬프트 단위로 재보니 셀 기준 튜닝이 그대로는 안 맞았다 — 그 결과 지금 하네스에 들어간 계약:
 
 - **피험자의 하네스 수정은 탐지로 잡는다.** 실측에서 모델이 검사 통과를 위해 채점 정규식을 고쳤다. 차단 훅은 두지 않는다(실무 편집을 막아 귀찮다 — 2026-08-29 사용자 결정). 대신 러너가 셀 종료 시 `omp_touched` 를 세어 0 이 아니면 **그 행을 무효**로 표시하고 원복 명령을 출력한다. 셀 채점 전에 이 줄을 확인한다.
-- **마감 요구는 변경 규모에 비례한다**. 마지막 변경 이후 풀 게이트가 없고 변경이 ≤2파일·서 있는 경고 없음이면 `make verify-fast`/타깃 pytest 로 마감. 3파일 이상·경고 서 있음은 풀 `make verify`. (한 줄 편집에 풀 게이트 3회 → 1회, 321→220초)
+- ~~마감 요구는 변경 규모에 비례한다~~ → **2026-09-24 fas 계약으로 수렴: 마감은 변경 규모와 무관하게 루트 `make verify` 하나다.** fas 가 post 훅 자동 실행을 `.omp/config.yml` `disabledExtensions` 로 껐으므로(실측 변이 호출당 3.8초·세션당 ~570초, 루트 verify 는 52초·`-j8` 21초) 타깃 검증으로 끝내면 하네스 검사 52개가 그 세션에서 한 번도 돌지 않는다. 옛 비례 규칙의 실측(한 줄 편집 321→220초)은 편집마다 post 훅이 돌던 전제 위의 값이라 더는 성립하지 않는다(프루프 H·H3·H4·X4 갱신).
 - **상태는 프롬프트 경계를 넘는다**(`.omp/state/discipline.json`, gitignore·러너가 셀마다 삭제). 브리핑 1회, 게이트/경고 시각 유지. 마감 판정은 "게이트를 돌았나"가 아니라 **"마지막 변경 이후에 돌았나"**.
 - **훅은 자기 경로에만 돈다**(`lib/hook-scope.ts` + `check-omp-hooks` 강제). 새 post 훅은 `touchesPath`/`touchesStrict` 를 부르거나 `// hook-scope: global — 사유` 를 단다. 도구 결과 1회 비용 bash 4.89→1.56초.
 - **모델은 항상 명시한다.** 맨몸 `omp -p` 는 라이브 `modelRoles.default` 를 탄다 — 이 실측 1차 시도가 그렇게 조용히 Sonnet 으로 돌았다(세션 jsonl 의 `"model"` 로 사후 확인 필수). 베이크 모드가 아니면 `--model` 을 붙인다.

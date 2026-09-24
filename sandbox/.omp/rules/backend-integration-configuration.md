@@ -23,6 +23,51 @@ External HTTP configuration is stored in four tables and executed only through
 `IntegrationClient`. Configuration is updated outside active calls; therefore
 there is no configuration revision, configuration cache, or invalidation path.
 
+## A Seeded Operation States Its Window
+
+`integration_operation.page_size` has a `server_default` of 100, so a seed that
+does not name it is 100 - silently, and only the clock says so. Measured:
+eleven 식품안전나라 operations were seeded that way when the width moved
+from the job to the operation, and the walks that had read 1,000 rows a
+window went on reading 100 - a tenfold pass, hours instead of minutes,
+per-window latency climbing as the offset grew, and ten times the calls
+spending quota refusals that locked the whole key pool (numbers:
+`decks/ledger-measurements` §10). A corrective revision set the eleven to
+1,000 (the portal's own ceiling - a wider window answers `INFO-320`).
+
+Every seed written from revision 270 on states `page_size` explicitly;
+`check-backend-integration-configuration` refuses one that does not. The current
+widths per provider are in `decks/ledger-measurements` §10.
+
+## A Service Says How Its Feed Is Addressed
+
+`segment_key` and `segment_values` are the same kind of fact as the width:
+which caller input a service publishes one set per (`report_year` on 생산실적), and
+the values that input takes. A `CHECK` stores them together or not at all — a key
+with no values has nothing to ask for, values with no key have nothing to be put
+in — and a second `CHECK` refuses an empty list.
+
+**The values are listed, never derived.** Code that generated candidates would
+have to know what the coordinate is; listing them leaves the walk ignorant of
+whether a 보고년도 counts upward or a region code does not. Listing ahead of the
+portal is free: an unpublished value answers zero rows to a one-row probe and is
+skipped, so the next year is already on the row before it opens.
+
+**They are seeded by a migration and by nothing else.** The pair is absent from
+`IntegrationOperationCreateRequest` — present on the read response so an operator
+can see it, refused on the way in by `extra="forbid"` — because the coordinate is
+not an operational knob. It does not select data: a ledger is the **whole feed,
+walked from the first window and replaced entire**; the coordinate only decides
+how that one pass is addressed. A row edited between passes would change the
+cost of a walk, never its result, and a configuration that can only be changed by
+revision is one every environment shares.
+
+They are configuration and not job constants for the same reason the width is:
+the walk that reads them is shared by every provider job, and a coordinate is
+knowledge only the service has. The cost is not cosmetic — a feed read flat
+costs the square of its windows, ~48 h against ~6 h on I0300 (rule://backend-ledger,
+`decks/ledger-measurements` §13).
+
 ## Data Model
 
 - `integration_provider` owns `code`, HTTPS `base_url`, display name, and enablement.
@@ -91,6 +136,172 @@ there is no configuration revision, configuration cache, or invalidation path.
 
 One operation belongs to one provider. Every field uses an operation UUID FK;
 never duplicate provider or operation code strings across configuration tables.
+
+### A Screen Is a Transport, Not a Second Stack
+
+**No operation uses this transport today, and the code stays anyway.** The
+first screen feed was walked whole and then retired the moment its records
+were found published in bulk as an API - which dataset, and the comparison
+that decided it, are the `integration` skill's record (§8b; walk timings:
+`decks/ledger-measurements` §5). What is kept here is the transport and its
+measurements - the HTML client, the session bootstrap, `min_interval_ms`, and
+the four locator kinds - because the next portal without an API needs exactly
+them.
+
+`integration_provider.transport` says how the portal answers, and it is the only
+switch: `HTTP_JSON` is an API — a credential in, a JSON or XML body back —, and
+`HTML_FORM` is a public screen with no API at all. Everything else the screen needs
+is already this configuration's vocabulary, so a screen is seeded like any other
+provider: an operation per screen, `integration_field` rows for its form and its
+cells, `quota_codes` and retries unchanged. There is no crawler domain, no second
+client, and no browser in the batch — measured on impfood.mfds.go.kr: the
+list answers a plain `httpx` POST.
+
+What the screen adds is three columns:
+
+- `integration_provider.bootstrap_path` — the screen whose GET mints the session
+  cookie, fetched once per client before the first call and again exactly once when
+  an answer is refused. The jar lives on the client and never in a table: a cookie
+  that expires in minutes is not configuration, and a stored one is a stale row that
+  fails tomorrow's run. The same helper sets `Referer` to that screen, because the
+  portal reads it (measured: the POST redirects to `/error/error` without it).
+- `integration_operation.response_format = 'HTML'` — the decoder. `response_root` is
+  then the **row selector** (`table.board_list tbody tr`) rather than an RFC 6901
+  pointer, and its empty state is the same "past the last page" a JSON provider
+  states by dropping its items key.
+- `integration_field.locator_kind` — how a RESPONSE row reads its value.
+
+| `locator_kind` | Reads | Why it exists |
+|---|---|---|
+| `POINTER` | RFC 6901 into the decoded body | every JSON and XML row; the default, and the only kind a REQUEST row may carry |
+| `CSS` | a selector inside the row (`td:nth-child(3)`) | a list screen numbers its columns and names none of them |
+| `LABEL` | the `td` beside the `th` with that text | measured on `CFCCC01F03`: a record carrying 부적합/회수 blocks moves every later header, so a positional locator reads a neighbour's value |
+| `SECTION` | `<heading>|<selector>` - the selector inside the block that heading introduces | a detail screen's repeating groups are tables sharing one class inside anonymous divs, so a positional selector reads a different group per record kind; the `h3` above each is the only stable anchor |
+| `REGEX` | the first group in the document's text | a screen states its total in prose (`총 29,930건`), which is the only place the walk can read how far to go |
+
+An HTML locator on a JSON operation is a configuration error (422), not a 502: the
+seed cannot be read at all. A number a screen prints for people (`29,930`) is typed
+at the read, thousands separator dropped, because the ENVELOPE total goes straight to
+the walker and nothing downstream converts it.
+
+`request_media_type` is the whole outbound encoding decision and now means it for
+forms too: `multipart/form-data` and `application/x-www-form-urlencoded` send the
+rendered BODY rows as form fields, anything else sends JSON. Measured: the same
+values as a JSON body answer the error page. **A form row set is exact** — the screen
+refused the request when three fields its own JS never sends were added, so a seed
+mirrors the fields the screen posts, no more. The seed states that as the
+operation's `request_schema` — `"required": FORM_FIELDS` and
+`"additionalProperties": False` — so the client refuses a sixteenth part as a 422
+before the portal's 302, and `check-backend-integration-configuration` refuses a
+form operation whose schema does not close the set.
+
+Four more facts of the first screen feed (`search-import-food`), each
+of which is a gate because each was a live defect:
+
+- **A screen draws "no rows" as a row.** Past the last page, and for an empty
+  window, `table.board_list tbody tr` matches one `td colspan=10` reading 조회 결과가
+  없습니다. Only real records link to their detail screen, so the row selector is
+  `tr:has(a)` and the placeholder is an empty page. The check demands a second
+  fixture, `<code>.empty.json`, recording that page with `canonical_payload: []` -
+  without it the walk would stage the placeholder as a record and never see the end.
+- **The identity is in the link.** Nothing a reader sees on the row is unique; the
+  `a@href` reads `javascript:fnFoodDetail('202600642199');` and the ledger takes the
+  number out (`MfdsRecord.link_number`). A `CSS` locator ending in `@attribute` reads
+  that attribute instead of the text.
+- **The total is printed once.** `총 N건` is the whole feed on page 1 and `총 0건`
+  from page 2 on (the screen echoes the empty `totalCnt` it was sent). Nothing reads
+  it to walk - the walk ends on the empty page - so it is metadata, never a bound.
+- **The fixture records the form and the session.** `expect.form` is the part list the
+  browser posts, asserted part for part against the multipart body the seeded rows
+  render; `expect.bootstrap_path` is the screen the client fetches first. The contract
+  test answers that GET itself, so a fixture proves the cookie is minted before the POST.
+
+Two more forms a `CSS` (or `SECTION`) selector may take, each measured: `a@href`
+reads an attribute, because a list screen keeps a record's identity in its link and
+nowhere a reader can see; `td:nth-child(2)[]` reads **every** match, newline-joined,
+because a screen repeats a value down a column (원재료 한글명, one `td` per
+ingredient) and a ledger keeps a published list as the wire printed it - the split
+into rows is a derived table's job.
+
+**A screen may serve a different layout to a non-browser.** Measured on
+the detail screen: `python-httpx` was answered the mobile markup
+(`td.mo-td`) where 한글명 and 영문명 share one cell as `정제수 / WATER`, and a Chrome
+agent the desktop one (`td.pc-td`, one value per cell). So a screen
+operation seeds a `User-Agent` LITERAL header, and its selectors name the layout's
+own class - served the other one they read nothing, which is a NULL and not a
+silently merged value.
+
+**A host's rate is the provider's**: `integration_provider.min_interval_ms` is the
+floor on the gap between two calls, enforced by the client, which is one client per
+pass. Measured on impfood: 2 calls a second were answered and 3 got **every**
+connection to the host refused for ~15 minutes - the nightly list job included. It
+is 0 for every API provider here, whose limit is a quota code instead.
+
+The date window is not a paging axis. Left empty the screen fills three months by
+itself; given `1990-01-01 ~ 2099-12-31` it answers the whole feed (1,088,839 rows) and <!-- history-ok: probe parameter -->
+`page` walks it to the end (page 1089 at limit 1,000 answered the last 839). So the
+window is two LITERAL rows and the family is `PAGE` - a `WINDOW` family was designed
+and then measured unnecessary, and it is not to come back on the strength of the
+screen's default.
+
+### A File Is a Transport, Not a Faster Page
+
+`integration_operation.response_format = 'CSV'` is a **file door**: one GET
+answers the whole feed as a gzip CSV, and `IntegrationClient.stream` reads it
+off the wire in chunks of `page_size` records. It exists because a feed was
+measured unwalkable by page: 식품안전나라 I0460 is 2,047 windows against a daily
+ceiling of ~500 calls a key (three keys reached 498/496/497 successful calls
+and answered `INFO-300`; the job died at window 1,495 with the ledger,
+correctly, untouched), while the portal's own `/api/{key}/I0460/file` answered
+the same 2,046,504 rows in four seconds on a quota of its own - ten downloads
+a day, a key and a service (measurements: `decks/ledger-measurements` §14).
+The paged operation was replaced by the file (revisions 286/287); nothing
+above the walk changed.
+
+What a file operation is, and is not:
+
+| Shape | Paged operation | File operation |
+|---|---|---|
+| REQUEST rows | key, service, window, filters | key and service, nothing else - the door takes no window and no filter |
+| `response_root` | the page | NULL: the file is the page |
+| ENVELOPE rows | the wrapper's verdict | none: success has no wrapper, and a refusal is an **HTTP 429** whose XML body the call log keeps (`INFO-500` busy key, ~40 s; `INFO-330` the day's ten) |
+| RESPONSE rows | element-relative pointers | the **same rows**: a one-segment pointer (`/PRDTNM`) reads the column of that name |
+| `page_size` | rows a window asks for | rows a chunk hands the stage - the step log reads the same intervals |
+| `quota_codes` | envelope values | empty: nothing arrives in an envelope |
+| retries | 200 ms | wide enough to wait out a busy key: 15 s, 30 s, 60 s |
+| `execute()` | one window | the **download** - name, type, bytes, rows in `metadata`, an empty page - because two million rows are not an answer to the endpoint an operator presses |
+| walk | windows until a short page | `stream` (through the walk's `_stream_operation`): inflated and decoded as it arrives, cut at RFC 4180 record boundaries (450 quoted newlines in that file), a page per `page_size` records, every step pointing at no call because the one call ends after the last step |
+
+Measured facts the shape rests on: the file is exact - the recorded API window's
+rows are in it column for column, to the microsecond; a naive line split loses
+~450 rows to quoted newlines, so the reader cuts at balanced quotes; `/I0460/csv`
+as a `data_type` is `ERROR-301`, the file is a path of its own.
+
+Write-time (`_validate_file`) and the hook (`checkFileOperations`) refuse the
+three shapes that cannot apply - a root, an envelope row, a paging input - and
+the hook demands a fixture that records the **gzip bytes** and the rows the
+reader made of them (`response.gzip_base64`, `expect.rows`): the reader is what
+a file adds, and a JSON fixture proves none of it.
+
+**A segmented feed loses its coordinate at the door.** `segment_key` is how a
+paged walk reaches one year at a time; a file answers every year at once, so
+converting an operation sets `segment_key` and `segment_values` to NULL. Left
+in place, the pass downloads the whole file once per segment - ten of the ten
+downloads a key gets in a day, for one pass.
+
+**The wire is drained before a record is cut.** A consumer that stages every
+`page_size` records into Postgres pauses between reads, and the portal's Apache
+closes a connection that idles: measured, 축산물 생산실적 (41.8 MB, 3.4 M
+records) died 126 s in under the job while `execute` - which reads as fast as
+it can - took the same file whole in 42 s. `stream` writes the body to a
+`SpooledTemporaryFile` at wire speed and cuts records from it afterwards, so a
+pass does not depend on how slow its consumer is.
+
+**A body that stops halfway carries no status.**
+`ck_integration_call_answered` lets an unanswered call hold none, so a
+mid-stream transport error records `UNREACHABLE` with no status code. Recording
+the 200 that opened the body made Postgres refuse the log row and failed the
+pass for its logging rather than for its feed.
 
 ### Paging Is an Endpoint Setting, and Its Shape Is Fixed
 
@@ -326,11 +537,11 @@ Configuration mirrors the provider's published spec, not a hand-picked subset:
   field turns a normal response into a 502. Exactly one required row per operation is
   the working shape — the field that makes the record the record.
 
-## Response Formats (JSON and XML)
+## Response Formats (JSON, XML, HTML, CSV)
 
-`integration_operation.response_format` is `JSON` (default) or `XML`, enforced by
-`ck_integration_operation_response_format`. Both formats resolve through the same
-`integration_field.wire_path` mapping:
+`integration_operation.response_format` is `JSON` (default), `XML`, `HTML` (a
+screen) or `CSV` (a file), enforced by `ck_integration_operation_response_format`.
+The first two resolve through the same `integration_field.wire_path` mapping:
 
 - `JSON` — body parsed with `response.json()`.
 - `XML` — body parsed with `xml.etree.ElementTree`, then converted to the nested

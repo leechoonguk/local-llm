@@ -6,6 +6,11 @@ valid:
   - |
     class Integration(Base, AuditMixin):
         operations: Mapped[list[IntegrationOperation]] = relationship(back_populates="provider")
+  - |
+    class FoodNutrition(Base, AuditMixin):
+        livestock_item_report_raw_material: Mapped[FoodLivestockItemReportRawMaterial | None] = (
+            relationship(primaryjoin=lambda: a == b, viewonly=True, lazy="raise_on_sql")
+        )
 invalid:
   - |
     class Batch(Base, AuditMixin):
@@ -13,3 +18,6 @@ invalid:
   - |
     class Batch(Base, AuditMixin):
         items: list[Item] = relationship()
+  - |
+    class Batch(Base, AuditMixin):
+        items: list[Item] = (relationship())

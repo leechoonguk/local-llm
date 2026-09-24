@@ -39,10 +39,10 @@ backend/app/
 
 | Folder | Contains | Composition rule |
 |---|---|---|
-| `core/` | `settings.py`, `database.py`, `exceptions.py`, `security.py`, `logging.py`, `cache.py`, `integration.py`, `scheduler.py`, `mfds_source.py` | Process infrastructure, plus the wire dialect of one external source that several domains read through (`mfds_source.py`). No routers, no repositories. One module per concern, **named after what it knows** — the source, never a domain that happens to be its only reader today. |
+| `core/` | `settings.py`, `database.py`, `exceptions.py`, `security.py`, `logging.py`, `cache.py`, `integration.py`, `scheduler.py`, `ledger.py` | Process infrastructure and mechanism - nothing here knows a portal or a domain. A provider's wire dialect is a set of Pydantic *types* in `schemas/<provider>.py` (`schemas/mfds.py`), named after the source. No routers, no repositories. One module per concern. |
 | `dependencies/` | `core.py`, `auth.py`, `query.py`, `services.py`, `integrations.py` | DI wiring only — `Annotated[T, Depends(factory)]` aliases and their factories. No business logic. |
 | `models/` | `base.py` + one file per table | `base.py` holds `Base` + `AuditMixin`; a table per file, named after the table, in `models/<domain>/` once a domain owns several (`backend-model-files.md`). |
-| `schemas/` | one file per domain, or `schemas/<domain>/` | Pydantic classes only — `Request`/`Response`/`Internal` suffixes, `to_read()`/`to_read_list()` helpers. |
+| `schemas/` | one file per domain, or `schemas/<domain>/`; one file per external provider whose wire several schemas read (`mfds.py`) | Pydantic classes only — `Request`/`Response`/`Internal` suffixes, `to_read()`/`to_read_list()` helpers; a provider file is `Annotated` types and a base model, its parsers module-private. |
 | `repositories/` | one file per table | Async CRUD — `get`/`list`/`create`/`update`/`delete` + `__init__`; `repositories/<domain>/` once a domain owns several (`backend-repository-files.md`). |
 | `services/` | one file per domain, or `services/<domain>/` | Thin adapter — `session.begin()` transactions, `NotFoundError`, domain-prefixed collaborators. |
 | `routers/` | one file per domain | REST endpoints only — no business logic, no inline `Depends()`. |
@@ -188,8 +188,8 @@ from deferring a step's verification until the end.
   the leaf too (`BatchSchedule`, `BatchScheduleService`)
 - **A folder domain need not have a root entity.** A family's name is the
   domain's own *or a leaf's*: `integration/provider.py` declares `Integration*`,
-  while `food` — two sibling ledgers with nothing between them — declares
-  `FoodBarcode*` and `FoodRawMaterial*` and no `Food*` at all. Demanding the root
+  while `food` — sibling ledgers with nothing between them — declares
+  `FoodLedgerItemReport*` and `FoodLedgerRawMaterial*` and no `Food*` at all. Demanding the root
   would have invented an entity nothing stores; that `integration`'s aggregate
   root happens to wear the domain's own name is what made "one domain, one root"
   look like a rule
@@ -202,24 +202,33 @@ from deferring a step's verification until the end.
   read across a folder, a sibling's `FoodBarcodeUpdateInternal` answered for the
   `raw_material` leaf that had lost its own (`check-backend-domain.ts`)
 
-## Ledger Domains Are Read-Only Over HTTP
+## Ledgers Have No Route; Derived Tables Are Read-Only Over HTTP
 
 A domain whose tables a provider job replaces feed by feed (a `Feed` of
 `app/batch/sync_<provider>_ledgers.py` names `app.services.<domain>.<table>`)
-is a **ledger domain**, and each such `<table>` is a ledger. The fact is read by
-one reader for every check (`hooks/lib/backend-ledger-feeds.ts`), never off a
-file name. A ledger's routes expose `GET` only: a row
-written by hand is compared against the provider's record on the next pass and
-overwritten, so `POST`/`PATCH`/`DELETE` there would be a promise the sync breaks
-nightly. `check-backend-domain` refuses a write verb on a route whose first path
-segment names a ledger table (`/raw-material/` → `raw_material`) instead of
-requiring one, and still requires `GET`. A table people edit may live in the
-same domain under its own path - measured, a planted `POST /note/` beside the
-ledgers passes while `DELETE /raw-material/{id}` fails. The service keeps its full CRUD - the batch job is its writer - and the
-router is the surface that says who owns the rows.
+is a **ledger domain**. Both facts below are read by one reader each
+(`hooks/lib/backend-ledger-feeds.ts` for the feeds, `hooks/lib/backend-derivations.ts`
+for the derivations), never off a file name.
 
-Path parameters on a folder domain name the leaf: `food_raw_material_id: UUID`,
-never `food_id`, because `food` is four tables and the service already spells
+- **A ledger has no route, no repository and no CRUD.** It is the provider's
+  copy, written whole by its sync through `LedgerStage`; its schema is
+  `Mutable`, `Base` and `CreateRequest.from_record` - the shape the sync
+  validates a record with - and its service is `replace_<table>_ledger` and
+  nothing else. A route whose first path segment names a ledger table
+  (`/ledger-item-report/`) is refused. What the API serves is the derived
+  table rebuilt off the ledger (rule://backend-ledger).
+- **A derived table is read-only over HTTP.** The derive job rewrites it whole
+  every night, so `POST`/`PATCH`/`DELETE` on its path would be a promise the
+  next rebuild breaks; `check-backend-domain` refuses those verbs on a derived
+  table's path and still requires `GET`. Its schema family is `<Table>Base` +
+  `<Table>ReadResponse` (plus the nested and filter classes the reads need),
+  never a Create or Update request; its repository is `get`/`list`/`count`
+  with one `_apply_filters` for the page and its total; its service adds
+  `get_`/`list_`/`count_` beside `rebuild_`. A table people edit may live in
+  the same domain under its own path with the full template.
+
+Path parameters on a folder domain name the leaf: `food_item_report_id: UUID`,
+never `food_id`, because `food` is many tables and the service already spells
 the leaf's name. The request file (`api/food.http`) reads and pages; it changes
 nothing, and says so in its header.
 
@@ -287,7 +296,7 @@ landed here and passed every gate. Where each belonged:
 
 | The helper | Where it goes |
 |---|---|
-| builds an instance of a schema class | a classmethod on that class (`BarcodeCreateRequest.from_record`) |
+| builds an instance of a schema class | a classmethod on that class (`FoodLedgerRawMaterialCreateRequest.from_record`) |
 | serves exactly one caller's comparison, parsing, or formatting | that caller |
 | supports the classes in this module only | a module-private `_name` |
 
@@ -509,8 +518,13 @@ cross-cutting concerns are owned by their own hooks (see `omp-hooks.md`):
 - **Every** Pydantic class that declares `model_config` carries `extra="forbid"` —
   checked per class, because one new class without it silently accepts unknown
   request fields while its siblings reject them.
-- The Read response exposes `version: int`, so a client can observe the
-  optimistic-lock revision it holds.
+- Every row read - the domain's own and every nested `*ReadResponse` a route
+  returns inside another - exposes `id: UUID` and `version: int`: the identity
+  a client keys a table row by, and the optimistic-lock revision it holds. A
+  read that extends another read inherits both; a composition whose every
+  field is another read (`{types: list[...]}`) is not a row and carries neither.
+  Measured: a nested read without `id` left the client keying rows by
+  their words, and two clauses spelled alike kept a stale row on every page.
 - The service **never** assigns `updated_at`. The repository sets it immediately
   before its `flush()`; a service assignment lands after the flush, costing a
   second `UPDATE` and a second `version` bump per request.

@@ -1,7 +1,8 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { layerFiles } from "./backend-layout.ts";
+import { balanced, layerFiles } from "./backend-layout.ts";
 import { ledgerTablesOf } from "./backend-ledger-feeds.ts";
+import { derivedTablesOf } from "./backend-derivations.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { resolveProjectRoot } from "./hook-project-root.ts";
@@ -155,22 +156,18 @@ export function checkRelationshipLoading(base: string): string[] {
   // eager load is a MissingGreenlet in production, not a slow query.
   for (const file of layerFiles(modelsDir)) {
     const source = readFileSync(join(modelsDir, file), "utf-8");
-    const lines = source.split("\n");
-    lines.forEach((line: string, index: number) => {
-      if (!/=\s*relationship\(/.test(line)) return;
-      // The call may span lines; read to its closing parenthesis.
-      let call = line;
-      for (let next = index + 1; next < lines.length && !/\)\s*$/.test(call); next++) {
-        call += `\n${lines[next]}`;
-      }
-      if (/lazy=/.test(call)) return;
-      const name = (/^\s*(\w+)/.exec(line) ?? [])[1] ?? "relationship";
+    // The call spans lines the way `ruff format` breaks it (and may sit in
+    // parentheses of its own); read to the parenthesis that closes it.
+    for (const match of source.matchAll(/^\s*(\w+):[^\n]*=\s*(?:\(\s*)?relationship\(/gm)) {
+      const call = balanced(source, match.index + match[0].length - 1);
+      if (/lazy=/.test(call)) continue;
+      const line = source.slice(0, match.index).split("\n").length;
       issues.push(
-        `models/${file}:${index + 1}: ${name} declares no \`lazy=\` policy — ` +
+        `models/${file}:${line}: ${match[1]} declares no \`lazy=\` policy — ` +
           'under asyncio use lazy="raise_on_sql" so a forgotten eager load fails at the ' +
           "access instead of raising MissingGreenlet in production",
       );
-    });
+    }
   }
   return issues;
 }
@@ -396,6 +393,11 @@ function fieldAnnotations(schema: string, column: string): string[] {
  * author into duplicating the set.
  */
 function literalValues(schema: string, annotation: string, appBase: string): Set<string> | null {
+  // A facets response answers the vocabulary itself - `list[ReportKind]` - and
+  // that is the set kept, not a set widened: the element type is what a reader
+  // switches on, so the list wrapper is read through.
+  const listed = /^list\[([\s\S]+)\]$/.exec(annotation.trim());
+  if (listed !== null) return literalValues(schema, listed[1], appBase);
   const bare = annotation.replace(/\|\s*None/, "").trim();
   const inline = /^Literal\[([\s\S]*)\]$/.exec(bare);
   if (inline !== null) return literalMembers(inline[1]);
@@ -702,7 +704,7 @@ export function checkDomainStructure(): string[] {
     // a domain may be internal-only (batch jobs) or exposed via a custom
     // router (auth). When a router exists, its content is validated below.
     //
-    // 완성도 요구는 **의존 방향으로만** 건다(2026-08-29 사용자 지적 + 실측). 도메인 발견 자체가
+    // 완성도 요구는 **의존 방향으로만** 건다(사용자 지적 + 실측). 도메인 발견 자체가
     // services/ 앵커라서 모델만(또는 모델+스키마만) 있는 상태는 도메인으로 잡히지 않는다 — 작업의
     // 첫 걸음에서 마지막 걸음을 요구하지 않는다. 여기 도달한 도메인은 서비스(또는 라우터)가 이미
     // 섰으므로 그 하류가 상류(schema·repository)를 요구한다. 완성 시점의 계약은 그대로다.
@@ -798,13 +800,25 @@ export function checkDomainStructure(): string[] {
         "UpdateRequest",
         "UpdateInternal",
       ];
+      /**
+       * A derived table (`Derivation` of a derive job, rule://backend-ledger)
+       * is read-only over HTTP - the derive job rewrites it whole every
+       * night - so its family is `Base` + `ReadResponse` and nothing else: a
+       * Create or Update request there is a promise the next rebuild breaks.
+       * A ledger declares no family at all (its schema is `Mutable`, `Base`
+       * and `CreateRequest.from_record`, the shape the sync validates with).
+       */
+      const derivedTables = derivedTablesOf(base, name);
+      const ledgerLeaves = ledgerTablesOf(base, name);
       let complete = 0;
       for (const [leaf, source] of schemaLeafSources(schemaDir, name)) {
+        if (leaf !== null && ledgerLeaves.includes(leaf)) continue;
         const families = leaf === null ? [cls] : [cls, `${cls}${pascalCase(leaf)}`];
         const where = leaf === null ? `schemas/${name}.py` : `schemas/${name}/${leaf}.py`;
+        const wanted = leaf !== null && derivedTables.includes(leaf) ? ["ReadResponse"] : suffixes;
         for (const family of families) {
           if (!new RegExp(`class\\s+${family}Base\\b`).test(source)) continue;
-          const missing = suffixes.filter(
+          const missing = wanted.filter(
             (suffix) => !new RegExp(`class\\s+${family}${suffix}\\b`).test(source),
           );
           if (missing.length === 0) complete += 1;
@@ -831,14 +845,34 @@ export function checkDomainStructure(): string[] {
       // `integration` until a planted omission on a food ledger stayed green.
       for (const [leaf, source] of schemaLeafSources(schemaDir, name)) {
         for (const declaration of source.matchAll(
-          /^class\s+(\w+ReadResponse)\((?:BaseModel|\w+)\):\n((?:[ \t].*\n|\n)*)/gm,
+          /^class\s+(\w+ReadResponse)\((BaseModel|\w+)\):\n((?:[ \t].*\n|\n)*)/gm,
         )) {
-          if (/^\s+version:\s*int\b/m.test(declaration[2])) continue;
+          // A read that extends another read (`FoodItemReportDetailReadResponse(FoodItemReportReadResponse)`)
+          // inherits the revision and the identity with the rest of the row.
+          if (declaration[2].endsWith("ReadResponse")) continue;
+          // A composition of reads - every field another `*ReadResponse` or a list
+          // of them (`FoodItemReportStandardsReadResponse { types: list[...] }`) -
+          // is not a row and holds no revision; the rows inside carry their own.
+          const fields = [...declaration[3].matchAll(/^\s+(\w+):\s*([^=\n]+?)\s*(?:=|$)/gm)]
+            .filter((f) => f[1] !== "model_config")
+            .map((f) => f[2]);
+          if (fields.length > 0 && fields.every((f) => /^(?:list\[)?\w+ReadResponse\]?$/.test(f))) continue;
           const where = leaf === null ? `schemas/${name}.py` : `schemas/${name}/${leaf}.py`;
-          issues.push(
-            `${name}: ${where}: ${declaration[1]} does not expose version: int - the ` +
-              "optimistic-lock revision is part of every Read response (backend-table-design.md)",
-          );
+          if (!/^\s+version:\s*int\b/m.test(declaration[3])) {
+            issues.push(
+              `${name}: ${where}: ${declaration[1]} does not expose version: int - the ` +
+                "optimistic-lock revision is part of every Read response (backend-table-design.md)",
+            );
+          }
+          // A row read carries the row's identity beside its revision: a nested read
+          // that dropped `id` left the client keying table rows by their words, and
+          // two clauses spelled alike kept a stale row on every page (measured).
+          if (!/^\s+id:\s*UUID\b/m.test(declaration[3])) {
+            issues.push(
+              `${name}: ${where}: ${declaration[1]} does not expose id: UUID - a row read carries ` +
+                "its identity, or the client has nothing but the row's words to key it by",
+            );
+          }
         }
       }
 
@@ -920,18 +954,29 @@ export function checkDomainStructure(): string[] {
       const ledger = ledgerTables.length > 0;
       if (ledger) {
         // Per table, not per domain: a domain may hold a ledger beside a table
-        // people edit, and only the ledger's paths refuse the write verbs. A
-        // write route is held to the table its first path segment names
-        // (`/raw-material/` -> `raw_material`); on a flat ledger domain every
-        // route is the ledger's.
-        for (const route of routerContent.matchAll(/@router\.(post|patch|put|delete)\("([^"]*)"/g)) {
+        // people edit. A route is held to the table its first path segment
+        // names (`/item-report/` -> `item_report`). A ledger has no route at
+        // all - it is the provider's copy, and what the API serves is the
+        // derived table rebuilt off it (rule://backend-ledger); a derived
+        // table refuses the write verbs, since the derive job rewrites it
+        // whole every night.
+        const derived = derivedTablesOf(base, name);
+        for (const route of routerContent.matchAll(/@router\.(get|post|patch|put|delete)\("([^"]*)"/g)) {
           const leaf = route[2].split("/").filter((p: string) => p !== "" && !p.startsWith("{"))[0];
           const table = leaf === undefined ? name : leaf.replace(/-/g, "_");
-          if (!ledgerTables.includes(table) && leaf !== undefined) continue;
-          issues.push(
-            `${name}: ${route[1].toUpperCase()} ${route[2]} writes the ${table} ledger - a batch ` +
-              "job fills it from the provider and overwrites a hand-written row on its next pass",
-          );
+          if (ledgerTables.includes(table)) {
+            issues.push(
+              `${name}: ${route[1].toUpperCase()} ${route[2]} serves the ${table} ledger - a ledger is ` +
+                "the provider's copy and has no route; the API reads the derived table rebuilt off it",
+            );
+            continue;
+          }
+          if (route[1] !== "get" && derived.includes(table)) {
+            issues.push(
+              `${name}: ${route[1].toUpperCase()} ${route[2]} writes the derived ${table} table - the ` +
+                "derive job rewrites it whole every night and a hand-written row is gone by morning",
+            );
+          }
         }
       } else {
         if (!routerContent.includes("@router.post")) {
@@ -985,7 +1030,7 @@ export function checkDomainStructure(): string[] {
       }
     }
 
-    // Main: 라우터 등록은 **라우터 파일이 생긴 뒤**에만 요구한다(2026-08-29).
+    // Main: 라우터 등록은 **라우터 파일이 생긴 뒤**에만 요구한다.
     // 모델만 만든 상태에서 "router not included" 를 띄우는 것은 첫 걸음에서 마지막 걸음을 요구하는 것이다.
     if (hasRouter && existsSync(mainPy)) {
       const mainContent = readFileSync(mainPy, "utf-8");

@@ -56,6 +56,18 @@ For every hook file in `.omp/hooks/`:
    `strict-command-routing`, `strict-no-subagents`) are exempt — they span
    multiple scopes by design.
 
+## Skill Ownership Checks (check-omp-skills.ts)
+
+The `<name>` slot of `check-<scope>-<name>.ts` carries a third contract: when
+its hyphen tokens contain a **skill's** name contiguously (`ledger` →
+`check-backend-ledger`), the hook is that skill's harness. This is ownership,
+not scope — the `<scope>` prefix still follows the paths the hook reads, so a
+skill-owned hook is named `check-<scope>-<skill>[-<facet>].ts`, never
+`check-skill-*`. `check-omp-skills` holds it both ways: a hook named after a
+skill must appear in that skill's `enforced-by` frontmatter and in the root
+`verify` prerequisites, and a declared harness must carry the skill's name in
+its filename (rule://omp-skills, "Skill Harness").
+
 ## Adding a New Rule or Hook
 
 1. Pick the prefix that matches the scope you actually govern

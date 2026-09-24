@@ -58,6 +58,69 @@ const RESPONSE_TYPES: Record<string, string> = {
   "dict[str, str]": "Record<string, string>",
 };
 
+/**
+ * An identity lookup serves its own answer or none.
+ *
+ * `placeholderData: (previous) => previous` is right for a *list*: the page
+ * keeps its rows while the next page loads, and the reader sees the same table
+ * for a moment longer. It is wrong for a read that answers **which row is
+ * this** - a key lookup, a detail - because the previous answer is a different
+ * row, and whatever the screen does with an id it now does to the wrong one.
+ *
+ * Measured: the 사건 list looked a product up by (종류, 번호) through
+ * a list hook that kept the previous answer, so clicking a row opened the
+ * dialog on the product of the *last* lookup - 886px of another company's
+ * record - which collapsed to 303px and was replaced two frames later. One
+ * blink, and a reader who read that frame read the wrong product.
+ *
+ * So a hook whose name or key says identity (`ByKey`, `ById`, `detail(`) must
+ * be `enabled`-gated and carry no placeholder.
+ */
+function checkIdentityLookupsServeTheirOwnAnswer(frontendSrc: string): string[] {
+  const issues: string[] = [];
+  const hooksDir = join(frontendSrc, "lib", "api", "hooks");
+  let files: string[];
+  try {
+    files = readdirSync(hooksDir);
+  } catch {
+    return issues;
+  }
+  for (const file of files) {
+    if (!file.endsWith(".ts")) continue;
+    const content = readFileSync(join(hooksDir, file), "utf-8");
+    // Both spellings a hook is written in: a declaration and an arrow const.
+    // A check that read only `export function` passed the same defect written
+    // the other way, which is how a rule stops being a rule.
+    const declared = content.matchAll(/export function (use\w+)\([^)]*\)[\s\S]*?useQuery\(\{([\s\S]*?)\n\s*\}\)/g);
+    const arrows = content.matchAll(/export const (use\w+)\s*=\s*\([^)]*\)[^=]*=>[\s\S]*?useQuery\(\{([\s\S]*?)\}\)/g);
+    for (const match of [...declared, ...arrows]) {
+      const [, name, body] = match;
+      // A detail key is not enough: a tab's own paged list is keyed under the
+      // record it belongs to (`detail(`${id}:events`)`) and *is* a list - its
+      // placeholder keeps the rows while the next page loads, which is right.
+      // An identity read asks for one row and carries no window.
+      const paged = /offset|limit|params/.test(body);
+      const identity = /ById$|ByKey$/.test(name) || (/Keys\.detail\(/.test(body) && !paged);
+      if (!identity) continue;
+      if (/placeholderData/.test(body)) {
+        issues.push(
+          `src/lib/api/hooks/${file}: ${name} answers which row a key names but keeps the ` +
+            "previous answer (placeholderData) - the screen then acts on another row until " +
+            "this one arrives",
+        );
+      }
+      if (!/enabled:/.test(body)) {
+        issues.push(
+          `src/lib/api/hooks/${file}: ${name} is an identity lookup with no enabled gate - it ` +
+            "fetches a row nobody asked for and leaves it for the next key to inherit",
+        );
+      }
+    }
+  }
+  return issues;
+}
+
+
 export function checkRequestContracts(
   projectRoot: string,
   frontendSrc: string,
@@ -114,6 +177,7 @@ export function checkRequestContracts(
   }
 
   issues.push(...checkPagingBounds(projectRoot, frontendSrc));
+  issues.push(...checkIdentityLookupsServeTheirOwnAnswer(frontendSrc));
   return issues;
 }
 

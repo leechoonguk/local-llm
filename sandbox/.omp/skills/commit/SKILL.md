@@ -1,9 +1,14 @@
 ---
 name: commit
 description: Create and push Git commits through the verified repository workflow. Use when the user asks to commit, push, publish changes, or prepare a verified commit.
+enforced-by: []
 ---
 
 # Verified Commit and Push
+
+This tree is a bench subject: publishing is denied by `strict-no-vcs-publish.ts`
+(rule://root-git-workflow). The steps below describe the workflow the user runs
+themselves; the skill owns no hook of its own (`enforced-by: []`).
 
 ## Workflow
 

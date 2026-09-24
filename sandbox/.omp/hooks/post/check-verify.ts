@@ -2,7 +2,9 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
 // @ts-expect-error — Node builtin, not project-compiled
 import { spawnSync } from "node:child_process";
 // @ts-expect-error — Node builtin, not project-compiled
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+// @ts-expect-error — Node builtin, not project-compiled
+import { tmpdir } from "node:os";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { buildSafeWarning, resetSuppression, wrapWarning } from "../lib/hook-safety-guard.ts";
@@ -40,7 +42,7 @@ const projectRoot = existsSync(join(cwd, "backend", "app")) && existsSync(join(c
  * no feedback at all, so failure re-checks quickly.
  */
 const THROTTLE_MS = 5 * 60 * 1000;
-const FAILURE_THROTTLE_MS = 90 * 1000; // A/B 결론(2026-08-29, `bench/2026-08-29.s2.throttle.md`): 스로틀은 이 게이트의 지렛대가 아니다.
+const FAILURE_THROTTLE_MS = 90 * 1000; // A/B 결론(벤치 스로틀 실험): 스로틀은 이 게이트의 지렛대가 아니다.
 // 30초로 되돌린 셀쌍은 integration TIMEOUT(산출물 8/6, 자체 게이트 3회)·rest TIMEOUT(14/15) 였고,
 // 90초 셀쌍은 integration TIMEOUT(11/6, 게이트 5회)·rest 1461초 15/15(역대 최속) 였다.
 // 즉 30초가 발견을 앞당긴다는 증거가 없고, 비용(1회 1.8~7.7초의 실제 make)만 3배다 — 90초 유지.
@@ -96,40 +98,76 @@ function isMakeCommand(input: Record<string, unknown> | undefined): boolean {
  * the command by hand. The tail of the child's own output names the failing
  * test, rule or type error directly.
  */
-function runMakeVerify(dir: string): string[] {
-  const result = spawnSync("make", ["verify"], { cwd: dir, encoding: "utf-8" });
-  if (result.status === 0) return [];
-
+function diagnose(dir: string, status: number, output: string): string {
   const label = dir === projectRoot ? "root" : dir.split("/").pop();
-  const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const diagnosis = output
     .split("\n")
     .filter((line: string) => DIAGNOSTIC_LINE.test(line))
     .slice(-MAX_DIAGNOSTIC_LINES)
     .map((line: string) => line.trim())
     .join(" | ");
-  return [
-    `${label}: make verify failed (exit ${result.status})` +
-      (diagnosis === "" ? "" : ` — ${diagnosis}`),
-  ];
+  return `${label}: make verify failed (exit ${status})` + (diagnosis === "" ? "" : ` — ${diagnosis}`);
+}
+
+/** Single-quoted for `sh`, with the one escape that shape needs. */
+function shellQuote(value: string): string {
+  return `'${value.split("'").join(`'\\''`)}'`;
+}
+
+/**
+ * The two gates overlap in wall time, never in what they touch: backend reads
+ * `backend/` and runs its suite against an in-memory sqlite engine per test
+ * (tests/conftest.py), frontend reads `frontend/` and writes its own `dist`.
+ * Serially they add up — measured 41s + 11s = 52.3s, which was 61% of the whole
+ * 85s `make verify`. Run side by side, the gate costs the longer of the two.
+ *
+ * `sh` does the waiting because the handler must stay synchronous: `guarded()`
+ * times and classifies the body it wraps, and a returned promise would settle
+ * after the hook already reported. Each side's output and exit status land in
+ * its own file, so the per-side label and diagnostic tail survive the overlap
+ * — a merged stream would attribute the frontend's error to the backend.
+ */
+function runGates(dirs: string[]): string[] {
+  const scratch = mkdtempSync(join(tmpdir(), "check-verify-"));
+  try {
+    const jobs = dirs.map((dir: string, index: number) => ({
+      dir,
+      log: join(scratch, `${index}.log`),
+      status: join(scratch, `${index}.status`),
+    }));
+    const script = jobs
+      .map((job) =>
+        `( make -C ${shellQuote(job.dir)} verify >${shellQuote(job.log)} 2>&1; ` +
+          `echo $? >${shellQuote(job.status)} ) &`,
+      )
+      .join("\n");
+    spawnSync("sh", ["-c", `${script}\nwait`], { encoding: "utf-8" });
+
+    const issues: string[] = [];
+    for (const job of jobs) {
+      // A missing status file means `sh` never ran the job at all — reported as a
+      // failure, because a gate that did not run is not a gate that passed.
+      const status = existsSync(job.status) ? Number.parseInt(readFileSync(job.status, "utf-8").trim(), 10) : NaN;
+      if (status === 0) continue;
+      const output = existsSync(job.log) ? readFileSync(job.log, "utf-8") : "";
+      issues.push(diagnose(job.dir, status, output));
+    }
+    return issues;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
 }
 
 function runVerify(): string[] {
   const issues: string[] = [];
+  const dirs: string[] = [];
 
-  const backendDir = join(projectRoot, "backend");
-  if (existsSync(join(backendDir, "Makefile"))) {
-    issues.push(...runMakeVerify(backendDir));
-  } else {
-    issues.push("backend/Makefile: not found");
+  for (const name of ["backend", "frontend"]) {
+    const dir = join(projectRoot, name);
+    if (existsSync(join(dir, "Makefile"))) dirs.push(dir);
+    else issues.push(`${name}/Makefile: not found`);
   }
-
-  const frontendDir = join(projectRoot, "frontend");
-  if (existsSync(join(frontendDir, "Makefile"))) {
-    issues.push(...runMakeVerify(frontendDir));
-  } else {
-    issues.push("frontend/Makefile: not found");
-  }
+  issues.push(...runGates(dirs));
 
   return issues;
 }

@@ -27,6 +27,48 @@ platform. It is the only place that:
 A second `axios.create` or a raw `fetch` skips all three, and the failure is
 invisible: the request still works, the session handling does not.
 
+## An Identity Lookup Serves Its Own Answer
+
+`placeholderData: (previous) => previous` belongs to a **list**: the table keeps
+its rows while the next page loads. It does not belong to a read that answers
+*which row is this* - a key lookup (`use…ByKey`), a detail (`…Keys.detail(id)`
+with no window) - because the previous answer is a different row, and whatever
+the screen does with the id it now does to the wrong one. Such a read is
+`enabled`-gated too, so nothing is fetched while nothing is open and nothing is
+left behind for the next key to inherit.
+
+Measured on the 검사·조치 이력 list, which holds a product's (종류, 번호) and
+needs its id: the lookup went through the list hook, so clicking a row opened
+the dialog on the *previous* lookup's product - 886px of another company's
+record, collapsing to 303px and replaced two frames later. The reader saw one
+blink; whoever read that frame read the wrong product.
+
+A tab's own paged list keyed under its record (`detail(`${id}:events`)`) is a
+list and keeps its placeholder - `check-frontend-types` tells the two apart by
+the window in the query.
+
+## The One Verb Axios Cannot Serve
+
+**A server-sent stream goes through `api.stream`, still inside
+`lib/api/client.ts`.** XHR hands a response over only when it is complete, so
+axios would deliver a whole turn's events in one lump after the last one -
+which is a POST wearing a stream's clothes. `api.stream` is `fetch` with the
+same bearer token and the same `ApiError` mapping; that is why the ban is on
+raw `fetch` in a screen, not on `fetch` in the client.
+
+It is the only verb with no response generic: a stream's frames are not one
+model (`token`, `end`, `error`), so it yields `ServerSentEvent` and the
+caller switches on the name. A chunk can split a frame and can carry three,
+so the buffer keeps the remainder rather than assuming one chunk is one
+frame, and the reader is cancelled in a `finally` - a caller that stops early
+must not leave the socket open. `check-frontend-contract` reads
+`api.stream(...)` as a POST on the endpoint it names, so a streaming route
+still owes a caller and its constant still has to be used.
+
+A stream has no cache: the screen reaches it through a hook that owns the
+transcript and the request in flight (`useFoodChat`), not through `useQuery` -
+there is nothing to invalidate, and the server keeps no conversation either.
+
 ## Services
 
 ```ts

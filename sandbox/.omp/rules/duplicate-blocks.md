@@ -33,7 +33,7 @@ partial edits layered on top.
 
 Domain checks see only the second-order symptoms (a section numbered out of
 sequence, a redefined symbol) and their messages then read as "fix the numbers"
-— measured 2026-09-01: a cell spent 15+ minutes renumbering sections of a file
+— measured: a session spent 15+ minutes renumbering sections of a file
 that simply contained the whole run twice. The duplicate is the cause; this
 check names it at write time, in the file just written.
 

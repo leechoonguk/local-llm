@@ -1,7 +1,7 @@
 ---
 description: OMP post-hook crash guard — an unwrapped tool_result handler, injected while the hook is being written
 condition: "pi\\.on\\(\\s*\\\\?[\"']tool_result\\\\?[\"']\\s*,\\s*\\([^)]*\\)\\s*=>\\s*\\{"
-scope: "tool:edit(.omp/hooks/post/*.ts), tool:replace(.omp/hooks/post/*.ts), tool:insert(.omp/hooks/post/*.ts), tool:write(.omp/hooks/post/*.ts)"
+scope: "tool:edit(.omp/hooks/post/*.ts), tool:write(.omp/hooks/post/*.ts)"
 interruptMode: always
 alwaysApply: false
 ---

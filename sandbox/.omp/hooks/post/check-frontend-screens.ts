@@ -1,10 +1,18 @@
 import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import {
+  checkGridColumnWidths,
+  checkGridDateColumns,
+  checkGridsFitTheirCard,
+  checkGridHeaderCollisions,
+  checkScreenValues,
+  checkSectionGaps,
+} from "../lib/frontend-grid-width.ts"
 import { buildSafeWarning, wrapWarning, resetSuppression } from "../lib/hook-safety-guard.ts";
 import { guarded } from "../lib/hook-visibility.ts";
 import { runAstRules } from "../lib/ast-rules.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { touchesPath } from "../lib/hook-scope.ts";
-import { ledgerTablesOf } from "../lib/backend-ledger-feeds.ts";
+import { derivedTablesOf } from "../lib/backend-derivations.ts";
 import {
   SRC_DIRECTORIES,
   frontendSrc,
@@ -20,12 +28,15 @@ import {
   checkColumnShares,
   checkRecordDialogStandard,
   checkRecordFieldUsage,
+  checkSectionsAnswerWhenEmpty,
 } from "../lib/frontend-record-dialog.ts";
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
 import { join } from "node:path";
 import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
+import { EXECUTION_LOG } from "../lib/hook-product-areas.ts";
+import type { ExecutionLog } from "../lib/hook-product-areas.ts";
 
 /**
  * Check-Frontend-Screens Post Hook
@@ -122,30 +133,52 @@ export function checkFrontendScreensSync(): string[] {
     issues.push(...checkDeleteConfirmation(file.label, file.content));
   }
 
+  for (const file of readSources(SRC_DIRECTORIES.sections)) {
+    issues.push(...checkRowKeysAreIdentities(file.label, file.content));
+  }
   issues.push(...checkPagesAreThin());
   issues.push(...checkListHeadWraps());
+  issues.push(...checkFetchDisablesControls());
+  issues.push(...checkRowClickGuards());
+  issues.push(...checkSelectIsTypedInto());
   issues.push(...checkRecordDialogStandard());
   issues.push(...checkRecordFieldUsage());
   issues.push(...checkClippedCellsRevealOnHover());
   issues.push(...checkColumnShares());
+  issues.push(...checkSectionsAnswerWhenEmpty());
+  issues.push(...checkGridColumnWidths());
+  issues.push(...checkGridsFitTheirCard());
+  issues.push(...checkSectionGaps());
+  issues.push(...checkScreenValues());
+  issues.push(...checkGridDateColumns());
+  issues.push(...checkGridHeaderCollisions());
+
   return issues;
 }
 
 /**
- * The pieces a **ledger list** is assembled from: the list template with its
- * write half removed. `useCrudDialog` is absent on purpose - the rows belong to
- * a nightly sync, and a dialog here would edit a copy the next pass overwrites.
+ * The pieces a **derived list** is assembled from: the list template with its
+ * write half removed. `useCrudDialog` is absent on purpose - the rows are a
+ * function of the ledgers, and a dialog here would edit a copy the next
+ * rebuild overwrites.
  */
-const LEDGER_LIST_REQUIRED = ["useDataGridState(", "<ServerDataGrid", "<ListCardHead", "useListFilters("];
+const DERIVED_LIST_REQUIRED = ["useDataGridState(", "<ServerDataGrid", "<ListCardHead", "useListFilters("];
 
-/** What a ledger list must not carry: any way to write a row from this side. */
-const LEDGER_LIST_FORBIDDEN = ["useCrudDialog<", "FormDialog", "useToast(", "rowActionsColumn", "processRowUpdate", "useMutation"];
+/**
+ * What a derived list must not carry: any way to write a row from this side,
+ * and no actions column at all - a row nobody edits has one verb, opening its
+ * record, and the row itself is that door (`onRowClick` on `ServerDataGrid`).
+ */
+const DERIVED_LIST_FORBIDDEN = ["useCrudDialog<", "FormDialog", "useToast(", "rowActionsColumn", "processRowUpdate", "useMutation"];
+
+/** The door a derived list's row is. */
+const DERIVED_LIST_DOOR = "onRowClick=";
 
 function checkListScreen(fileLabel: string, content: string): string[] {
   const issues: string[] = [];
-  const ledger = fileLabel.endsWith("LedgerList.tsx");
-  if (ledger) issues.push(...checkLedgerListIsALedger(fileLabel));
-  for (const piece of ledger ? LEDGER_LIST_REQUIRED : LIST_REQUIRED) {
+  const derived = fileLabel.endsWith("DerivedList.tsx");
+  if (derived) issues.push(...checkDerivedListIsDerived(fileLabel));
+  for (const piece of derived ? DERIVED_LIST_REQUIRED : LIST_REQUIRED) {
     if (!content.includes(piece)) {
       const name = piece.replace(/[<(]/g, "");
       issues.push(
@@ -154,12 +187,18 @@ function checkListScreen(fileLabel: string, content: string): string[] {
       );
     }
   }
-  if (ledger) {
-    for (const piece of LEDGER_LIST_FORBIDDEN) {
+  if (derived) {
+    for (const piece of DERIVED_LIST_FORBIDDEN) {
       if (!content.includes(piece)) continue;
       issues.push(
-        `${fileLabel}: a ledger list uses ${piece.replace(/[<(]/g, "")} — the rows are a ` +
-          "nightly sync's copy of the provider's, and a write here is overwritten by morning",
+        `${fileLabel}: a derived list uses ${piece.replace(/[<(]/g, "")} — the rows are a ` +
+          "function of the ledgers, rebuilt every night, and a write here is gone by morning",
+      );
+    }
+    if (!content.includes(DERIVED_LIST_DOOR)) {
+      issues.push(
+        `${fileLabel}: a derived list without onRowClick — the row is the one door into its record, ` +
+          "and a grid with no door shows columns the dialog was built to complete",
       );
     }
   }
@@ -174,8 +213,12 @@ function checkListScreen(fileLabel: string, content: string): string[] {
   }
   issues.push(...checkListHead(fileLabel, content));
   issues.push(...checkFilters(fileLabel, content));
-  issues.push(...checkColumnSizing(fileLabel, content));
-  if (!ledger) {
+  issues.push(...checkOneControlPerParameter(fileLabel, content));
+  issues.push(...checkColumnTable(fileLabel, content));
+  issues.push(...checkFilterLabels(fileLabel, content));
+  issues.push(...checkServerSort(fileLabel, content));
+  issues.push(...checkGridLoading(fileLabel, content));
+  if (!derived) {
     issues.push(...checkRowEditRefusal(fileLabel, content));
     issues.push(...checkRowActions(fileLabel, content));
   }
@@ -183,29 +226,61 @@ function checkListScreen(fileLabel: string, content: string): string[] {
 }
 
 /**
- * `*LedgerList.tsx` is a claim about the backend, and the backend has to agree.
+ * `*DerivedList.tsx` is a claim about the backend, and the backend has to agree.
  *
  * The suffix relaxes the CRUD template, so it must not be borrowable: a screen
- * earns it only when a provider job replaces the table it lists - a `Feed` of
- * some `backend/app/batch/sync_<provider>_ledgers.py` whose service is
+ * earns it only when a derive job rebuilds the table it lists - a `Derivation`
+ * of some `backend/app/batch/derive_*.py` whose service is
  * `app/services/<domain>/<table>.py`. Read off the domain folder and the
- * screen's name, so `sections/food/FoodRawMaterialLedgerList.tsx` is held to
- * the `raw_material` feed and not to "some ledger".
+ * screen's name, so `sections/food/FoodItemReportDerivedList.tsx` is held to
+ * the `item_report` derivation and not to "some derived table". A ledger has
+ * no screen at all (rule://backend-domain): what a reader sees is the derived
+ * table rebuilt off it.
  */
-function checkLedgerListIsALedger(fileLabel: string): string[] {
+function checkDerivedListIsDerived(fileLabel: string): string[] {
   const domain = fileLabel.split("/").at(-2) ?? "";
-  const screen = (fileLabel.split("/").at(-1) ?? "").replace(/LedgerList\.tsx$/, "");
+  const screen = (fileLabel.split("/").at(-1) ?? "").replace(/DerivedList\.tsx$/, "");
   const table = screen
     .replace(new RegExp(`^${domain.charAt(0).toUpperCase()}${domain.slice(1)}`), "")
     .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
     .toLowerCase();
-  const tables = ledgerTablesOf(join(projectRoot, "backend", "app"), domain);
+  const tables = derivedTablesOf(join(projectRoot, "backend", "app"), domain);
   if (table !== "" && tables.includes(table)) return [];
   return [
-    `${fileLabel}: named a ledger list, but no provider job replaces ${domain}.${table === "" ? "<table>" : table} - ` +
-      "no Feed of backend/app/batch/sync_*_ledgers.py names its service. A table nothing " +
-      "syncs is edited by people and gets the CRUD list template (<Domain>List.tsx)",
+    `${fileLabel}: named a derived list, but no derive job rebuilds ${domain}.${table === "" ? "<table>" : table} - ` +
+      "no Derivation of backend/app/batch/derive_*.py names its service. A table nothing " +
+      "derives is edited by people and gets the CRUD list template (<Domain>List.tsx)",
   ];
+}
+
+/**
+ * A table row's key is the row's identity, never its words.
+ *
+ * `rowKey` is what React keeps a row's DOM by. Built from rendered values -
+ * `type:item:clause:detail` - it collides the moment the server writes two
+ * rows alike, which the Food Code does (가공식품 lists 금속성이물 twice under one
+ * heading with the same clause and detail), and a collided key keeps a stale
+ * row on every page after the first: measured, nineteen rows on a
+ * page of ten. So the expression handed to `rowKey` - inline, or the named
+ * function it points at - reads `.id`. A prefix beside the id is fine (a type
+ * name before a clause inherited under two types); words instead of it are not.
+ */
+function checkRowKeysAreIdentities(fileLabel: string, content: string): string[] {
+  const issues: string[] = [];
+  for (const hit of content.matchAll(/rowKey=\{([^}]*)\}/g)) {
+    let expression = hit[1].trim();
+    const named = /^(\w+)$/.exec(expression);
+    if (named !== null) {
+      const body = new RegExp(`(?:const|function)\\s+${named[1]}\\b[^\\n]*(?:\\n(?![}\\n])[^\\n]*)*`).exec(content);
+      expression = body === null ? "" : body[0];
+    }
+    if (/\.id\b/.test(expression)) continue;
+    issues.push(
+      `${fileLabel}: rowKey is not the row's id — a key built from the row's words collides ` +
+        "when the server writes two rows alike, and React then keeps a stale row on every page",
+    );
+  }
+  return issues;
 }
 
 /**
@@ -259,6 +334,68 @@ function checkFilters(fileLabel: string, content: string): string[] {
 }
 
 /**
+ * One query parameter, one control.
+ *
+ * A list narrows through a single object - the page, the boxes, and whatever the
+ * screen adds - so a reader's answer to "why am I seeing these rows" is the set
+ * of controls on the screen. When one parameter is driven from two of them, the
+ * screen can hold two different answers for one column and neither control shows
+ * the other's value.
+ *
+ * Measured: a tab strip was built over `event_kind` while the same column still
+ * had its filter box. Clicking 회수·판매중지 and typing 검사부적합 into the box left
+ * a page narrowed by the box, a strip highlighting the other kind, and nothing
+ * on screen saying which had won. Every gate was green - the field was in
+ * `FILTER_FIELDS`, the parameter reached the repository, the types matched.
+ *
+ * So the rule is structural, not about tabs: the parameter names a screen writes
+ * **literally** into its params object (`event_kind: kind`, or a conditional
+ * spread of one) must not also be in `FILTER_FIELDS`, and `FILTER_FIELDS` must
+ * not name a column twice. Spreads of `grid.params` / `filters.params` carry no
+ * literal key and are not controls of their own.
+ */
+function checkOneControlPerParameter(fileLabel: string, content: string): string[] {
+  const issues: string[] = [];
+  const declared = [
+    ...(/const FILTER_FIELDS\s*=\s*\[([^\]]*)\]/.exec(content)?.[1] ?? "").matchAll(/'([a-z0-9_]+)'/g),
+  ].map((hit) => hit[1]);
+
+  const seen = new Set<string>();
+  for (const field of declared) {
+    if (seen.has(field)) {
+      issues.push(
+        `${fileLabel}: FILTER_FIELDS names ${field} twice — one column, one box`,
+      );
+    }
+    seen.add(field);
+  }
+
+  for (const parameter of literalParams(content)) {
+    if (!seen.has(parameter)) continue;
+    issues.push(
+      `${fileLabel}: ${parameter} is set by the screen and by a filter box — one query ` +
+        "parameter is driven by one control, or the page is narrowed by a value neither shows",
+    );
+  }
+  return issues;
+}
+
+/**
+ * The parameter names a screen writes into its own params object.
+ *
+ * Only the `useMemo<…ListParams>` body is read, and only literal keys in it: a
+ * spread (`...filters.params`) is another control's contribution, and guessing
+ * at what it contains would report the boxes as a second control over
+ * themselves.
+ */
+function literalParams(content: string): string[] {
+  const block = /useMemo<\w*ListParams>\(\s*\(\)\s*=>\s*\(\{([\s\S]*?)\}\),/.exec(content);
+  if (block === null) return [];
+  const body = block[1].replace(/\.\.\.[\w.]+,?/g, "");
+  return [...body.matchAll(/(?:^|[{\s])([a-z][a-z0-9_]*)\s*:/gm)].map((hit) => hit[1]);
+}
+
+/**
  * Select filters: options are fetched, the router matches them whole, and a
  * cascade clears its child.
  *
@@ -271,8 +408,32 @@ function checkFilters(fileLabel: string, content: string): string[] {
  *   entry must be `ExactFilterQuery` in the domain's router, and every other
  *   `FILTER_FIELDS` entry `TextFilterQuery`;
  * - a cascade whose child is never cleared leaves a filter standing that can
- *   match nothing - so a `CASCADE` declaration owes `setInput(CASCADE.child, '')`.
+ *   match nothing - so a `CASCADE` declaration owes `setInput(CASCADE.child, '')`;
+ * - options that are *codes* (a schema `Literal`, a constant from `types/`)
+ *   print as themselves - measured on the report kind: `food` / `livestock` in a
+ *   Korean select, with every gate green, because the i18n check reads literal
+ *   text and the option was a value. A facets value is the row's own text and
+ *   reads as itself; anything else fed to `options:` owes an `optionLabel`.
  */
+/**
+ * Every filter alias `app/dependencies/query.py` declares, by how the router
+ * matches it: a free string with a length floor (`TextFilterQuery`) is a
+ * contains-match, and everything else - `ExactFilterQuery`, or an alias whose
+ * inner type is a `Literal` the schema closes (`ReportKindQuery`) - matches
+ * whole. Read off the declarations, so a new alias is classified by its shape
+ * and not by whether this list was updated.
+ */
+function filterAliasKinds(): Map<string, "text" | "exact"> {
+  const kinds = new Map<string, "text" | "exact">();
+  const source = readIfPresent(join(projectRoot, "backend", "app", "dependencies", "query.py")) ?? "";
+  for (const hit of source.matchAll(/^(\w+Query)\s*=\s*Annotated\[([^\]]+)\]/gm)) {
+    const [, alias, inner] = hit;
+    if (/\bint\b/.test(inner)) continue; // paging, not a filter
+    kinds.set(alias, /\bstr\b/.test(inner) && /min_length/.test(inner) && alias !== "ExactFilterQuery" ? "text" : "exact");
+  }
+  return kinds;
+}
+
 function checkSelectFilters(fileLabel: string, content: string): string[] {
   const issues: string[] = [];
   // The expression after `options:` may span a ternary; a quoted string inside
@@ -284,6 +445,43 @@ function checkSelectFilters(fileLabel: string, content: string): string[] {
         "ledger's own distinct values, read from a facets endpoint, or it offers yesterday's choices",
     );
   }
+  // The same window as the literal check: a cascade's ternary (text / child / facets) is four lines.
+  const optionsFromCodes = [...content.matchAll(/options:((?:[^\n]*\n){0,5})/g)].some(
+    (m) => !/\.data\b/.test(m[1]) && !/undefined,?\s*$/.test(m[1].trim()),
+  );
+  // A select's values come from somewhere: the facets hook that reads the
+  // column's own rows, or - for a vocabulary the schema itself closes - the
+  // contract's constant, which owes `optionLabel` (checked above). Neither,
+  // and the select offers only "all"; measured by planting exactly that on
+  // the raw material list, where every gate stayed green.
+  const namesFacets = /options:[\s\S]{0,400}?facets\.data/.test(content);
+  const readsFacets = /use\w*Facets\(/.test(content);
+  const selectNames = [
+    ...(/const SELECT_FIELDS\s*=\s*\[([^\]]*)\]/.exec(content)?.[1] ?? "").matchAll(/['"]([a-z_]+)['"]/g),
+  ].map((m) => m[1]);
+  // A column the schema itself closes is named as one (`const CODE_FIELD = 'use_yn'`)
+  // and takes its values from the contract; every other select column's values
+  // are its own rows', which only the facets read has.
+  const codeFields = new RegExp(`const CODE_FIELDS?\\s*=\\s*\\[?([^\\]\\n]*)`).exec(content)?.[1] ?? "";
+  const fromRows = selectNames.filter((name) => !codeFields.includes(name));
+  if (fromRows.length > 0 && !namesFacets) {
+    issues.push(
+      `${fileLabel}: select ${fromRows.join(", ")} takes no options from facets.data — a vocabulary ` +
+        'the schema does not close is the column\'s own values, or the box offers only "all"',
+    );
+  }
+  if (namesFacets && !readsFacets) {
+    issues.push(
+      `${fileLabel}: a select reads facets.data but the screen calls no use<Domain><Table>Facets() ` +
+        "— the options are undefined on every render",
+    );
+  }
+  if (optionsFromCodes && !/optionLabel:/.test(content)) {
+    issues.push(
+      `${fileLabel}: select options are codes (not a facets read) and the field carries no ` +
+        "optionLabel — a code prints as itself in every language; translate it through the locale",
+    );
+  }
   const selectBlock = /const SELECT_FIELDS\s*=\s*\[([^\]]*)\]/.exec(content)?.[1] ?? "";
   const selects = new Set([...selectBlock.matchAll(/['"]([a-z_]+)['"]/g)].map((m) => m[1]));
   const filterBlock = /const FILTER_FIELDS\s*=\s*\[([^\]]*)\]/.exec(content)?.[1] ?? "";
@@ -292,9 +490,10 @@ function checkSelectFilters(fileLabel: string, content: string): string[] {
     const domain = fileLabel.split("/").at(-2) ?? "";
     const routerPath = join(projectRoot, "backend", "app", "routers", `${domain}.py`);
     const router = readIfPresent(routerPath) ?? "";
+    const kinds = filterAliasKinds();
     for (const name of filters) {
-      const alias = new RegExp(`^\\s+${name}:\\s*(TextFilterQuery|ExactFilterQuery)\\b`, "m").exec(router)?.[1];
-      if (alias === undefined) {
+      const alias = new RegExp(`^\\s+${name}:\\s*(\\w+Query)\\b`, "m").exec(router)?.[1];
+      if (alias === undefined || !kinds.has(alias)) {
         // Measured: a planted `ghost_column` in FILTER_FIELDS stayed green under
         // every gate - the box rendered, sent its parameter, and the router
         // ignored it, which is a filter that filters nothing.
@@ -304,8 +503,8 @@ function checkSelectFilters(fileLabel: string, content: string): string[] {
         );
         continue;
       }
-      const wanted = selects.has(name) ? "ExactFilterQuery" : "TextFilterQuery";
-      if (alias === wanted) continue;
+      const wanted = selects.has(name) ? "exact" : "text";
+      if (kinds.get(alias) === wanted) continue;
       issues.push(
         `${fileLabel}: ${name} is a ${selects.has(name) ? "select" : "text"} filter here but ` +
           `${alias} on backend/app/routers/${domain}.py — a select's value is picked whole and ` +
@@ -323,52 +522,310 @@ function checkSelectFilters(fileLabel: string, content: string): string[] {
 }
 
 /**
- * Every grid column has a floor and, if it may grow, a share.
+ * Every list sizes its columns from one table - the 품목제조보고 list's shape.
  *
- * MUI's default is 100px with no floor, which clipped the 14-character codes
- * and `식품원료(A코드)` on the raw material ledger; and `flex` on two columns
- * alone piled a 1920px screen's spare width into those two while the rest
- * stayed clipped. So a column literal carries `width`, or `flex` with
- * `minWidth`; a `...sized(...)` spread is exempt, because it is built from a
- * table whose type already requires both.
+ * `COLUMN = { field: { floor, share } }` spread by `sized(field)`: the floor is
+ * the width at which the widest measured value stops clipping, the share how
+ * spare width is divided - across every column, not the two that happened to
+ * carry `flex`. A column spelled with its own `width:` or `flex:` is one the
+ * table does not know about, and a `width:` literal cannot grow at all: on a
+ * 1440px screen the user list's `created_at` sat at 180 and clipped
+ * `2026. 8. 30. 오후 10:57` to `10:...` while the flex columns beside it held
+ * 321 each. A `*_WIDTH` constant is the same number in a second place.
+ *
+ * The timestamp floor is one number, because `formatDateTime` writes one
+ * string: every `*_at` entry reads `TIMESTAMP_COLUMN_FLOOR` from config.ts
+ * (measured 182 at the body size; 185 clears the ink).
  */
-function checkColumnSizing(fileLabel: string, content: string): string[] {
+function checkColumnTable(fileLabel: string, content: string): string[] {
   const issues: string[] = [];
-  let index = 0;
-  while ((index = content.indexOf("field: '", index)) !== -1) {
-    const open = content.lastIndexOf("{", index);
-    const before = content.slice(open, index);
-    if (before.includes("...sized(")) {
-      index += 1;
-      continue;
-    }
-    // Walk to the matching brace of the object the field sits in.
-    let depth = 0;
-    let close = open;
-    for (; close < content.length; close += 1) {
-      if (content[close] === "{") depth += 1;
-      if (content[close] === "}") depth -= 1;
-      if (depth === 0) break;
-    }
-    const object = content.slice(open, close + 1);
-    const field = /field: '([a-z_]+)'/.exec(object)?.[1] ?? "?";
-    const sized = /\bwidth:/.test(object) || (/\bflex:/.test(object) && /\bminWidth:/.test(object));
-    // A spread anywhere in the object (`...rowActionsColumn`, `...sized`) sizes itself.
-    if (!sized && !/\.\.\.\w+\(/.test(object)) {
+  const code = stripComments(content);
+  const table = /const COLUMN\s*:\s*Record<string,\s*\{\s*floor:\s*number;\s*share:\s*number\s*\}>\s*=\s*\{([\s\S]*?)\n\}/.exec(code);
+  if (table === null) {
+    issues.push(
+      `${fileLabel}: declares no COLUMN table — every column's floor and share sit in one ` +
+        "`COLUMN = { field: { floor, share } }` spread by sized(field), or a column is sized " +
+        "by MUI's 100px default, or by a flex that piles the spare width into itself",
+    );
+  } else {
+    for (const entry of table[1].matchAll(/^\s*(\w+_at):\s*\{\s*floor:\s*([^,]+),/gm)) {
+      if (entry[2].trim() === "TIMESTAMP_COLUMN_FLOOR") continue;
       issues.push(
-        `${fileLabel}: column '${field}' has no width and no flex+minWidth — MUI's 100px default ` +
-          "clips the first wide value, and a flex without a floor collapses under it",
+        `${fileLabel}: COLUMN.${entry[1]} has floor ${entry[2].trim()} — a formatted timestamp is ` +
+          "one string on every screen, so its floor is TIMESTAMP_COLUMN_FLOOR (config.ts), " +
+          "not a number that fit on the day it was typed",
       );
     }
+  }
+  const widthConstant = /const (\w+_WIDTH)\s*=\s*\d+/.exec(code);
+  if (widthConstant !== null) {
+    issues.push(
+      `${fileLabel}: declares ${widthConstant[1]} — a column's width lives in the COLUMN table ` +
+        "beside every other column's, not in a constant the table does not read",
+    );
+  }
+  // ServerDataGrid injects ClippedText into every column without a renderCell;
+  // a column that spells it again is the grid's default written a second time.
+  if (/renderCell:[^\n]*<ClippedText\b/.test(code)) {
+    issues.push(
+      `${fileLabel}: a column renders ClippedText itself — ServerDataGrid injects it into every ` +
+        "column without a renderCell; a renderCell is for a value that is not text as stored",
+    );
+  }
+  let index = 0;
+  while ((index = code.indexOf("field: '", index)) !== -1) {
+    const open = code.lastIndexOf("{", index);
+    let depth = 0;
+    let close = open;
+    for (; close < code.length; close += 1) {
+      if (code[close] === "{") depth += 1;
+      if (code[close] === "}") depth -= 1;
+      if (depth === 0) break;
+    }
+    const object = code.slice(open, close + 1);
     index = close;
+    // A column is the object that names its header; `field:` also appears in
+    // the argument of a per-cell validator (`showsProblem({ field: 'email' })`).
+    if (!/\bheaderName:/.test(object)) continue;
+    const field = /field: '([a-z_]+)'/.exec(object)?.[1] ?? "?";
+    // The actions column spreads `rowActionsColumn`, which derives its own width
+    // from the button count; anything else is a column the table must size.
+    if (!/\.\.\.sized\(/.test(object) && !/\.\.\.rowActionsColumn/.test(object)) {
+      issues.push(
+        `${fileLabel}: column '${field}' is not spread from sized(...) — a column sized on its ` +
+          "own line (width, flex, minWidth) is one the COLUMN table does not know about",
+      );
+    }
   }
   return issues;
 }
 
-/** The head's filter row wraps: six boxes at 1400px put the last select off-screen (x=1530). */
+/**
+ * The header's sort is the server's, and the columns it may sort are the
+ * router's to close.
+ *
+ * Measured before the rule: every grid sorted its ten loaded rows on a header
+ * click and called it the collection - the model was never wired through, and
+ * every gate stayed green. So a list grid carries `sortModel={grid.sortModel}`
+ * and `onSortModelChange={grid.setSortModel}` (ServerDataGrid runs
+ * `sortingMode="server"`), and every column the grid can sort - one not
+ * marked `sortable: false` - is a member of the router's `<Domain>SortQuery`
+ * Literal; a header the server refuses would answer 422 on its first click.
+ */
+function checkServerSort(fileLabel: string, content: string): string[] {
+  const issues: string[] = [];
+  const code = stripComments(content);
+  if (!/sortModel=\{grid\.sortModel\}/.test(code) || !/onSortModelChange=\{grid\.setSortModel\}/.test(code)) {
+    issues.push(
+      `${fileLabel}: the grid is not wired to grid.sortModel / grid.setSortModel — a header ` +
+        "click would sort the loaded page and call it the collection",
+    );
+  }
+  const domain = fileLabel.split("/").at(-2) ?? "";
+  const router = readIfPresent(join(projectRoot, "backend", "app", "routers", `${domain}.py`)) ?? "";
+  const query = readIfPresent(join(projectRoot, "backend", "app", "dependencies", "query.py")) ?? "";
+  // The list endpoint this screen pages: the one whose service call the screen's
+  // list hook names is not visible here, so take the router's top-level Page
+  // endpoints and the SortQuery each declares; a domain with two (food) is told
+  // apart by the alias name carrying the screen's table.
+  const aliases = [...router.matchAll(/sort:\s*(\w+SortQuery)\s*=/g)].map((m) => m[1]);
+  const table = /sections\/\w+\/(\w+?)(?:Derived)?List\.tsx$/.exec(fileLabel)?.[1] ?? "";
+  const alias = aliases.find((name) => name === `${table}SortQuery`) ?? aliases[0];
+  if (alias === undefined) return issues;
+  const start = query.indexOf(`${alias} = Annotated[`);
+  if (start === -1) return issues;
+  const literal = /Literal\[([\s\S]*?)\]\s*\|\s*None/.exec(query.slice(start))?.[1] ?? "";
+  const sortable = new Set([...literal.matchAll(/"(\w+)"/g)].map((m) => m[1]));
+  let index = 0;
+  while ((index = code.indexOf("...sized('", index)) !== -1) {
+    const open = code.lastIndexOf("{", index);
+    let depth = 0;
+    let close = open;
+    for (; close < code.length; close += 1) {
+      if (code[close] === "{") depth += 1;
+      if (code[close] === "}") depth -= 1;
+      if (depth === 0) break;
+    }
+    const object = code.slice(open, close + 1);
+    index = close;
+    const field = /\.\.\.sized\('(\w+)'\)/.exec(object)?.[1] ?? "";
+    if (sortable.has(field) || /sortable:\s*false/.test(object)) continue;
+    issues.push(
+      `${fileLabel}: column '${field}' is sortable but ${alias} on backend/app/dependencies/query.py ` +
+        "does not name it — the first click of that header answers 422; add it to the Literal " +
+        "or say sortable: false",
+    );
+  }
+  return issues;
+}
+
+/**
+ * Filter labels are looked up, never branched.
+ *
+ * `FILTER_LABEL_KEYS` maps every `FILTER_FIELDS` entry to its locale key and the
+ * box reads `t(FILTER_LABEL_KEYS[field])`. A ternary on the field name is right
+ * for two fields and silently wrong for the third: the else branch labels
+ * whatever is added next (`field === 'code' ? t('filter.code') : t('filter.display_name')`
+ * would call a new `base_url` box 표시명).
+ */
+function checkFilterLabels(fileLabel: string, content: string): string[] {
+  const code = stripComments(content);
+  const filterBlock = /const FILTER_FIELDS\s*=\s*\[([^\]]*)\]/.exec(code)?.[1];
+  if (filterBlock === undefined) return [];
+  const fields = [...filterBlock.matchAll(/['"]([a-z_]+)['"]/g)].map((m) => m[1]);
+  const keys = /const FILTER_LABEL_KEYS\s*=\s*\{([\s\S]*?)\}\s*as const/.exec(code)?.[1];
+  if (keys === undefined) {
+    return [
+      `${fileLabel}: declares no FILTER_LABEL_KEYS — a box's label is looked up by its field ` +
+        "(t(FILTER_LABEL_KEYS[field])), never chosen by a ternary on the field's name",
+    ];
+  }
+  const issues: string[] = [];
+  const named = new Set([...keys.matchAll(/^\s*(\w+):/gm)].map((m) => m[1]));
+  for (const field of fields) {
+    if (named.has(field)) continue;
+    issues.push(`${fileLabel}: FILTER_LABEL_KEYS has no key for ${field} — every FILTER_FIELDS entry owes its label key`);
+  }
+  if (!/label:\s*t\(FILTER_LABEL_KEYS\[field\]\)/.test(code)) {
+    issues.push(
+      `${fileLabel}: the filter box label is not t(FILTER_LABEL_KEYS[field]) — the label is the map's ` +
+        "answer for the field, not a branch on its name",
+    );
+  }
+  return issues;
+}
+
+/**
+ * A select filter is typed into, not only scrolled.
+ *
+ * The vocabularies are the columns' own values and some are long: 814 식품유형
+ * on the item report list, 85 상태 on the raw material one (measured
+ * live). A plain `TextField select` makes the reader hunt a value they
+ * already know through a list that height, so `ListFilters` renders an
+ * `Autocomplete` whose typing narrows by contains - and what it sends is still
+ * one of the options, so the router's equals holds.
+ */
+function checkSelectIsTypedInto(): string[] {
+  // existence-ok: every list screen imports it; a missing one fails the build first.
+  const source = readIfPresent(join(frontendSrc, "components", "data-grid", "ListFilters.tsx"));
+  if (source === null) return [];
+  const code = stripComments(source);
+  if (/<Autocomplete\b/.test(code) && !/<TextField\b[^>]*\bselect\b/.test(code)) return [];
+  return [
+    "frontend/src/components/data-grid/ListFilters.tsx: a select filter is a plain dropdown — " +
+      "render Autocomplete, whose typing narrows a vocabulary the reader cannot scroll " +
+      "(measured: 814 식품유형, 85 상태)",
+  ];
+}
+
+/**
+ * The grid's progress reads the fetch, not the mount.
+ *
+ * Every list keeps the previous page on screen while the next one loads
+ * (`placeholderData: (previous) => previous`), so `query.isLoading` is `true`
+ * only once, on the very first mount - a filter box, a header sort or a page
+ * click all set `isFetching` without ever setting `isLoading` again.
+ * `loading={query.isLoading}` showed rows aging silently on a slow connection
+ * with no sign a request was in flight (measured: 700ms latency, six checks
+ * 150ms apart, no overlay). `loading={query.isFetching}` costs nothing new -
+ * MUI's own `GridLoadingOverlay` draws a `linear-progress` bar over the
+ * existing rows whenever `loading` is `true` and the grid already has rows.
+ */
+function checkGridLoading(fileLabel: string, content: string): string[] {
+  const code = stripComments(content);
+  if (!code.includes("<ServerDataGrid")) return [];
+  const issues: string[] = [];
+  if (/loading=\{query\.isLoading\}/.test(code)) {
+    issues.push(
+      `${fileLabel}: ServerDataGrid reads loading={query.isLoading} — a refetch after the ` +
+        "first mount (a filter, a sort, a page) never sets isLoading again, so the grid shows " +
+        "no progress while the rows it displays go stale; use query.isFetching",
+    );
+  } else if (!/loading=\{query\.isFetching\}/.test(code)) {
+    issues.push(
+      `${fileLabel}: ServerDataGrid's loading prop is not query.isFetching — a query in flight ` +
+        "must show the grid's own progress bar, not silence while rows age on screen",
+    );
+  }
+  if (/<ListFilters\b[\s\S]*?disabled=/.test(code)) {
+    issues.push(
+      `${fileLabel}: ListFilters carries a disabled prop — a box that locks while the fetch ` +
+        "runs cuts the word still being typed (measured: 밀가 sent, 루 dropped); the query key " +
+        "closes the race, not the box",
+    );
+  }
+  return issues;
+}
+
+/**
+ * A page in flight is not the only request a second click can start. Two
+ * requests for the same screen racing land in either order, and the one that
+ * lands second silently wins the footer's total and the rows shown - even if
+ * it answers an older filter or an earlier page. `loading` already names that
+ * window, so `ServerDataGrid` - the one file every list renders, not each
+ * caller - disables everything inside it that would start a second request:
+ * its own paging and its own sorting.
+ */
+function checkFetchDisablesControls(): string[] {
+  const issues: string[] = [];
+  // existence-ok: every dialog table imports this file; a missing one fails the build first.
+  const table = readIfPresent(join(frontendSrc, "components", "detail", "ServerPagedTable.tsx"));
+  if (table !== null) {
+    const tableCode = stripComments(table);
+    if (!/<TablePagination\b[^>]*disabled=\{loading\}/.test(tableCode) || !/<LinearProgress\b/.test(tableCode)) {
+      issues.push(
+        "frontend/src/components/detail/ServerPagedTable.tsx: does not draw LinearProgress and lock " +
+          "TablePagination from its loading prop — a dialog's table is the same contract as the " +
+          "grid (measured: the runs dialog paged with live buttons and no bar)",
+      );
+    }
+  }
+  for (const file of readSources(SRC_DIRECTORIES.sections)) {
+    const sectionCode = stripComments(file.content);
+    // The props before renderCells: the cells' own JSX closes tags of its own.
+    for (const call of sectionCode.matchAll(/<ServerPagedTable\b([\s\S]*?)(?:renderCells=|\/>)/g)) {
+      if (/loading=\{(?:\w+\.)?(?:isFetching|loading)\}/.test(call[1])) continue;
+      issues.push(
+        `${file.label}: ServerPagedTable without loading={<query>.isFetching} — the dialog's page ` +
+          "in flight shows no bar and its footer stays live for a second, racing request",
+      );
+    }
+  }
+  // existence-ok: every list screen imports this file; a missing one fails the build first.
+  const grid = readIfPresent(join(frontendSrc, "components", "data-grid", "ServerDataGrid.tsx"));
+  if (grid === null) return issues;
+  const code = stripComments(grid);
+  if (!/slotProps=\{\{\s*basePagination:\s*\{\s*disabled:\s*loading\s*\}\s*\}\}/.test(code)) {
+    issues.push(
+      "frontend/src/components/data-grid/ServerDataGrid.tsx: no slotProps={{ basePagination: " +
+        "{ disabled: loading } }} — a page click while the last page is still in flight races " +
+        "the two responses for the rows shown (pagination is the wrong slot key; GridPagination " +
+        "reads basePagination)",
+    );
+  }
+  if (!/disableColumnSorting=\{loading\}/.test(code)) {
+    issues.push(
+      "frontend/src/components/data-grid/ServerDataGrid.tsx: no disableColumnSorting={loading} " +
+        "— a header click while a page is in flight races the two responses the same way a " +
+        "second page click does",
+    );
+  }
+  return issues;
+}
+
+/**
+ * The head's filter boxes never leave the row: six boxes at 1400px put the last
+ * select off-screen (x=1530). Either mechanism holds it - a wrapping flex row,
+ * or a grid that fits as many `minmax(..., 1fr)` cells as the row holds and
+ * folds the rest (the second also fills the row, which the first left ragged
+ * at 900px). The property is checked, not the spelling.
+ */
 function checkListHeadWraps(): string[] {
+  // existence-ok: every list screen imports the head, and checkListHead reports one that is missing
   const source = readIfPresent(join(frontendSrc, "components", "data-grid", "ListCardHead.tsx"));
-  if (source === null || /flexWrap="wrap"/.test(source)) return [];
+  if (source === null || /flexWrap="wrap"/.test(source) || /repeat\(auto-fit,\s*minmax\(/.test(source)) {
+    return [];
+  }
   return [
     "frontend/src/components/data-grid/ListCardHead.tsx: the filter row does not wrap — " +
       "a screen with more boxes than the row holds pushes a filter off-screen, where it does not exist",
@@ -394,10 +851,26 @@ function checkRowEditRefusal(fileLabel: string, content: string): string[] {
         "grid's edit state, so a blocked save can only be watched, never explained",
     );
   }
-  if (!/problemOf\(/.test(content) || !/refusal\(/.test(content)) {
+  // `problemOf` is **called** twice: from the cells' `preProcessEditCellProps` and
+  // from `refusal`. A screen that reds a cell by one rule and refuses the save by
+  // another is the disagreement this pair exists to prevent. The declaration is
+  // subtracted — counting it passed a planted screen whose cells judged nothing.
+  const problemOfCalls =
+    (content.match(/\bproblemOf\(/g) ?? []).length - (content.match(/function problemOf\(/g) ?? []).length;
+  if (problemOfCalls < 2) {
     issues.push(
-      `${fileLabel}: has no problemOf/refusal pair — the red cell and the sentence a blocked ` +
-        "save shows must come from one function, or they disagree",
+      `${fileLabel}: judges its cells and its save by different rules — the red cell and the ` +
+        "sentence a blocked save shows both come from problemOf, or they disagree",
+    );
+  }
+  // The flow around that judgement is `useRowEditor`'s: the modes map, the three
+  // commands, the deferred focus and the `reported` flag were 24 identical lines
+  // in two screens before it existed, and a screen that reimplements them drifts
+  // from the one the exemplar proves.
+  if (!/useRowEditor</.test(content) || !/refusal[,\s]/.test(content)) {
+    issues.push(
+      `${fileLabel}: edits rows without handing a refusal to useRowEditor — the commit, the ` +
+        "caret move and the one-sentence report belong to that hook, not to each screen",
     );
   }
   return issues;
@@ -419,13 +892,48 @@ function checkRowActions(fileLabel: string, content: string): string[] {
         "returns MUI's type: 'actions' column with the width computed from the buttons",
     );
   }
-  if (/\bonRowClick=/.test(content)) {
+  issues.push(...checkActionCountBudget(fileLabel, content));
+  return issues;
+}
+
+/**
+ * A row that is both a door and an editor guards the click centrally.
+ *
+ * The blanket ban read "a row that opens a record cannot also be a row a user
+ * types into", and as a screen-level rule it was the wrong owner: the collision
+ * is in the grid, and it is two collisions, not one. A click inside the actions
+ * cell is reported as a row click as well, so a door would open a dialog on the
+ * way to `삭제`; and MUI opens an editor on cell double-click, whose first click
+ * had already opened that dialog. Both are fixed once, in `ServerDataGrid`, so
+ * every screen that carries a door inherits the same answer.
+ *
+ * Checked on the owner, because that is where the guard lives: a screen passing
+ * `onRowClick` is no longer a violation, and a grid owner missing a guard is.
+ */
+function checkRowClickGuards(): string[] {
+  const issues: string[] = [];
+  // existence-ok: every list screen imports this file; a missing one fails the build first.
+  const grid = readIfPresent(join(frontendSrc, "components", "data-grid", "ServerDataGrid.tsx"));
+  if (grid === null) return issues;
+  const code = stripComments(grid);
+  if (!/rowModesModel\?\.\[params\.id\]\?\.mode\s*===\s*GridRowModes\.Edit/.test(code)) {
     issues.push(
-      `${fileLabel}: onRowClick on a list grid — a row that opens a record cannot ` +
-        "also be a row a user types into; put the intent in rowActionsColumn",
+      `${GRID_OWNER}: a row click is not gated on the row's edit mode — a row being typed ` +
+        "into answers the pointer with a dialog over the cell it was aiming at",
     );
   }
-  issues.push(...checkActionCountBudget(fileLabel, content));
+  if (!/closest\(\s*'\[data-field="actions"\]'\s*\)/.test(code)) {
+    issues.push(
+      `${GRID_OWNER}: a row click is not gated on the actions cell — MUI reports one for a ` +
+        "click on a row button too, so the door opens on the way to delete",
+    );
+  }
+  if (!/onCellDoubleClick=\{[\s\S]{0,200}?defaultMuiPrevented\s*=\s*true/.test(code)) {
+    issues.push(
+      `${GRID_OWNER}: cell double-click still starts an editor while a door is set — the ` +
+        "first of the two clicks opened the dialog, so the second lands on a grid behind it",
+    );
+  }
   return issues;
 }
 
@@ -591,15 +1099,28 @@ function checkFormDialog(fileLabel: string, content: string): string[] {
   return issues;
 }
 
-/** A tab that fetches refetches on every tab switch and can disagree with its siblings. */
+/**
+ * A tab that fetches refetches on every tab switch and can disagree with its
+ * siblings — **unless what it reads is not part of the entity at all.**
+ *
+ * An execution log is exactly that case: it is unbounded (a row per call, for
+ * ever), server-paged, and written by whatever exercised the configuration, so
+ * it cannot be nested in the entity read the other tabs share. There is no
+ * second version of those rows to disagree with. The allowance is narrow: the
+ * only query hooks such a tab may call are the ones `EXECUTION_LOG` declares
+ * (rule://product-areas), so a tab re-reading its own entity still fails.
+ */
 function checkDetailTab(fileLabel: string, content: string): string[] {
-  if (/from ['"]@\/lib\/api\/hooks\//.test(content)) {
-    return [
-      `${fileLabel}: a detail tab queries its own data — take the entity as a prop ` +
-        "so every tab shows one version of the row",
-    ];
-  }
-  return [];
+  const imported = [...content.matchAll(/import\s+\{([^}]+)\}\s+from\s+['"]@\/lib\/api\/hooks\/[^'"]+['"]/g)]
+    .flatMap((match: RegExpMatchArray) => match[1].split(",").map((name: string) => name.trim()));
+  if (imported.length === 0) return [];
+  const logHooks = Object.values(EXECUTION_LOG).map((log: ExecutionLog) => log.hook);
+  if (imported.every((hook: string) => logHooks.includes(hook))) return [];
+  return [
+    `${fileLabel}: a detail tab queries its own data — take the entity as a prop ` +
+      "so every tab shows one version of the row (an execution log declared in " +
+      "EXECUTION_LOG is the one collection a tab may read for itself)",
+  ];
 }
 
 function checkMutationFeedback(fileLabel: string, content: string): string[] {

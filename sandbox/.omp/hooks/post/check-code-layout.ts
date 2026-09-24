@@ -595,7 +595,8 @@ function pythonMembers(body: string): ClassMember[] {
   let depth = 0;
   let inDocstring = false;
   let pendingProperty = false;
-  body.split("\n").forEach((line, index) => {
+  const lines = body.split("\n");
+  lines.forEach((line, index) => {
     const fences = (line.match(/"""|'''/g) ?? []).length;
     const closesHere = inDocstring && fences % 2 === 1;
     if (fences % 2 === 1) inDocstring = !inDocstring;
@@ -622,8 +623,11 @@ function pythonMembers(body: string): ClassMember[] {
           });
         }
       } else if (field !== null) {
+        // `ruff format` wraps a long value in parentheses, leaving `= (` on the
+        // field's line and `relationship(` on the next; classify by the value.
+        const value = /=\s*\(\s*$/.test(line) ? `${line}${lines[index + 1] ?? ""}` : line;
         members.push({
-          kind: /\brelationship\(/.test(line) ? "relationship" : "field",
+          kind: /\brelationship\(/.test(value) ? "relationship" : "field",
           name: field[1],
           line: index,
         });

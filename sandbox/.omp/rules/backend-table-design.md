@@ -99,8 +99,8 @@ it - and that is the criterion, not an oversight.** Where a second writer
 exists the lock is load-bearing: two admins on one `user` form, the job
 finishing a `batch_run` while the UI stops it, a scheduled and a manual run
 storing one `batch_checkpoint`, a refresh token rotated and revoked at once.
-Where there is one writer (`food_*` ledgers) it is evidence - `max(version) = 1`
-after a re-read is the proof that nothing was rewritten - and where a table is
+Where there is one writer (`food_*` ledgers, written over whole every night) it
+is constant - `max(version) = 1` always, since no row is ever updated - and where a table is
 append-only (`integration_call`) it is inert. The alternative, a second mixin
 for tables that opt out, creates a decision on every new table, and that
 decision fails in one direction only: a table that gains an editor later and
@@ -120,9 +120,15 @@ user foreign key: an audit trail must survive the deletion of its actor.
 
 - `__tablename__` is required, lower snake case, and **singular**
   (`integration_request_field`, not `integration_request_fields`).
+- A ledger — one portal operation's copy, written over nightly — says so in its
+  name: `<domain>_ledger_<feed>` (`food_ledger_nutrition`). The bare `<domain>_*`
+  names belong to the tables a router speaks (`rule://backend-relations`).
 - Constraint names carry their kind and table: `uq_<table>_<cols>`,
   `ck_<table>_<subject>`, `ix_<table>_<cols>`. Unnamed constraints get
-  database-generated names that migrations cannot reference.
+  database-generated names that migrations cannot reference. PostgreSQL truncates
+  an identifier at 63 characters **silently**, so a derived name that would exceed
+  it is replaced by a shorter explicit one, with the count in a comment beside it
+  (`ix_food_ledger_livestock_raw_material_item_report_no`, 64 before shortening).
 
 ## Validation (Post-Hook)
 
@@ -143,6 +149,8 @@ so skipping mixins would exempt `AuditMixin` from every rule below):
 10. `AuditMixin` defines `created_by`, `updated_by`, `created_at`, `updated_at`,
     `version`, and sets `version_id_col` — a `version` column without the mapper
     argument is decoration, and concurrent writes silently overwrite
+11. A named constraint starts with `<kind>_<table>_`, unless the full name would
+    pass 63 characters (`ix_food_ledger_livestock_raw_material_item_report_no`)
 
 Related machine checks elsewhere:
 
@@ -151,6 +159,11 @@ Related machine checks elsewhere:
   a post-flush assignment costs a second `UPDATE` and a second version bump).
 - `check-backend-integration-configuration.ts` — the same `version` requirement
   for the integration Read classes.
+- `check-backend-migrations.ts` — a revision that renames a table renames its
+  primary key with it. PostgreSQL leaves the pkey under the old table's name and
+  `alembic check` never compares pkey names, so the drift is invisible to every
+  other gate: measured here, eleven renamed ledgers kept `food_<old>_pkey` and
+  the next table to take one of those names was created as `..._pkey1`.
 
 ## Never Do These
 
@@ -161,3 +174,5 @@ Related machine checks elsewhere:
 - Use a nullable `Boolean`, a naive `DateTime`, or an unbounded `String`
 - Skip `AuditMixin` on a table model
 - Pluralize `__tablename__`
+- Rename a table and leave its primary key under the old table's name
+- Name a constraint after a table it does not belong to

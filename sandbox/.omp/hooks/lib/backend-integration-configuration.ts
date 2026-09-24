@@ -76,8 +76,50 @@ const REQUIRED_SCHEMA_CLASSES = [
   "IntegrationExecuteResponse",
 ];
 
-export function checkIntegrationConfiguration(): string[] {
+/**
+ * A seeded operation states its window width.
+ *
+ * `integration_operation.page_size` carries a `server_default`, so a seed that
+ * does not name it is silently 100. Measured: eleven 식품안전나라
+ * operations were seeded that way when the width moved from the job to the
+ * operation, and the jobs that had walked those feeds in 1,000-row pages went on
+ * walking them in 100-row ones - the barcode feed took 2,462 windows and 7.5
+ * hours against 247 windows, per-window latency climbing 1.1 s → 12 s with the
+ * offset, and ten times the calls spent fifteen refusals and locked all three
+ * keys for an hour. The width a portal answers is a measurement; a default is
+ * not one.
+ */
+const WINDOW_RULE_FROM_REVISION = 269;
+
+function checkSeededOperationsStateTheirWindow(): string[] {
   const issues: string[] = [];
+  const versionsDir = join(backendRoot, "alembic", "versions");
+  if (!existsSync(versionsDir)) return issues;
+  for (const filename of readdirSync(versionsDir)) {
+    if (!filename.endsWith(".py") || !filename.includes("_integration_operation")) continue;
+    if (!filename.includes("_seed_") && !filename.includes("_replace_")) continue;
+    const content = readFileSync(join(versionsDir, filename), "utf-8");
+    // Applied history is history: revision 269 corrected the eleven 식품안전나라
+    // operations that had drifted onto the default, and editing the seeds that
+    // wrote them would rewrite migrations every environment has already run.
+    // The rule binds every revision written after that correction.
+    const number = Number(/^(\d+)_/.exec(filename)?.[1] ?? 0);
+    if (number <= WINDOW_RULE_FROM_REVISION) continue;
+    if (!/bulk_insert|\.insert\(/.test(content)) continue;
+    if (/"page_size"|page_size=/.test(content)) continue;
+    issues.push(
+      `alembic/versions/${filename}: seeds an integration operation without a page_size - ` +
+        "the column's server_default is 100, so a walk that used to read 1,000 rows a window " +
+        "silently reads ten times as many windows (measured on the barcode feed: " +
+        "ten times the windows, hours instead of minutes)",
+    );
+  }
+  return issues;
+}
+
+
+export function checkIntegrationConfiguration(): string[] {
+  const issues: string[] = [...checkSeededOperationsStateTheirWindow()];
   // Every layer of this domain is several files, so each side of the contract
   // is read as the whole layer, not one path. `listDomainLayerFiles` and
   // `readLayerSource` answer that for a flat `<domain>_*.py` split and for the
@@ -346,6 +388,7 @@ export function checkIntegrationConfiguration(): string[] {
         "the caller's page size unobservable (measured)",
     );
   }
+  issues.push(...checkFileOperations(backendRoot, client));
 
   const externalApiTest = readFileSync(externalApiTestPath, "utf-8");
   for (const [needle, label] of [
@@ -549,5 +592,208 @@ export function checkIntegrationConfiguration(): string[] {
     );
   }
 
+  // A screen is a transport, not a second stack (rule: "A Screen Is a Transport").
+  // Every trap below was measured on the first one (impfood).
+  issues.push(...listScreenDefects(fixtureDir));
+
+  return issues;
+}
+
+/**
+ * The seeded operations whose `response_format` is HTML, each with the facts the
+ * screen checks read: the provider seed's transport, the form media type, the
+ * request schema, the row selector.
+ */
+function listScreenOperations(): Array<{
+  code: string;
+  file: string;
+  provider: string;
+  transportSeeded: boolean;
+  formMedia: boolean;
+  exactForm: boolean;
+  root: string | null;
+}> {
+  const versionsDir = join(backendRoot, "alembic", "versions");
+  if (!existsSync(versionsDir)) return [];
+  const files = readdirSync(versionsDir).filter((f: string) => f.endsWith(".py")).sort();
+  const contents = new Map<string, string>();
+  for (const f of files) contents.set(f, readFileSync(join(versionsDir, f), "utf-8") as string);
+  const newest = new Map<string, { file: string; content: string }>();
+  for (const [file, content] of contents) {
+    if (!/"response_format":\s*"HTML"/.test(content)) continue;
+    const code = /"code":\s*"([a-z0-9-]+)"/.exec(content)?.[1];
+    if (code === undefined) continue;
+    newest.set(code, { file, content });
+  }
+  const screens: ReturnType<typeof listScreenOperations> = [];
+  for (const [code, { file, content }] of newest) {
+    const providerId = /PROVIDER_ID\s*=\s*uuid5\([^,]+,\s*"([^"]+)"\)/.exec(content)?.[1] ?? "";
+    let provider = "";
+    let transportSeeded = false;
+    for (const [, other] of contents) {
+      if (!other.includes(`"${providerId}"`) || !/"integration_provider"/.test(other)) continue;
+      provider = /"code":\s*"([a-z0-9-]+)"/.exec(other)?.[1] ?? provider;
+      transportSeeded = /"transport":\s*"HTML_FORM"/.test(other) || transportSeeded;
+    }
+    const formMedia = /"request_media_type":\s*"(multipart\/form-data|application\/x-www-form-urlencoded)"/.test(content);
+    const exactForm =
+      /"additionalProperties":\s*False/.test(content) && /"required":\s*FORM_FIELDS/.test(content);
+    const rootMatch = /"response_root":\s*(?:"([^"]*)"|([A-Z_][A-Z0-9_]*))/.exec(content);
+    const root =
+      rootMatch === null
+        ? null
+        : (rootMatch[1] ?? new RegExp(`^${rootMatch[2]}\\s*=\\s*"([^"]*)"`, "m").exec(content)?.[1] ?? null);
+    screens.push({ code, file, provider, transportSeeded, formMedia, exactForm, root });
+  }
+  return screens;
+}
+
+/**
+ * What a screen feed has to have recorded, because each was a live defect:
+ *
+ * - the provider is seeded `HTML_FORM` - without the session bootstrap the list
+ *   POST answers `302 -> /error/error`;
+ * - a form operation's request schema closes the field set
+ *   (`additionalProperties: False`, `required: FORM_FIELDS`) - the screen refused
+ *   the request when three inputs its own JS never posts were added;
+ * - the row selector is not a pointer;
+ * - the fixture carries `expect.form` (the measured parts) and
+ *   `expect.bootstrap_path`, and a second fixture `<code>.empty.json` records the
+ *   empty state - a placeholder row the selector must exclude, or the walk
+ *   would stage 조회 결과가 없습니다 as a record and never see the end.
+ */
+function listScreenDefects(fixtureDir: string): string[] {
+  const issues: string[] = [];
+  for (const screen of listScreenOperations()) {
+    const label = `alembic/versions/${screen.file}`;
+    if (!screen.transportSeeded) {
+      issues.push(
+        `${label}: ${screen.code} answers HTML but its provider ${screen.provider || "(unresolved)"} ` +
+          "is not seeded transport HTML_FORM - the list POST answers the error page without the session",
+      );
+    }
+    if (screen.formMedia && !screen.exactForm) {
+      issues.push(
+        `${label}: ${screen.code} posts a form, so its request_schema must close the field set - ` +
+          '"required": FORM_FIELDS and "additionalProperties": False (one extra part is a refusal)',
+      );
+    }
+    if (screen.root !== null && screen.root.startsWith("/")) {
+      issues.push(`${label}: ${screen.code} is HTML, so response_root is a row selector, not a pointer`);
+    }
+    const fixturePath = join(fixtureDir, `${screen.code}.json`);
+    if (existsSync(fixturePath)) {
+      const expect = (JSON.parse(readFileSync(fixturePath, "utf-8")).expect ?? {}) as Record<string, unknown>;
+      if (screen.formMedia && typeof expect.form !== "object") {
+        issues.push(
+          `tests/core/fixtures/integration/${screen.code}.json: a form screen's fixture records the parts ` +
+            "the browser posts in expect.form - the field set is the contract",
+        );
+      }
+      if (screen.transportSeeded && typeof expect.bootstrap_path !== "string") {
+        issues.push(
+          `tests/core/fixtures/integration/${screen.code}.json: expect.bootstrap_path names the screen ` +
+            "whose GET mints the session, so the fixture proves the cookie is fetched first",
+        );
+      }
+    }
+    const emptyPath = join(fixtureDir, `${screen.code}.empty.json`);
+    if (!existsSync(emptyPath)) {
+      issues.push(
+        `tests/core/fixtures/integration/${screen.code}.empty.json is missing - record the screen's empty ` +
+          "state (the page past the last one) and expect canonical_payload [], because a screen draws " +
+          "'no rows' as a row and the walk ends only when the selector excludes it",
+      );
+      continue;
+    }
+    const empty = JSON.parse(readFileSync(emptyPath, "utf-8")) as Record<string, unknown>;
+    const expect = (empty.expect ?? {}) as Record<string, unknown>;
+    const payload = expect.canonical_payload;
+    // A screen that pages is empty as an empty page; a screen that answers one
+    // record is empty as a refusal, because its envelope row is what tells "no
+    // such key" from a record of blanks (measured: an unknown 접수번호 answers
+    // 200 with the same table drawn and every cell empty).
+    const emptyPage = Array.isArray(payload) && payload.length === 0;
+    const refusal = typeof expect.raises === "string";
+    if (!emptyPage && !refusal) {
+      issues.push(
+        `tests/core/fixtures/integration/${screen.code}.empty.json: the empty state is either an ` +
+          "empty page (expect.canonical_payload []) or a refusal (expect.raises), never a record of blanks",
+      );
+    }
+  }
+  return issues;
+}
+
+
+/**
+ * A file operation (`response_format` CSV) is one request answering the whole
+ * feed, read in chunks. Three shapes cannot apply to it and one must:
+ *
+ * - no ENVELOPE row — a file's success has no wrapper and its refusal is an
+ *   HTTP 429 (measured on 식품안전나라 I0460: `INFO-500` and `INFO-330` both
+ *   arrive as 429 with an XML body; decks/ledger-measurements §14);
+ * - no paging input — a chunk of `page_size` rows is the walk's page, and a
+ *   window sent to the file door is ignored;
+ * - no `response_root` — the file is the page;
+ * - a fixture recording the gzip bytes (`response.gzip_base64`) and the rows
+ *   the reader produced from them (`expect.rows`), because the reader is what
+ *   a file operation adds and a JSON fixture proves none of it.
+ *
+ * And the client must be able to read one: `stream` and the record cutter
+ * exist, or the seed names a format nothing can walk.
+ */
+function checkFileOperations(backendRoot: string, client: string): string[] {
+  const issues: string[] = [];
+  const versions = join(backendRoot, "alembic", "versions");
+  const files = existsSync(versions) ? readdirSync(versions).filter((f: string) => f.endsWith(".py")) : [];
+  const byRevision = (a: string, b: string) => Number.parseInt(a, 10) - Number.parseInt(b, 10);
+  const operationSeeds = files.filter((f: string) => f.includes("integration_operation")).sort(byRevision);
+  const fieldSeeds = files.filter((f: string) => f.includes("integration_field")).sort(byRevision);
+  const newestFormat = new Map<string, { file: string; csv: boolean; root: boolean }>();
+  for (const file of operationSeeds) {
+    const content = readFileSync(join(versions, file), "utf-8");
+    const code = /"code":\s*"([^"]+)"/.exec(content)?.[1];
+    if (code === undefined) continue;
+    newestFormat.set(code, {
+      file,
+      csv: /"response_format":\s*"CSV"/.test(content),
+      root: /"response_root":\s*(?:"|[A-Z_]+,)/.test(content),
+    });
+  }
+  const fileOperations = [...newestFormat].filter(([, seed]) => seed.csv);
+  if (fileOperations.length === 0) return issues;
+  if (!/async def stream\(/.test(client) || !/class _RecordCutter/.test(client)) {
+    issues.push(
+      "core/integration.py: a CSV operation is seeded, so the client must read a file - " +
+        "`stream` in chunks of page_size, with the RFC 4180 record cutter",
+    );
+  }
+  for (const [code, seed] of fileOperations) {
+    const label = `alembic/versions/${seed.file}`;
+    if (seed.root) {
+      issues.push(`${label}: a CSV operation has no response_root - the file is the page`);
+    }
+    const fields = fieldSeeds
+      .filter((f: string) => readFileSync(join(versions, f), "utf-8").includes(`/${code}"`))
+      .at(-1);
+    if (fields !== undefined) {
+      const content = readFileSync(join(versions, fields), "utf-8");
+      if (/ENVELOPE_ROWS\s*=\s*\[\s*\(/.test(content)) {
+        issues.push(`alembic/versions/${fields}: a CSV operation reads no envelope - a file's refusal is its status`);
+      }
+      if (/'(range_start|range_end|page_no|num_of_rows)'/.test(content)) {
+        issues.push(`alembic/versions/${fields}: a CSV operation is read in chunks of page_size, not windowed`);
+      }
+    }
+    const fixture = join(backendRoot, "tests", "core", "fixtures", "integration", `${code}.json`);
+    const recorded = existsSync(fixture) ? readFileSync(fixture, "utf-8") : "";
+    if (!/"gzip_base64"/.test(recorded) || !/"rows"/.test(recorded)) {
+      issues.push(
+        `tests/core/fixtures/integration/${code}.json: a file operation's fixture records the gzip ` +
+          "bytes (response.gzip_base64) and the rows the reader produced (expect.rows)",
+      );
+    }
+  }
   return issues;
 }

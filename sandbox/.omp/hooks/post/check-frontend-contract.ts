@@ -16,6 +16,7 @@ import {
   parsePydanticClasses,
   parsePydanticConstraints,
   parseTsInterfaces,
+  parseSchemaValidatorFields,
   parseServiceShapeRules,
   parseYupRules,
   readBackendModule,
@@ -345,6 +346,9 @@ function checkValidationParity(domain: string): string[] {
 
   const serviceSource = readBackendModule(projectRoot, "services", `${domain}.py`);
   const shaped = serviceSource === null ? new Set<string>() : parseServiceShapeRules(serviceSource);
+  // A shape the schema itself parses in Python (`@field_validator`) is as declared
+  // as a `pattern=`: the 422 comes from the same model.
+  for (const field of parseSchemaValidatorFields(backendSource)) shaped.add(field);
 
   for (const [field, rule] of rules) {
     const declared: FieldConstraints | undefined = constraints.get(field);

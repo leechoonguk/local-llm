@@ -116,22 +116,24 @@ function isLedgerDomain(domain: string): boolean {
 }
 
 /**
- * The layers of a **ledger domain**: one read surface per table, no write surface.
+ * The layers of a **ledger domain**: one read surface per derived table it
+ * shows, no write surface, and no screen on a ledger itself.
  *
- * The rows belong to a nightly sync, so the CRUD template's form dialog, create/
- * update/remove service methods and mutation hooks are not merely optional here
- * - they are refused, because each would edit a copy the next pass overwrites.
- * Per table rather than per domain: `food` is several ledgers, and each screen
- * (`<Domain><Table>LedgerList.tsx`) owes its own hook, page and query key.
+ * The rows are a function of the ledgers, rebuilt every night, so the CRUD
+ * template's form dialog, create/update/remove service methods and mutation
+ * hooks are not merely optional here - they are refused, because each would
+ * edit a copy the next rebuild overwrites. Per table rather than per domain:
+ * `food` derives several tables, and each screen
+ * (`<Domain><Table>DerivedList.tsx`) owes its own hook, page and query key.
  */
 function checkLedgerDomain(domain: string, name: string, queryKeys: string): string[] {
   const issues: string[] = [];
   const sectionDir = join(SRC_DIRECTORIES.sections, domain);
   const screens = existsSync(sectionDir)
-    ? readdirSync(sectionDir).filter((f: string) => f.endsWith("LedgerList.tsx"))
+    ? readdirSync(sectionDir).filter((f: string) => f.endsWith("DerivedList.tsx"))
     : [];
   if (screens.length === 0) {
-    issues.push(`${label(sectionDir)}: a ledger domain with no <${name}><Table>LedgerList.tsx - nothing shows the rows`);
+    issues.push(`${label(sectionDir)}: a ledger domain with no <${name}><Table>DerivedList.tsx - nothing shows the derived rows`);
   }
   const typesPath = join(SRC_DIRECTORIES.types, `${domain}.ts`);
   if (!existsSync(typesPath)) issues.push(`${label(typesPath)}: missing — the ${domain} domain is incomplete`);
@@ -143,19 +145,19 @@ function checkLedgerDomain(domain: string, name: string, queryKeys: string): str
   const types = readIfPresent(typesPath) ?? "";
 
   for (const screen of screens) {
-    const table = screen.replace(/LedgerList\.tsx$/, "").replace(new RegExp(`^${name}`), "");
+    const table = screen.replace(/DerivedList\.tsx$/, "").replace(new RegExp(`^${name}`), "");
     const page = join(SRC_DIRECTORIES.pages, `${name}${table}Page.tsx`);
-    if (!existsSync(page)) issues.push(`${label(page)}: missing — the ${domain} ledger ${table} has no route component`);
+    if (!existsSync(page)) issues.push(`${label(page)}: missing — the ${domain} derived ${table} has no route component`);
     if (!new RegExp(`export function use${name}${table}List\\b`).test(hooks)) {
-      issues.push(`${label(hooksPath)}: no exported use${name}${table}List — the ${table} ledger has no query`);
+      issues.push(`${label(hooksPath)}: no exported use${name}${table}List — the ${table} derived table has no query`);
     }
     const key = `${domain}${table}Keys`;
     if (!new RegExp(`${key}\\s*=\\s*createQueryKeys`).test(queryKeys)) {
-      issues.push(`frontend/src/lib/api/queryKeys.ts: no ${key} — the ${table} ledger's hook cannot name its cache`);
+      issues.push(`frontend/src/lib/api/queryKeys.ts: no ${key} — the ${table} derived table's hook cannot name its cache`);
     }
   }
   if (!/\blist\w*\s*:/.test(service)) {
-    issues.push(`${label(servicePath)}: no list*() — a ledger service reads pages and nothing else`);
+    issues.push(`${label(servicePath)}: no list*() — a ledger domain's service reads pages and records, nothing else`);
   }
   for (const method of ["create", "update", "remove"]) {
     if (new RegExp(`\\b${method}\\w*\\s*:`).test(service)) {
@@ -275,7 +277,9 @@ function requestFields(types: string, interfaceName: string): string[] {
  */
 function editableColumns(list: string): Set<string> {
   const fields = new Set<string>();
-  const columns = [...list.matchAll(/field: '(\w+)'/g)];
+  // A column names its field either way: spread from the COLUMN table
+  // (`...sized('email')`, the list standard) or spelled (`field: 'email'`).
+  const columns = [...list.matchAll(/(?:\.\.\.sized\('|field: ')(\w+)'/g)];
   for (const [index, match] of columns.entries()) {
     const from = match.index ?? 0;
     const to = columns[index + 1]?.index ?? list.length;

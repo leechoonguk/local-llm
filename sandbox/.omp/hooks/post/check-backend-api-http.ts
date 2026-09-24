@@ -25,7 +25,7 @@ export default function checkBackendApiHttp(pi: ExtensionAPI): void {
   pi.on("tool_result", (event: { toolName?: string; content?: Array<{ type: string; text?: string }> }) => guarded("check-backend-api-http", event, () => {
     if (event.toolName && !MUTATING_TOOLS.has(event.toolName)) return;
     // 이 훅이 요구하는 산출물은 레포 루트의 `api/*.http` 다 — backend/ 만 보면 그 파일을 쓴 순간에는
-    // 아무 피드백도 못 준다(2026-08-30 감사: 셀 전사에서 해당 알림 0건).
+    // 아무 피드백도 못 준다(감사 실측: 셀 전사에서 해당 알림 0건).
     if (!touchesPath(event, ["backend/", "api/"])) return;
 
     const issues = checkBackendApiHttpSync();

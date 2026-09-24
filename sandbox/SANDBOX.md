@@ -10,7 +10,7 @@
 | 마이그레이션 | 73개(item/todo/task 생성·삭제, integration replace 반복 등 역사 누적) | churn 제거 + 하네스 정합(레이아웃·단일 테이블·downgrade·개행) 수정. **git 없이 `make verify` 통과** — 마이그레이션 불변 규칙(`@{upstream}`)이 git 부재 시 전부 "unpushed"로 보고 현행 레이아웃 규칙을 강제하므로, 남는 마이그레이션이 전부 그 규칙을 통과해야 한다 |
 | compose 프로젝트 | `fast-api-standard` | `local-llm-sandbox` (볼륨·컨테이너 분리) |
 | 호스트 포트 | 8000 / 5173 / 5432 / 6379 / 6006 / 4317 | **18000 / 15173 / 15432 / 16379 / 16006 / 14317** — 원본 스택과 동시에 뜰 수 있다. 컨테이너 내부 주소(`postgres:5432`, `redis:6379`)는 그대로 |
-| 포트가 박힌 파일 | — | `docker-compose.yml`, `.env.example`, `backend/.env.example`, `api/.env.example`, `backend/Makefile`, `backend/scripts/start.sh`, `backend/Dockerfile`, `frontend/{Makefile,vite.config.ts,nginx.conf}`, `.omp/hooks/lib/backend-api-http.ts`(`@base` 는 `:18000`), `backend-api-flow.ts`, `.omp/rules/*.md` |
+| 포트가 박힌 파일 | — | `.env.example`(+`.env`), `backend/.env.example`, `api/.env.example`, `docker-compose.yml`(`name:` 포함), `.vscode/launch.json` — 값 파일만(2026-09-24 정정: 코드·훅·규칙은 env 를 읽어 fas 와 동일하고, `vite.config.ts` 의 25173 기본값은 `.env` 의 FRONTEND_PORT 가 덮는다) |
 | 벤치 자산 | `.omp/skills/llm-bench`, `bench-llm-runner.ts`, `make bench-llm` | **없음** — 피험자가 자기 채점 절차를 읽으면 안 된다. 규칙 카탈로그·decks 해시도 맞춰 뒀다 |
 | `docs/` | 있음 | 제거 |
 
@@ -50,3 +50,5 @@ make db-init && make verify       # git 없이 exit 0 이어야 벤치 baseline
 | `decks/package-lock.json` | 없음 | 있음 | 덱 빌드 로컬 산물 |
 | 벤치 과제 도려내기 | — | `search-barcode-linked-product` 산출물 부재(정답은 `.claude/skills/llm-bench/reference/answers/`) | 과제 성립 조건 — 현재 양쪽 다 부재라 코드 diff 는 없음 |
 | `decks/*/slides.md` | 각자 재생성 | 각자 재생성 | sync 해시·정책 가드 목록이 트리별 |
+| 배포·공급망 인프라 (2026-09-24) | `Jenkinsfile`, `ci/`, `docker-compose.ci.yml`, `docker-compose.qa.yml`, `.env.qa`, `.env.qa.example`, `.env.ci`, `.env.ci.example`, `.omp/skills/qa-deploy`, `.omp/rules/ci-jenkins.md`, `.omp/rules/dependency-audit.md`, `.omp/hooks/post/check-ci-jenkins.ts`, `.omp/hooks/post/check-dependency-audit.ts`, `.omp/hooks/lib/hook-audit-images.ts`, `.omp/hooks/lib/backend-batch-sequence.ts`, Makefile `qa-*`/`ci-*`/`check-ci-jenkins`/`check-dependency-audit`/`audit-images`/`batch-sequence` | 없음 | QA/CI 스택은 실서비스 운영이고, OSV 의존성 감사·이미지 다이제스트 감사는 네트워크에 기대 벤치 게이트의 hermetic 성을 깬다. `root-makefile.md`·`omp-hooks.md` 의 해당 행과 `.omp/config.yml` disabledExtensions 의 두 줄도 빠진다 |
+| `decks/harness-history`, `decks/ledger-measurements` | 있음 | 있음(slides.md 각자 재생성) | fas 실측 기록 덱 — 규칙이 링크하므로 소스는 공유, 해시만 트리별 |

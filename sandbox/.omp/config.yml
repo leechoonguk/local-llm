@@ -3,3 +3,76 @@
 
 bashInterceptor:
   enabled: true
+
+# ── Post hooks: disabled per tool call, run once as the closing gate ──────────
+#
+# 실측(`make hook-report`, 125 세션 / 변이 도구 호출 18,760건): post 훅 52개가
+# 호출 하나에 평균 3.8초를 썼고 누적 71,543초였다. 그중 check-verify 가 33,526초(47%),
+# api-http·integration-configuration·ledger 세 트리 스캐너가 23,514초(33%)다.
+# 세션당 약 570초 — 편집마다 전체 트리를 다시 읽은 값이다.
+#
+# 같은 52개 검사는 루트 `make verify` 의 선행 타깃으로 전부 들어 있고(52/52 일치),
+# 루트 `make verify` 한 번은 52초다(초록 2회 실측 52.2/53.1초). 테스트 워커 병렬(36→12.6초)과
+# 두 게이트 동시 실행(52.3→19.4초)으로 85→52초가 됐고, `make -j8 verify` 는 21.0초다.
+# 손익분기는 변이 호출 14건 — 실제 세션은 그 10배를 넘는다(평균 ~150건).
+#
+# 그래서 자동 실행만 끈다. 파일·make 타깃·마감 게이트는 그대로다:
+#   - pre/strict-* 훅은 살아 있다(파괴적 작업을 *막는* 장치라 사후 검사로 대체 불가)
+#   - continuity 확장의 마감 게이트가 마지막 변경 이후 루트 게이트 미실행 종료를 막는다
+#
+# id 형식은 `hook:<type>:<tool>:<name>` (omp://extension-loading.md, 훅 capability
+# toExtensionId). 배열은 전역 설정을 확장하지 않고 **대체**한다.
+disabledExtensions:
+  - hook:post:check-ast-rules:check-ast-rules.ts
+  - hook:post:check-backend-api-http:check-backend-api-http.ts
+  - hook:post:check-backend-api-keys:check-backend-api-keys.ts
+  - hook:post:check-backend-app-setup:check-backend-app-setup.ts
+  - hook:post:check-backend-audit-log:check-backend-audit-log.ts
+  - hook:post:check-backend-auth:check-backend-auth.ts
+  - hook:post:check-backend-background-tasks:check-backend-background-tasks.ts
+  - hook:post:check-backend-batch:check-backend-batch.ts
+  - hook:post:check-backend-contract:check-backend-contract.ts
+  - hook:post:check-backend-core-config:check-backend-core-config.ts
+  - hook:post:check-backend-domain:check-backend-domain.ts
+  - hook:post:check-backend-exceptions:check-backend-exceptions.ts
+  - hook:post:check-backend-file-upload:check-backend-file-upload.ts
+  - hook:post:check-backend-integration-configuration:check-backend-integration-configuration.ts
+  - hook:post:check-backend-integration:check-backend-integration.ts
+  - hook:post:check-backend-ledger:check-backend-ledger.ts
+  - hook:post:check-backend-middleware:check-backend-middleware.ts
+  - hook:post:check-backend-migrations:check-backend-migrations.ts
+  - hook:post:check-backend-model-files:check-backend-model-files.ts
+  - hook:post:check-backend-naming:check-backend-naming.ts
+  - hook:post:check-backend-ownership:check-backend-ownership.ts
+  - hook:post:check-backend-rate-limit:check-backend-rate-limit.ts
+  - hook:post:check-backend-redis-cache:check-backend-redis-cache.ts
+  - hook:post:check-backend-relations:check-backend-relations.ts
+  - hook:post:check-backend-repository-files:check-backend-repository-files.ts
+  - hook:post:check-backend-router-params:check-backend-router-params.ts
+  - hook:post:check-backend-service-injection:check-backend-service-injection.ts
+  - hook:post:check-backend-sse:check-backend-sse.ts
+  - hook:post:check-backend-table-design:check-backend-table-design.ts
+  - hook:post:check-backend-tests:check-backend-tests.ts
+  - hook:post:check-backend-transaction:check-backend-transaction.ts
+  - hook:post:check-code-layout:check-code-layout.ts
+  - hook:post:check-decks-sync:check-decks-sync.ts
+  - hook:post:check-duplicate-blocks:check-duplicate-blocks.ts
+  - hook:post:check-environment:check-environment.ts
+  - hook:post:check-frontend-api-layer:check-frontend-api-layer.ts
+  - hook:post:check-frontend-code:check-frontend-code.ts
+  - hook:post:check-frontend-components:check-frontend-components.ts
+  - hook:post:check-frontend-contract:check-frontend-contract.ts
+  - hook:post:check-frontend-design:check-frontend-design.ts
+  - hook:post:check-frontend-domain:check-frontend-domain.ts
+  - hook:post:check-frontend-i18n:check-frontend-i18n.ts
+  - hook:post:check-frontend-routing:check-frontend-routing.ts
+  - hook:post:check-frontend-screens:check-frontend-screens.ts
+  - hook:post:check-frontend-types:check-frontend-types.ts
+  - hook:post:check-makefiles:check-makefiles.ts
+  - hook:post:check-omp-hooks:check-omp-hooks.ts
+  - hook:post:check-product-areas:check-product-areas.ts
+  - hook:post:check-omp-rules:check-omp-rules.ts
+  - hook:post:check-omp-skills:check-omp-skills.ts
+  - hook:post:check-omp-types:check-omp-types.ts
+  - hook:post:check-tooling:check-tooling.ts
+  - hook:post:check-verify:check-verify.ts

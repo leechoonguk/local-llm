@@ -538,6 +538,9 @@ function checkOmpHooksSync(): string[] {
   // --- 6b. Authoring invariants for the harness itself ---
   issues.push(...checkAuthoringInvariants(actualFiles));
 
+  // --- 6c. Post hooks run once as the closing gate, never per tool call ---
+  issues.push(...checkPostHooksDisabled(actualFiles));
+
   // --- 7. Every warning says where it applies ---
   issues.push(...checkIssuesNameTheirPlace());
 
@@ -692,7 +695,7 @@ function checkWarningCallShape(actual: string, fileName: string, hookContent: st
  */
 /**
  * 경로 스코프 계약 — 훅은 자기 도메인 이벤트에만 돈다(omp-hooks.md "Path gate").
- * 실측 2026-08-29: 변이 도구 결과 1회에 post 훅 36개가 write 6.8초/bash 4.9초를 썼고,
+ * 실측: 변이 도구 결과 1회에 post 훅 36개가 write 6.8초/bash 4.9초를 썼고,
  * 그 절반이 이벤트와 무관한 하네스 메타 검사였다. 비용은 컨텍스트가 아니라 벽시계다.
  */
 function checkScopeGate(actual: string, _fileName: string, hookContent: string): string[] {
@@ -708,7 +711,7 @@ function checkScopeGate(actual: string, _fileName: string, hookContent: string):
  * 요구 방향 계약 — 검사는 **존재하는 하류가 상류를 요구**한다. 작업의 첫 걸음에서 마지막 걸음을
  * 요구하면 안 된다.
  *
- * 근거(2026-08-29 실측): `app/models/x.py` 하나가 생기는 순간 schema/repository/service 누락과
+ * 근거(실측): `app/models/x.py` 하나가 생기는 순간 schema/repository/service 누락과
  * 라우터 미등록·DI 미배선까지 5건이 한꺼번에 나갔다. 이 지적들은 매 변이 도구 결과에 주입되고,
  * 로컬 모델은 목록을 작업 큐로 읽는다("첫 실패 수정 완료. 다음: missing service file") — 한 계층만
  * 요청한 프롬프트가 기능 전체로 부풀었다.
@@ -859,6 +862,47 @@ function splitArguments(source: string): string[] {
   }
   if (current.trim() !== "") args.push(current.trim());
   return args;
+}
+
+/**
+ * Post hooks are the closing gate, not a per-tool-call tax.
+ *
+ * 실측(`make hook-report`, 125 세션 / 변이 도구 호출 18,760건): post 훅 52개가 호출 하나에
+ * 평균 3.8초를 썼고 누적 71,543초였다. 같은 52개 검사는 루트 `make verify` 의 선행 타깃으로
+ * 전부 들어 있고, 루트 `make verify` 한 번은 52초다 — 손익분기는 변이 호출 14건이고
+ * 실제 세션은 그 10배를 넘는다. 그래서 자동 실행만 `.omp/config.yml` 의 `disabledExtensions`
+ * 로 끄고, 파일과 make 타깃은 그대로 둔다.
+ *
+ * 새 post 훅이 그 목록에 빠지면 그 훅 하나만 조용히 옛 비용 모델로 돌아간다 — 밖에서는
+ * 보이지 않고, 누적 비용으로만 드러난다. id 형식은 `hook:<type>:<tool>:<name>` 이고
+ * `<tool>` 은 확장자를 뗀 파일명이다(omp://extension-loading.md, 훅 capability toExtensionId).
+ */
+function checkPostHooksDisabled(actualFiles: Set<string>): string[] {
+  const issues: string[] = [];
+  const configPath = join(ompDir, "config.yml");
+  // existence-ok: 프로젝트 설정 파일 자체의 부재는 check-environment 가 보고한다.
+  if (!existsSync(configPath)) return issues;
+  const listed = new Set(
+    [...readFileSync(configPath, "utf-8").matchAll(/^\s*-\s*hook:post:([\w.-]+):(\S+)\s*$/gm)].map(
+      (match: string[]) => `${match[1]}:${match[2]}`,
+    ),
+  );
+  for (const entry of [...actualFiles].filter((name) => name.startsWith("post/"))) {
+    const fileName = entry.slice("post/".length);
+    const id = `${fileName.replace(/\.ts$/, "")}:${fileName}`;
+    if (listed.delete(id)) continue;
+    issues.push(
+      `${entry}: exists but is not listed under disabledExtensions in .omp/config.yml — add ` +
+        `\`- hook:post:${id}\`, so the check runs once through \`make verify\` instead of on every tool call`,
+    );
+  }
+  for (const stale of listed) {
+    issues.push(
+      `.omp/config.yml: disabledExtensions carries hook:post:${stale}, which no file in ` +
+        ".omp/hooks/post/ answers to — drop the entry or restore the hook",
+    );
+  }
+  return issues;
 }
 
 /**
@@ -1315,7 +1359,11 @@ function checkRuleHookMapping(mdContent: string, actualFiles: Set<string>): stri
  */
 function checkIssuesNameTheirPlace(): string[] {
   const issues: string[] = [];
-  const place = /[\w.@-]+\.(py|ts|tsx|md|http|yml|json|css|mjs|sh|example)\b|[\w.@-]+\//;
+  // `\.env`, `\.env.qa`, `\.env.example` are paths too - a message naming one is as
+  // navigable as a message naming a `.ts`, and the QA env file has no extension
+  // this list would otherwise recognise. The same holds for the two files a
+  // repository names without one: `Makefile` and `Jenkinsfile`.
+  const place = /\.env[\w.]*\b|\b(?:Makefile|Jenkinsfile)\b|[\w.@-]+\.(py|ts|tsx|md|http|yml|json|css|mjs|sh|example)\b|[\w.@-]+\//;
   for (const dir of ["post", "lib"]) {
     const dirPath = join(ompDir, "hooks", dir);
     if (!existsSync(dirPath)) continue;

@@ -13,10 +13,11 @@
 // @ts-expect-error — Node builtin, not project-compiled
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 // @ts-expect-error — Node builtin, not project-compiled
-import { join } from "node:path";
+import { join, relative } from "node:path";
 // @ts-expect-error — Node builtin, not project-compiled
 import { spawnSync } from "node:child_process";
 import { resolveProjectRoot } from "./hook-project-root.ts";
+import { listClosedVocabularies, parseClosedVocabularies } from "./backend-closed-vocab.ts";
 
 const projectRoot = resolveProjectRoot();
 
@@ -25,6 +26,14 @@ const MIGRATIONS_PATH = "backend/alembic/versions";
 
 /** Upstream file sets per upstream commit — invalidated by a push, not by time. */
 const upstreamCache = new Map<string, { pushed: Set<string>; modified: Set<string> }>();
+
+/**
+ * A revision whose unit is a mixin's column rather than a table's. It says so
+ * by naming the mixin in its docstring and reading its tables from
+ * `information_schema` - there is no table literal to count, and counting one
+ * would be counting a copy.
+ */
+const MIXIN_MIGRATION = /AuditMixin[\s\S]*information_schema\.columns/;
 const versionsDir = join(projectRoot, "backend", "alembic", "versions");
 
 // Revisions 1–6 predate the enforced one-table/immutability policy. They are
@@ -62,6 +71,9 @@ const PROVIDER_TABLE = "integration_provider";
 
 /** A provider `_replace_` deletes its row first; operations cascade with it. */
 const PROVIDER_DELETE = /\.delete\(\)|DELETE\s+FROM\s+integration_provider/i;
+
+/** An operation row deleted by its own id - a `_replace_` on the way to re-seeding, or a retirement. */
+const OPERATION_DELETE = /\.delete\(\)\.where\([^)]*\.id\s*==\s*OPERATION_ID\)/;
 
 /** `provider.update()…values(code=…)` - a rename, which is how a code can arrive without an insert. */
 const PROVIDER_CODE_UPDATE = /\.update\(\)[\s\S]{0,600}?values\([^)]*\bcode\s*=/;
@@ -123,6 +135,9 @@ const RESPONSE_ROOT = /"response_root":\s*(?:"([^"]*)"|([A-Z_][A-Z0-9_]*))/;
 
 /** `"path_template": "/api/{key}/…"` or `"path_template": PATH_TEMPLATE` in a seeded row. */
 const PATH_TEMPLATE = /"path_template":\s*(?:"([^"]*)"|([A-Z_][A-Z0-9_]*))/;
+
+/** `"response_format": "CSV"` in a seeded row - a file door, read in chunks, never windowed. */
+const RESPONSE_FORMAT = /"response_format":\s*(?:"([^"]*)"|([A-Z_][A-Z0-9_]*))/;
 
 /** One `op.bulk_insert` call: the table argument and the rows argument, verbatim. */
 interface BulkInsert {
@@ -288,7 +303,7 @@ export function listMisnamedSeedFiles(): string[] {
     // on the name being right, which is what makes grandfathering safe.
     if (isPushedMigration(join("backend", "alembic", "versions", filename))) continue;
     // 파일명이 지목한 테이블이 네 개 중 하나인지 먼저 본다. 예전에는 임의의 소문자 토큰을 받아서
-    // `…_integration_fields.py`(복수형) 같은 오타가 조용히 통과했다 — 실측 2026-08-30 감사에서 두 셀이
+    // `…_integration_fields.py`(복수형) 같은 오타가 조용히 통과했다 — 실측 감사에서 두 셀이
     // 같은 오타를 냈고 아무 지적도 없었다. 규약은 backend-migrations.md 에 이미 적혀 있다.
     const INTEGRATION_TABLES = new Set(["provider", "secret", "operation", "field"]);
     if (!INTEGRATION_TABLES.has(table)) {
@@ -362,6 +377,12 @@ export interface IntegrationOperation {
   root: string | null;
   /** The `path_template` its newest seed writes, or null when the file omits it. */
   pathTemplate: string | null;
+  /**
+   * The `response_format` its newest seed writes - `JSON` when the row omits
+   * it, which is the column's server default. `CSV` is a file: one request, the
+   * whole feed, read in chunks - so it has no paging keys and walks anyway.
+   */
+  format: string;
   /**
    * The code of the provider whose id the operation seed names, as a migrated
    * database carries it now - a rename (`provider.update().values(code=...)`)
@@ -474,6 +495,15 @@ function calledHelperBodies(content: string, rows: string, depth = 2): string {
  * the provider replace at revision 20 and answers exactly like an operation that
  * never existed. Reporting it would demand a request file, a contract-test
  * anchor and a paging contract for a row no database has.
+ *
+ * An operation can also go on its own: a revision binding `integration_operation`
+ * whose upgrade deletes by `OPERATION_ID` retires every seed of that operation
+ * older than itself (revision 119 retired `search-barcode-item-info`, seeded at
+ * 72). A `_replace_` deletes and re-inserts in one upgrade, so its own row is
+ * seeded *at* the retiring revision, not before it, and survives - the same
+ * `<` the provider cascade uses. Only the upgrade counts: the retiring
+ * revision's downgrade re-seeds the row it took, which `bulkInserts` already
+ * skips.
  */
 export function listIntegrationOperations(): IntegrationOperation[] {
   if (!existsSync(versionsDir)) return [];
@@ -482,8 +512,10 @@ export function listIntegrationOperations(): IntegrationOperation[] {
   const configuredSeeds = new Set<string>();
   const rootOf = new Map<string, string | null>();
   const templateOf = new Map<string, string | null>();
+  const formatOf = new Map<string, string>();
   const providerOf = new Map<string, string>();
   const providerReplacedAt = new Map<string, number>();
+  const operationRetiredAt = new Map<string, number>();
   const providerCodeOf = new Map<string, string>();
   for (const filename of readdirSync(versionsDir).filter((f: string) => f.endsWith(".py")).sort()) {
     const revision = Number.parseInt(filename.split("_")[0], 10);
@@ -495,6 +527,9 @@ export function listIntegrationOperations(): IntegrationOperation[] {
     if (tables.has(FIELD_TABLE) && seed !== null) configuredSeeds.add(seed);
     if (tables.has(PROVIDER_TABLE) && providerSeed !== null && PROVIDER_DELETE.test(upgradeBody(content))) {
       providerReplacedAt.set(providerSeed, Math.max(providerReplacedAt.get(providerSeed) ?? 0, revision));
+    }
+    if (tables.has(OPERATION_TABLE) && seed !== null && OPERATION_DELETE.test(upgradeBody(content))) {
+      operationRetiredAt.set(seed, Math.max(operationRetiredAt.get(seed) ?? 0, revision));
     }
     if (tables.has(PROVIDER_TABLE) && providerSeed !== null) {
       // The provider's current code: the newest insert or rename of its seed
@@ -516,18 +551,21 @@ export function listIntegrationOperations(): IntegrationOperation[] {
       const scope = `${insert.rows}${calledHelperBodies(content, insert.rows)}`;
       const root = seededRoot(content, scope);
       const template = seededPathTemplate(content, scope);
+      const format = seededLiteral(content, scope, RESPONSE_FORMAT) ?? "JSON";
       for (const code of scope.matchAll(CODE_LITERAL)) {
         seedOf.set(code[1], seed);
         seededAt.set(code[1], revision);
         rootOf.set(code[1], root);
         templateOf.set(code[1], template);
+        formatOf.set(code[1], format);
         if (providerSeed !== null) providerOf.set(code[1], providerSeed);
       }
     }
   }
   for (const [code, revision] of seededAt) {
     const replaced = providerReplacedAt.get(providerOf.get(code) ?? "") ?? 0;
-    if (revision < replaced) seedOf.delete(code);
+    const retired = operationRetiredAt.get(seedOf.get(code) ?? "") ?? 0;
+    if (revision < Math.max(replaced, retired)) seedOf.delete(code);
   }
   return [...seedOf.entries()]
     .map(([code, seed]) => ({
@@ -536,6 +574,7 @@ export function listIntegrationOperations(): IntegrationOperation[] {
       configured: seed !== null && configuredSeeds.has(seed),
       root: rootOf.get(code) ?? null,
       pathTemplate: templateOf.get(code) ?? null,
+      format: formatOf.get(code) ?? "JSON",
       provider: providerCodeOf.get(providerOf.get(code) ?? "") ?? null,
     }))
     .sort((left, right) => left.code.localeCompare(right.code));
@@ -625,7 +664,11 @@ export function listIntegrationResponseKeys(): Map<string, string[]> {
       const previous = bySeed.get(seed);
       if (previous !== undefined && previous.revision > revision) continue;
       const keys: string[] = [];
-      for (const tuple of block.matchAll(/\(\s*'([a-z0-9_]+)'\s*,\s*'\/[^']+'/g)) keys.push(tuple[1]);
+      // The second element is the wire path whatever the locator: a JSON pointer
+      // (`'/item/prdlstNm'`) or an HTML selector (`'td:nth-child(3)'`, `'a@href'`).
+      // Reading pointers only made the first screen feed's key list empty, and an
+      // empty list passed the from_record diff by having nothing to diff.
+      for (const tuple of block.matchAll(/\(\s*'([a-z0-9_]+)'\s*,\s*'[^']+'/g)) keys.push(tuple[1]);
       bySeed.set(seed, { revision, keys });
     }
   }
@@ -922,6 +965,41 @@ const TABLE_PATTERNS = [
 const RENAME_PATTERN = /op\.rename_table\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/g;
 
 /**
+ * What a rename must carry with it, because PostgreSQL does not.
+ *
+ * `ALTER TABLE ... RENAME` moves the table and leaves every index, constraint
+ * and the primary key under the *old* table's name. `alembic check` compares
+ * indexes by name and so catches those, but it does not compare primary key
+ * names at all - measured here: eleven ledgers renamed at revisions 136-146 kept
+ * `food_<old>_pkey`, the gate stayed green, and the next table to take one of
+ * those names was created as `food_item_report_pkey1`. A constraint name that
+ * says the wrong table is a lie a reader has no way to catch, so the rename
+ * revision has to say the pkey too (`rule://backend-table-design`).
+ */
+const PKEY_DROP = /op\.drop_constraint\(\s*["']([^"']+)_pkey["']/g;
+const PKEY_CREATE = /op\.create_primary_key\(\s*["']([^"']+)_pkey["']/g;
+
+/** A rename revision names its primary key on both sides, or it renamed half a table. */
+function checkRenameCarriesItsPrimaryKey(filename: string, content: string): string[] {
+  const upgrade = content.split("def downgrade")[0];
+  const issues: string[] = [];
+  for (const match of upgrade.matchAll(RENAME_PATTERN)) {
+    const [, from, to] = match;
+    const dropped = [...upgrade.matchAll(PKEY_DROP)].map((hit: RegExpMatchArray) => hit[1]);
+    const created = [...upgrade.matchAll(PKEY_CREATE)].map((hit: RegExpMatchArray) => hit[1]);
+    if (!dropped.includes(from) || !created.includes(to)) {
+      issues.push(
+        `${filename}: renames ${from} to ${to} without renaming its primary key — ` +
+          `PostgreSQL leaves it as ${from}_pkey and alembic never compares it; add ` +
+          `op.drop_constraint("${from}_pkey", "${to}", type_="primary") and ` +
+          `op.create_primary_key("${to}_pkey", "${to}", ["id"])`,
+      );
+    }
+  }
+  return issues;
+}
+
+/**
  * `op.execute` with a SQL string, which is what the ban is about.
  *
  * A string (or `sa.text(...)`) hides its target from every reader here; a
@@ -1033,13 +1111,120 @@ function checkMigrationLayout(filename: string, content: string): string[] {
   return issues;
 }
 
+/**
+ * Schema is declared on the model and applied by a migration - never by hand
+ * and never at runtime.
+ *
+ * An index typed into `psql` works until the next environment: it is in no
+ * revision, so a fresh database has the slow plan and nothing says why. The
+ * ORM/DB comparison catches the drift (planted: a hand-made
+ * `ix_probe_hand_made` failed `alembic check` at once), and this catches the
+ * other half - application code that issues DDL of its own, where no
+ * comparison would ever see it. `LedgerStage` is the one exception: its stage
+ * table is a temporary of the pass that creates and drops it, built through
+ * SQLAlchemy's `CreateTable`/`DropTable` rather than a string.
+ */
+function checkSchemaDdlIsMigratedOnly(): string[] {
+  const issues: string[] = [];
+  const appDir = join(projectRoot, "backend", "app");
+  if (!existsSync(appDir)) return issues;
+  const ddl = /\b(CREATE|ALTER|DROP)\s+(INDEX|TABLE|COLUMN|CONSTRAINT|TYPE)\b/i;
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== "__pycache__") walk(path);
+        continue;
+      }
+      if (!entry.name.endsWith(".py")) continue;
+      const content = readFileSync(path, "utf-8");
+      for (const [index, line] of content.split("\n").entries()) {
+        if (!ddl.test(line)) continue;
+        // A comment naming DDL is prose; only a statement the app would run counts.
+        if (/^\s*#/.test(line)) continue;
+        issues.push(
+          `app/${relative(appDir, path)}:${index + 1}: issues schema DDL (${line.trim().slice(0, 60)}) ` +
+            "- an index or a column lives on the model and reaches a database through a " +
+            "migration; DDL from application code is in no revision, so the next environment " +
+            "is built without it and nothing says so",
+        );
+      }
+    }
+  };
+  walk(appDir);
+  return issues;
+}
+
+/**
+ * A changed CHECK vocabulary needs a revision that names the constraint.
+ *
+ * `alembic check` never reads a CHECK body, so a model whose
+ * `CheckConstraint("status IN (...)")` gained a value is in sync by every
+ * autogenerate reading while the database still refuses that value. Measured:
+ * SKIPPED was added to `ck_batch_run_status` in the model, the
+ * schema and the TypeScript union, every gate passed, and the first run that
+ * ended SKIPPED was rejected by the database — its ending was never written
+ * and two derive runs sat RUNNING for ever.
+ *
+ * Compared against the upstream revision of the model, not against the diff's
+ * own lines: the value list and the constraint's name sit on different lines of
+ * the same declaration, so a line-level reading saw a changed set with no name
+ * beside it and stayed silent. Parsing both sides asks the only question worth
+ * asking — which vocabulary is not the one upstream has.
+ */
+function checkChangedVocabulariesAreMigrated(upstream: string | null): string[] {
+  if (upstream === null) return [];
+  const changed: string[] = [];
+  for (const vocabulary of listClosedVocabularies()) {
+    const path = join("backend", vocabulary.file);
+    const shown = spawnSync("git", ["show", `${upstream}:${path}`], {
+      cwd: projectRoot,
+      encoding: "utf-8",
+    });
+    // A model this branch adds has no upstream side, and its constraint is
+    // created by the revision that creates the table.
+    if (shown.status !== 0) continue;
+    const before = parseClosedVocabularies(String(shown.stdout), vocabulary.file).find(
+      (candidate) => candidate.name === vocabulary.name,
+    );
+    if (before === undefined) continue;
+    const same =
+      before.values.size === vocabulary.values.size &&
+      [...vocabulary.values].every((value) => before.values.has(value));
+    if (!same) changed.push(vocabulary.name);
+  }
+  if (changed.length === 0) return [];
+
+  const carried = new Set<string>();
+  for (const filename of readdirSync(versionsDir)) {
+    if (!filename.endsWith(".py")) continue;
+    if (isPushedMigration(join("backend", "alembic", "versions", filename))) continue;
+    const content = readFileSync(join(versionsDir, filename), "utf-8");
+    for (const name of changed) {
+      if (content.includes(name)) carried.add(name);
+    }
+  }
+  return changed
+    .filter((name) => !carried.has(name))
+    .sort()
+    .map(
+      (name) =>
+        `${name}: the model's CHECK vocabulary changed on this branch but no unpushed revision ` +
+        "names the constraint — autogenerate does not compare a CHECK body, so the database " +
+        "keeps the old set until a revision drops and recreates it",
+    );
+}
+
 export function checkMigrationPolicy(): string[] {
   if (!existsSync(versionsDir)) return [];
 
   const upstream = getUpstream();
   const state = upstream === null ? null : upstreamState(upstream);
 
-  const issues: string[] = [];
+  const issues: string[] = [
+    ...checkSchemaDdlIsMigratedOnly(),
+    ...checkChangedVocabulariesAreMigrated(upstream),
+  ];
   for (const filename of readdirSync(versionsDir)) {
     if (!filename.endsWith(".py")) continue;
     if (isGrandfatheredMigration(filename)) continue;
@@ -1086,6 +1271,7 @@ export function checkMigrationPolicy(): string[] {
     // cannot be reshaped without rewriting applied history, so the standard
     // binds the revisions still being written.
     issues.push(...checkMigrationLayout(filename, content));
+    issues.push(...checkRenameCarriesItsPrimaryKey(filename, content));
 
     // Raw SQL only. The ban exists because a SQL string cannot be read for its
     // scope — but `op.execute(schedules.update()...)` is a statement over a
@@ -1098,6 +1284,15 @@ export function checkMigrationPolicy(): string[] {
       issues.push(`${filename}: unpushed migration uses unscoped raw operations`);
       continue;
     }
+
+    // A mixin column is a unit of its own. `AuditMixin` puts `created_by` and
+    // `updated_by` on 54 tables, and its width is one decision: widening it one
+    // table per revision is 54 revisions of that decision, any subset of which
+    // leaves a database where a value fits in one table and not the next
+    // (measured: `batch:sync_food_ledger_livestock_item_report_raw_material`
+    // at 57 characters against a 50-wide column). Such a revision names the
+    // mixin and reads its tables off the database, so it names no table here.
+    if (MIXIN_MIGRATION.test(content)) continue;
 
     // Schema and data migrations both target exactly one table. `table(...)`
     // declarations make a bulk seed's target explicit to this checker.
@@ -1131,12 +1326,34 @@ export function checkMigrationPolicy(): string[] {
   return issues;
 }
 
+/**
+ * The ref that says which revisions are already published.
+ *
+ * `@{upstream}` is the answer on a developer's branch, and nothing at all in a
+ * CI clone: that checkout is detached at a commit, so the tracking branch does
+ * not exist and every revision in the repository's history looked unpushed.
+ * Measured - the first gate run inside the CI container reported eighteen
+ * failures against migrations written months ago, because the "still being
+ * written" rules were applied to all of them.
+ *
+ * So the remote's own branch is the fallback, which a clone always has. Null
+ * only when there is no remote at all, and the caller treats that as "cannot
+ * tell" rather than "nothing is published".
+ */
 function getUpstream(): string | null {
-  const result = spawnSync("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], {
+  const tracking = spawnSync("git", ["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"], {
     cwd: projectRoot,
     encoding: "utf-8",
   });
-  return result.status === 0 ? result.stdout.trim() : null;
+  if (tracking.status === 0) return tracking.stdout.trim();
+  for (const ref of ["origin/HEAD", "origin/main"]) {
+    const exists = spawnSync("git", ["rev-parse", "--verify", "--quiet", ref], {
+      cwd: projectRoot,
+      encoding: "utf-8",
+    });
+    if (exists.status === 0) return ref;
+  }
+  return null;
 }
 
 /**
@@ -1180,10 +1397,14 @@ function extractTables(content: string): Set<string> {
       tables.add(match[1]);
     }
   }
-  // Only the upgrade's target: the downgrade renames back, and counting both
-  // directions would report one renamed table as two.
+  // A rename leaves one table under a new name, so it counts once - under the
+  // name it leaves behind. The old name has to be *removed*: the index and
+  // constraint rebuilds a rename needs name the table on both sides of it (the
+  // downgrade recreates them under the old name), and counting those read one
+  // renamed table as two.
   const upgrade = content.split("def downgrade")[0];
   for (const match of upgrade.matchAll(RENAME_PATTERN)) {
+    tables.delete(match[1]);
     tables.add(match[2]);
   }
   return tables;

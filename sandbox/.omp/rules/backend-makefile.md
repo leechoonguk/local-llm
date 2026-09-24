@@ -28,8 +28,8 @@ enforces it on the root, backend, frontend and decks Makefiles.
 | `make migrate-gen` | `alembic revision --autogenerate` | Auto-generate migration from model changes |
 | `make verify` | `lint + typecheck + test` | Full quality gate (fail-fast) |
 | `make down` | `lsof -ti:$(BACKEND_PORT)` + `xargs kill -9` | Stop backend (kill uvicorn on the same port `dev` used) |
-| `make test` | `pytest -q` | Run tests (100% coverage gate) |
-| `make test-fast` | `pytest -q --no-cov $(t)` | Tests without the coverage gate; `t="tests/..."` scopes to one file |
+| `make test` | `pytest -q -n auto` | Run tests (100% coverage gate; xdist workers — 545 tests, 36s → 12.6s measured) |
+| `make test-fast` | `pytest -q --no-cov $(t)` | Tests without the coverage gate; `t="tests/..."` scopes to one file. Stays serial — worker startup outweighs the win on a single file |
 | `make fix` | `ruff check --fix` + `ruff format` (app tests — alembic 제외) | Auto-fix lint findings and formatting; migrations are immutable artifacts |
 | `make lint` | `ruff check app alembic tests` | Lint Python code (incl. tests) |
 | `make typecheck` | `pyright` | Type-check Python code (incl. tests) |

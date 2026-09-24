@@ -1,6 +1,9 @@
 ---
 name: integration
 description: Add or change a database-managed external API integration end to end - resolve the dataset name to the portal's official spec page, measure the provider, seed the configuration, prove it with a request file and a recorded contract fixture. Use when the user names a public dataset to integrate, asks to add a provider or operation, or changes an existing integration's fields, paging, or response contract.
+enforced-by:
+  - check-backend-integration
+  - check-backend-integration-configuration
 ---
 
 # External API Integration
@@ -19,7 +22,7 @@ own page for it and read the contract there - the code, the path, the envelope,
 the columns with their meanings. A probe confirms a shape; it cannot tell you
 what a column *means* (`RAWMTRL_ORDNO` was guessed as "ordinal" and the page
 says 원재료표시순서 - right by luck). Two portals, two procedures, both measured
-2026-09-06 without a login:
+without a login:
 
 **공공데이터포털 (`data.go.kr`) - name search, then an inline Swagger.**
 
@@ -86,7 +89,7 @@ call it with `curl` and record the answers. Six questions, all of which changed 
 |---|---|
 | Does HTTPS work? | `base_url` must be an HTTPS origin; the API refuses anything else |
 | Where does the key travel? | header, query, or **path segment** — the field's `location` |
-| How does it page? | page number + size (`PAGE`), row interval (`RANGE`), or not at all |
+| How does it page? | page number + size (`PAGE`), row interval (`RANGE`), a **file** (`CSV`, step 1a), or not at all |
 | What is the success shape? | which node holds the records → `response_root` |
 | What does an **empty** result look like? | absent collection, empty array, or a code |
 | What does a **failure** look like? | HTTP status, or HTTP 200 with a code in the body wrapper |
@@ -128,6 +131,107 @@ here as `uq_integration_operation_provider_code` on a re-upgrade, which read lik
 seed inserting a duplicate and was a database whose version pointer no longer
 described its rows. `make db-init` is one command, and the same chain then steps
 down cleanly to the first revision (`rule://backend-migrations`).
+
+### 1a. Divide the feed by the quota before choosing the door
+
+A whole pass is `total_count / page_size` calls, and a key has a daily ceiling.
+Do that division before seeding, because a feed that does not fit one night is
+not a feed the paged door can carry - measured on I0460: 2,047 windows against
+~500 calls a key a day (`INFO-300` after 498/496/497 on three keys), the job
+dying at 73 % with the ledger untouched. Neither the hourly `INFO-320` nor the
+7-day `LAST_UPDT_DTM` increment changes that arithmetic.
+
+When it does not fit, **look for the portal's bulk file before anything else.**
+식품안전나라 states it in its own INFO-000 message ("전체 데이터를 원하시는 경우
+CSV 다운로드 기능을 이용해 주십시오"), prices it separately (`INFO-330`, ten a
+day a key and a service), and the door is a path, not a `data_type`:
+
+```bash
+curl -sS -o feed.csv.gz -w '%{http_code} %{content_type} %{size_download}\n' \
+  "http://openapi.foodsafetykorea.go.kr/api/KEY/SERVICE/file"
+```
+
+Measure the four things the file shape rests on, and paste them into the seed:
+
+| Question | What decided on I0460 |
+|---|---|
+| Is it exact? | the recorded API window's rows found in the file, column for column, to the microsecond |
+| How many rows, and do they equal `total_count`? | 2,046,504 = the API's total (a naive line split over-counts by ~450 quoted newlines) |
+| How does it refuse? | **HTTP 429** with an XML body: `INFO-500` busy key (~40 s), `INFO-330` the day's ten - a status, not an envelope |
+| Is its quota the API's? | no: the file answered while the same key was `INFO-300` on the API; open inside the 09-19 KST silence too |
+
+Then seed `response_format = 'CSV'` (rule://backend-integration-configuration,
+"A File Is a Transport"): REQUEST is the key and the service, no root, no
+envelope, no paging inputs, the **same RESPONSE rows** (`/COLUMN` pointers),
+retries wide enough for the busy key, and `quota_codes` empty. The fixture
+records the gzip bytes and the rows the reader made of them. Nothing above the
+walk changes: the job, the stage and the derivation read a file exactly as
+they read a page.
+
+### 1b. A portal with no API: measure the screen, not the page
+
+Check that "no API" is true first - it was not, for the first screen this was
+built for (수입식품, step 8b below). The screen transport in the codebase has no
+seeded operation using it today and is kept for the portal that really has none.
+
+Some datasets are a public **screen** and nothing else (수입식품정보마루,
+`impfood.mfds.go.kr`). The probe target does not fit; the browser does.
+The transport is one column (`integration_provider.transport = HTML_FORM`), so what
+this step produces is the same seed as an API - with these measurements in it:
+
+1. **Capture the browser's own request.** Open the screen in the harness browser,
+   register `page.on("request")` for the list URL, click search with a real click,
+   and dump `method`, `headers` and `postData()`. That body is the form field set -
+   **exactly** those parts, in that order. Measured: the screen's HTML holds 18
+   inputs and its JS posts 15; posting the 18 answered `302 -> /error/error`, the
+   15 answered 200. Scraping the `<form>` is the wrong measurement.
+2. **Replay it from `httpx`, not the browser.** GET the screen (the cookie), then
+   POST the captured parts as `files={name: (None, value)}` with `Referer` set to the
+   screen. If that answers the table, no browser is needed in the batch. Then
+   strip headers one at a time: `Referer` alone was enough here, `Origin` was not
+   needed, `User-Agent` was not read.
+3. **Find the empty state and the end.** Post an empty form, and a page past the
+   last one. Both drew the table with one placeholder row (`조회 결과가 없습니다`,
+   `colspan=10`) - a row the row selector must exclude (`tr:has(a)`), or the walk
+   stages it as a record. This is the second fixture the gate demands.
+4. **Find the identity.** Nothing on the row was unique; the detail link was
+   (`a@href` -> `fnFoodDetail('202600642199')`). Read the attribute with a
+   `selector@attribute` locator and let the ledger take the number out.
+5. **Find where the total is printed, and on which pages.** `총 N건` sat in
+   `<strong>` inside a `<span>`, so a regex over raw HTML misses it and a `REGEX`
+   locator over the document text finds it; and it was printed on page 1 only
+   (`총 0건` from page 2, the screen echoing the empty `totalCnt` it was sent).
+   Nothing walks on it either way.
+6. **Widen the window and page to the end before designing a family.** The
+   screen's default 3-month window is its JS, not the server: `1990-01-01 ~
+   2099-12-31` answered every row (1,088,839), and `page` reached 1089 at limit <!-- history-ok: probe parameter -->
+   1,000. A "date window" paging family was designed here and measured
+   unnecessary - two LITERAL rows and `PAGE`. Measure the width too: 100 through
+   10,000 all answered, and every call took 16-27 s whatever the width.
+
+**Measure the host's rate before the first walk, and measure it by ramping.** A
+screen has no quota code to read: it simply stops answering. Ramp one connection -
+40 calls a second apart, 60 half a second apart, 80 a quarter apart - and stop at
+the first failure. Measured on impfood: the first two stages were
+answered in ~100 ms each and the third died after 38 calls, taking **every**
+connection to the host with it for about fifteen minutes - the nightly list job's
+included. Seed the answer as `integration_provider.min_interval_ms`; the client
+paces every call of a pass with it, so no job can forget it.
+
+**Check the layout a non-browser is served.** The same screen answered
+`python-httpx` with mobile markup where two columns share a cell, and a Chrome
+agent with the desktop one. Fetch it both ways and diff the byte count before
+seeding a selector; then seed a `User-Agent` LITERAL header and name the layout's
+own class in the selector, so the wrong layout reads nothing instead of reading two
+values as one.
+
+Seed it as `response_format = HTML`, `response_root` = the row selector,
+`request_media_type` = what the browser sent, `request_schema` closing the part set
+(`"required": FORM_FIELDS`, `"additionalProperties": False`), and every RESPONSE row
+with a `locator_kind` (`CSS` / `LABEL` / `REGEX`). The rule's "A Screen Is a
+Transport" section is the contract; `check-backend-integration-configuration` refuses
+a form seed that does not close the set, a screen fixture without `expect.form` and
+`expect.bootstrap_path`, and a screen operation without its `<code>.empty.json`.
 
 ### 2. Derive the shape from the measurements
 
@@ -263,6 +367,11 @@ measured exchange, copying the shape of a sibling fixture:
   `test_execute_renders_<operation>_contract`.
 - Record the refusals the provider actually has in
   `<operation-code>.<variant>.json` with `expect.raises` instead of a payload.
+- A screen's response is `"text"` instead of `"json"`, trimmed to the nodes the
+  locators read (the total's span and the table with two rows - 3 KB of a 643 KB
+  screen), with `expect.form` and `expect.bootstrap_path`; and a second file
+  `<operation-code>.empty.json` records the page past the last one with
+  `canonical_payload: []`.
 - Derive `expect` by running the test once and reading what it reports; a guessed
   path passes nothing (the seeds map more keys than a hand-written test ever did —
   measured: 17, 18 and 19 response keys where the old tests asserted 2).
@@ -283,6 +392,8 @@ a guard nobody has. Measured on I2510 and extended on I2570, five of six fire:
 
 | Injected | Caught by |
 |---|---|
+| a file operation with a root, an envelope row or a paging input | `check-backend-integration-configuration` (`checkFileOperations`) |
+| a file operation whose fixture records JSON instead of the gzip bytes and the rows | `check-backend-integration-configuration` |
 | paging inputs with no page root | `check-backend-api-http` |
 | `response_root` pinning an index | `check-backend-api-http` |
 | half a paging family | `check-backend-api-http` |
@@ -297,12 +408,28 @@ still match. **Only step 1 sees it** — one filtered call against one unfiltere
 comparing the totals. Skipping the measurement makes this defect unreachable by any
 later check.
 
+### 8b. Before seeding a screen, look for its bulk publication
+
+A portal screen and a data.go.kr dataset are often the same records. Measured:
+수입식품조회 (1,088,673 rows over 109 window calls) is the same
+population as `IprtFoodPrdtKoreanLabelingText` (1,087,781 rows, 2,176 calls of 500,
+66 minutes) - and the API also carries the printed 한글표시사항 the *detail* screen
+would have cost 25 days to crawl. Search the portal by dataset name and compare
+totals and a year histogram before writing a screen seed; the login and the
+활용신청 are one click each, and the account's key is what the seed then carries.
+
+**Standing decision:** the 수입식품 screen feed (수입식품정보마루) was seeded,
+walked whole, and retired for exactly this reason - the API ledger is the
+source of record for 수입식품, and the screen transport survives with no
+operation using it (rule://backend-integration-configuration, "A Screen Is a
+Transport").
+
 ### 9. A paging operation is not done here
 
 `make verify` stays red after step 8 when the operation pages: `check-backend-batch`
 asks for the `Feed` that walks every seeded paging operation, and names the job it
 belongs in (`sync_<provider>_ledgers.py`). That is the hand-off, not a false
-positive - an integration target is a ledger (`backend-batch.md`), and the seed is
+positive - an integration target is a ledger (`backend-ledger.md`), and the seed is
 the first half of it. Continue with the `ledger` skill in the same change: the
 table, its `replace_<table>_ledger`, the `Feed`, and the numbers from a live pass.
 A lookup operation (no `range_start`/`page_no` among its caller inputs) ends at
@@ -338,10 +465,17 @@ landed. Check these when a new provider joins:
 - Leave a provider that answers HTTP 200 for failures without `ENVELOPE` rows —
   an invalid key then reads as an empty page.
 - Give a paging input a default, or declare half a family.
+- Seed a paged operation for a feed whose windows exceed a day of the key
+  pool's quota. Divide first (step 1a); the file door, when the portal has one,
+  is the only door that carries such a feed.
 - Seed a shape the API cannot create, or add a capability without a block in
   `api/integration.http` that exercises it.
 - Put a `required` row on a column the provider leaves empty for sparse records.
 - Claim a window works without two calls that show it moving.
+- Seed a screen's form from its HTML. The form is what the browser **posts**;
+  three inputs the JS never sends turned a 200 into a 302.
+- Design a paging family from a screen's default filter. Widen the filter to
+  everything first; the family is what remains after that.
 - Stop at the seed for an operation that pages. Two operations sat seeded and
   unread for the life of five sync jobs because the gate asked only whether what
   a job named existed, never whether what existed was walked.

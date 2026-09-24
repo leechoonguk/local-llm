@@ -22,10 +22,20 @@ declare const process: {
  * .omp/rules/omp-skills.md and native skill discovery at
  * .omp/skills/<name>/SKILL.md. Runtime discovery remains file-backed; the
  * catalog provides the trigger, verification, and lifecycle metadata.
+ *
+ * It also holds the **skill harness contract**: a domain skill's mechanical
+ * enforcement is the post hooks *named after it* (`ledger` →
+ * `check-backend-ledger`), the SKILL.md frontmatter declares that same set
+ * under `enforced-by`, and every declared hook must be a prerequisite of the
+ * root `make verify`. A procedure skill owns no hook, declares
+ * `enforced-by: []`, and must reference at least one `rule://` domain that
+ * carries its enforcement instead.
  */
 const cwd = process.cwd();
 const skillsDir = join(cwd, ".omp", "skills");
 const catalogPath = join(cwd, ".omp", "rules", "omp-skills.md");
+const hooksPostDir = join(cwd, ".omp", "hooks", "post");
+const makefilePath = join(cwd, "Makefile");
 const CATALOG_HEADER = "| Skill | Trigger | Verification | Lifecycle (project metadata) |";
 
 /** Read-only tools never change skills or their catalog. */
@@ -81,6 +91,7 @@ export function checkOmpSkillsSync(): string[] {
     }
   }
 
+  checkSkillHarness(issues);
   return issues;
 }
 
@@ -176,6 +187,119 @@ function readFrontmatter(content: string): string | null {
 function fieldValue(frontmatter: string, field: string): string {
   const match = frontmatter.match(new RegExp(`^${field}:\\s*(.+?)\\s*$`, "m"));
   return match?.[1]?.trim() ?? "";
+}
+
+/**
+ * The skill harness contract, three-way and name-driven.
+ *
+ * Ownership is read off the filename — a post hook whose hyphen tokens contain
+ * the skill's name contiguously is that skill's harness — so there is no
+ * comment marker to drift. The frontmatter's `enforced-by` list must equal the
+ * name-derived set, every hook in it must exist, and each must be a
+ * prerequisite of the root `make verify`: a skill invariant outside the gate
+ * is a check nobody runs.
+ */
+function checkSkillHarness(issues: string[]): void {
+  if (!existsSync(skillsDir) || !existsSync(hooksPostDir)) return;
+  const postHooks = readdirSync(hooksPostDir)
+    .filter((file: string) => file.endsWith(".ts"))
+    .map((file: string) => file.replace(/\.ts$/, ""));
+  const verifyTargets = readVerifyTargets();
+  for (const entry of readdirSync(skillsDir, { withFileTypes: true }).sort(
+    (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name),
+  )) {
+    if (!entry.isDirectory()) continue;
+    const skillPath = join(skillsDir, entry.name, "SKILL.md");
+    if (!existsSync(skillPath)) continue;
+    const content = readFileSync(skillPath, "utf-8");
+    const frontmatter = readFrontmatter(content);
+    if (!frontmatter) continue; // absence already reported by discovery
+    const declared = fieldList(frontmatter, "enforced-by");
+    const derived = postHooks.filter((stem: string) => nameOwns(entry.name, stem)).sort();
+    if (declared === null) {
+      issues.push(
+        `skill '${entry.name}' has no enforced-by frontmatter — declare its harness ` +
+          `(name-derived set today: ${derived.length > 0 ? derived.join(", ") : "[]"})`,
+      );
+      continue;
+    }
+    for (const hook of declared) {
+      if (!postHooks.includes(hook)) {
+        issues.push(`skill '${entry.name}' declares enforced-by '${hook}' but .omp/hooks/post/${hook}.ts does not exist`);
+        continue;
+      }
+      if (!derived.includes(hook)) {
+        issues.push(
+          `skill '${entry.name}' declares enforced-by '${hook}' but the hook's name does not carry ` +
+            "the skill's — ownership is read off the filename, so rename one side until they agree",
+        );
+      }
+      if (!verifyTargets.has(hook)) {
+        issues.push(
+          `skill '${entry.name}' harness '${hook}' is not a prerequisite of the root 'make verify' — ` +
+            "a skill invariant outside the gate is a check nobody runs",
+        );
+      }
+    }
+    for (const stem of derived) {
+      if (!declared.includes(stem)) {
+        issues.push(`post hook '${stem}' is named after skill '${entry.name}' but the skill does not declare it in enforced-by`);
+      }
+    }
+    if (declared.length === 0 && !content.includes("rule://")) {
+      issues.push(
+        `skill '${entry.name}' owns no harness (enforced-by: []) and references no rule:// domain — ` +
+          "its steps answer to no mechanical check",
+      );
+    }
+  }
+}
+
+/** Whether a hook stem's hyphen tokens contain the skill's, contiguously. */
+function nameOwns(skill: string, stem: string): boolean {
+  const skillTokens = skill.split("-");
+  const stemTokens = stem.split("-");
+  for (let start = 0; start + skillTokens.length <= stemTokens.length; start += 1) {
+    if (skillTokens.every((token, offset) => stemTokens[start + offset] === token)) return true;
+  }
+  return false;
+}
+
+/** The root Makefile's `verify:` prerequisite list. */
+function readVerifyTargets(): Set<string> {
+  if (!existsSync(makefilePath)) return new Set();
+  const line = readFileSync(makefilePath, "utf-8")
+    .split(/\r?\n/)
+    .find((candidate: string) => candidate.startsWith("verify:"));
+  if (!line) return new Set();
+  const targets = line.replace(/^verify:\s*/, "").split("##")[0].trim();
+  return new Set(targets.split(/\s+/).filter(Boolean));
+}
+
+/**
+ * A frontmatter list field: `field: []` inline, or `- item` lines below the
+ * key. `null` means the key is absent — distinct from an empty declaration.
+ */
+function fieldList(frontmatter: string, field: string): string[] | null {
+  const lines = frontmatter.split(/\r?\n/);
+  const start = lines.findIndex((line: string) => line.startsWith(`${field}:`));
+  if (start === -1) return null;
+  const inline = lines[start].slice(field.length + 1).trim();
+  if (inline === "[]") return [];
+  if (inline !== "") {
+    return inline
+      .replace(/^\[|\]$/g, "")
+      .split(",")
+      .map((item: string) => item.trim())
+      .filter(Boolean);
+  }
+  const items: string[] = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const item = lines[index].match(/^\s+-\s+(.+?)\s*$/);
+    if (!item) break;
+    items.push(item[1]);
+  }
+  return items;
 }
 
 // Direct execution (make check-omp-skills): run the same check on demand.

@@ -315,6 +315,14 @@ function checkOmpRulesSync(): string[] {
     }
   }
 
+  // Check 9: no dated history in the harness. A rule states an invariant and a
+  // hook comment states a reason; the dated incident that produced either lives
+  // in decks/harness-history (harness) or decks/ledger-measurements (domain).
+  // A harness file that carries `YYYY-MM-DD` is an incident log wearing a
+  // rule's clothes. A line that *teaches* the dated format for backend code
+  // (backend docstrings are required to carry dated counts) says `history-ok`.
+  issues.push(...checkNoDatedHistory());
+
   return issues;
 }
 
@@ -328,7 +336,7 @@ function checkOmpRulesSync(): string[] {
  * `HTTPException` would abort the turn.
  */
 /**
- * How-to 절은 순서+검증 구조여야 한다 (2026-09-01, omp-conventions "ordered-verified").
+ * How-to 절은 순서+검증 구조여야 한다 (omp-conventions "ordered-verified").
  * 실측: 산출물 목록뿐이던 도메인 절차가 이 구조가 되자 풀스택 셀이 TO→초록으로 넘어갔다
  * (종반 red 3부류 재현 0). 기계 최소치만 강제한다 — 제목이 절차형(Add/Creat/Build/New/추가)
  * 인 ## 절은 (a) 순서 목록(`1.`)을 갖고 (b) 검증 참조(make 타깃·pytest·rule://·check-)를
@@ -347,6 +355,40 @@ function checkProcedureSections(file: string, body: string): string[] {
       issues.push(`${file}: "## ${title}" — 절차 절에 검증 참조가 하나도 없다. 각 단계가 어느 검사/타깃으로 서는지 명시한다 (omp-conventions, ordered-verified)`);
     }
   }
+  return issues;
+}
+
+/**
+ * The harness carries no dated history. Rules state invariants, hook comments
+ * state reasons; the dated incident behind either lives in a deck
+ * (`decks/harness-history`, `decks/ledger-measurements`). Scanned: rules,
+ * hooks, skills, extensions and ast-grep sources under `.omp/`. A line that
+ * must show the dated format itself (the backend-relations message that
+ * *requires* dated counts in backend model comments) carries `history-ok`.
+ */
+function checkNoDatedHistory(): string[] {
+  const issues: string[] = [];
+  const DATED = /\b20\d\d-\d\d-\d\d\b/;
+  const roots = ["rules", "hooks", "skills", "extensions", "ast-grep"].map((dir) => join(cwd, ".omp", dir));
+  const walk = (dir: string): void => {
+    let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const entry of entries) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { walk(full); continue; }
+      if (!/\.(md|ts|yml|yaml)$/.test(entry.name)) continue;
+      const lines = readFileSync(full, "utf-8").split("\n");
+      lines.forEach((line: string, index: number) => {
+        if (!DATED.test(line) || line.includes("history-ok")) return;
+        issues.push(
+          `${full.slice(cwd.length + 1)}:${index + 1}: dated history in the harness — an incident's ` +
+            "date belongs in decks/harness-history (or the domain deck), not in a rule or hook; " +
+            "state the invariant timelessly, or mark a deliberate format example with history-ok",
+        );
+      });
+    }
+  };
+  for (const root of roots) walk(root);
   return issues;
 }
 
@@ -372,7 +414,7 @@ function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown
   }
   const scope = fm["scope"];
   if (Array.isArray(scope)) {
-    // omp 는 YAML 리스트 scope 도 받는다(실측 2026-08-31, ttsr test 발화 확인) — 하지만 이
+    // omp 는 YAML 리스트 scope 도 받는다(실측, ttsr test 발화 확인) — 하지만 이
     // 하네스는 문자열 한 줄로 표준화한다: liveness 파서와 사람이 한 형태만 읽으면 된다.
     issues.push(
       `${file}: 'scope' is a YAML list — omp accepts it, but this harness standardizes on the ` +
@@ -385,21 +427,6 @@ function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown
     );
   } else {
     issues.push(...checkTriggerScopeIsClean(file, String(condition), scope));
-    // 편집 툴 스왑 내성(2026-09-01): tool:edit(G) 만 적힌 스코프는 플러그인이 편집 툴을
-    // 갈아끼우는 순간 죽은 규칙이 된다 — 같은 글롭의 replace/insert 페어를 기계로 요구한다.
-    for (const part of scope.split(",").map((x) => x.trim())) {
-      const g = /^tool:edit\((.+)\)$/.exec(part);
-      if (g === null) continue;
-      for (const sibling of ["replace", "insert"]) {
-        if (!scope.includes(`tool:${sibling}(${g[1]})`)) {
-          issues.push(
-            `${file}: scope has tool:edit(${g[1]}) without tool:${sibling}(${g[1]}) — ` +
-              "a scope naming only the builtin edit goes dead when a plugin swaps the edit toolset " +
-              "(omp-conventions.md, code triggers)",
-          );
-        }
-      }
-    }
   }
   if (fm["interruptMode"] === undefined) {
     issues.push(
@@ -418,7 +445,7 @@ function checkTtsrTrigger(file: string, body: string, fm: Record<string, unknown
  *   <!-- fires-on tool:bash: make migrate-gen -->
  *   <!-- fires-on tool:edit(backend/app/routers/*.py): x: str = Depends(get_x) -->
  *
- * 근거(2026-08-31 실측): condition 을 명령 모양(`alembic\s+revision`)으로 좁히면서
+ * 근거(실측): condition 을 명령 모양(`alembic\s+revision`)으로 좁히면서
  * scope 에 tool:write(backend/alembic/versions/*.py) 를 더한 편집이 있었다 — 그 스트림이
  * 나르는 것(경로·파일 내용)에는 그 정규식이 매치될 수 없어 **죽은 스트림**이었고, 이
  * 검사의 기존 항목은 전부 통과했다. 죽음의 완전 판정은 기계로 불가능하다(금지 토큰
@@ -460,7 +487,7 @@ function checkTriggerLiveness(file: string, body: string, condition: string, sco
 
 /**
  * 정규식 플로어 위에 **omp 실엔진 검증**을 얹는다 — `omp ttsr test --rule` 은 우리 JS 재구현이
- * 못 보는 것(glob 라우팅, 소스 구분, 직렬화)까지 실제 매칭 경로로 판정한다. 실측(2026-08-31):
+ * 못 보는 것(glob 라우팅, 소스 구분, 직렬화)까지 실제 매칭 경로로 판정한다. 실측:
  * JS 검증을 통과한 crash-guard 표본이 직렬화형(\") 에선 엔진 무발화였다.
  *
  * 비용 제어: 호출당 ~0.3s 라 glob 당 대표 스트림 1회만 돌리고, 결과를 규칙 내용 해시로

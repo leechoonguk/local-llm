@@ -6,6 +6,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { listIntegrationOperations } from "./backend-migration-policy.ts";
 import { resolveProjectRoot } from "./hook-project-root.ts";
+import { queryDatabase } from "./hook-postgres.ts";
 
 /**
  * Runtime proof of the api/*.http standard (backend-api-http.md).
@@ -111,7 +112,6 @@ const ACTOR_USERNAME = "api-actor";
 const ACTOR_PASSWORD = "api-actor-secret";
 
 const REQUEST_TIMEOUT_MS = 60_000;
-const PSQL_TIMEOUT_MS = 30_000;
 const BODY_EXCERPT_CHARS = 160;
 
 /**
@@ -251,7 +251,7 @@ async function dormantReason(): Promise<string | null> {
     );
   }
   try {
-    query("SELECT 1");
+    queryDatabase("SELECT 1");
   } catch (error: unknown) {
     return `${(error as Error).message}`;
   }
@@ -293,7 +293,7 @@ export async function verifySeededActor(): Promise<string | null> {
  * only a missing `make migrate`.
  */
 export function checkSeededOperations(): string[] {
-  const pending = query(
+  const pending = queryDatabase(
     "SELECT version_num FROM alembic_version",
   );
   const head = maxRevision();
@@ -303,7 +303,7 @@ export function checkSeededOperations(): string[] {
         `${head} — run make migrate before comparing seeds with rows`,
     ];
   }
-  const live = new Set(query("SELECT code FROM integration_operation ORDER BY code"));
+  const live = new Set(queryDatabase("SELECT code FROM integration_operation ORDER BY code"));
   const declared = new Set<string>(listIntegrationOperations().map((operation) => operation.code));
   const failures: string[] = [];
   for (const code of declared) {
@@ -627,12 +627,12 @@ function decode(payload: string): unknown {
 
 /**
  * Row count per public table — the state `make db-init` defines and a run must
- * preserve. Read through `query()`: one spawn site for the whole harness, so the
+ * preserve. Read through `queryDatabase()`: one spawn site for the whole harness, so the
  * credentials and the container path exist in exactly one place.
  */
 function rowCounts(): Map<string, number> {
   const counts = new Map<string, number>();
-  for (const line of query(ROW_COUNT_SQL)) {
+  for (const line of queryDatabase(ROW_COUNT_SQL)) {
     const [table, count] = line.split("=");
     if (table === undefined || count === undefined || table === "") continue;
     counts.set(table, Number(count));
@@ -640,45 +640,6 @@ function rowCounts(): Map<string, number> {
   return counts;
 }
 
-/**
- * One `psql -tAc` through the postgres container: no local client, no second copy
- * of the credentials, and the answer comes from the database rather than from the
- * API that reads it.
- */
-function query(sql: string): string[] {
-  const env = readEnv(join(projectRoot, ".env"));
-  const user = env.get("POSTGRES_USER");
-  const database = env.get("POSTGRES_DB");
-  if (user === undefined || database === undefined) {
-    throw new Error("POSTGRES_USER / POSTGRES_DB missing from .env — cannot query the database");
-  }
-  const result = spawnSync(
-    "docker",
-    ["compose", "exec", "-T", "postgres", "psql", "-U", user, "-d", database, "-tAc", sql],
-    { cwd: projectRoot, encoding: "utf-8", timeout: PSQL_TIMEOUT_MS },
-  );
-  if (result.status !== 0) {
-    throw new Error(
-      `postgres unreachable (${String(result.stderr ?? "").trim() || "docker compose exec failed"}) ` +
-        "— start it with make infra-up",
-    );
-  }
-  return String(result.stdout)
-    .split("\n")
-    .map((line: string) => line.trim())
-    .filter((line: string) => line !== "");
-}
-
-function readEnv(path: string): Map<string, string> {
-  const env = new Map<string, string>();
-  if (!existsSync(path)) return env;
-  for (const line of readFileSync(path, "utf-8").split("\n")) {
-    const match = /^([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line.trim());
-    if (match === null) continue;
-    env.set(match[1], match[2].trim().replace(/^["']|["']$/g, ""));
-  }
-  return env;
-}
 
 function diffCounts(before: Map<string, number>, after: Map<string, number>): string[] {
   const tables = [...new Set([...before.keys(), ...after.keys()])].sort();

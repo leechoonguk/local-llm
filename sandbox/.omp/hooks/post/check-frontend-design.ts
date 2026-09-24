@@ -42,6 +42,7 @@ const SHADOW_OWNER = "frontend/src/theme/shadows.ts";
 /** Layout metrics live in config.ts; these are the numbers that must not recur. */
 const LAYOUT_LITERALS: Record<string, string> = {
   "280": "NAV.W_DASHBOARD",
+  "88": "NAV.W_MINI",
   "92": "HEADER.H_DESKTOP",
   "64": "HEADER.H_MOBILE",
 };
@@ -132,8 +133,95 @@ export function checkFrontendDesignSync(): string[] {
 
   issues.push(...checkStatusBadge());
   issues.push(...checkDetailSurface());
+  issues.push(...checkCardGap());
   issues.push(...checkGlyphPointerEvents());
   issues.push(...checkAutoMarginInsideSpacedStack());
+  issues.push(...checkThemeDefaults());
+  issues.push(...checkNavGlyphsAreDistinct());
+  issues.push(...checkSurfacesHaveBothModes());
+  return issues;
+}
+
+/**
+ * Two defaults the theme owns because MUI's own were measured wrong here.
+ *
+ * - `MuiSelect` and `MuiAutocomplete` bound their popups to the same constant:
+ *   without `maxHeight` the 상태 filter's 86
+ *   values stood 804px tall from the top of the screen, detached from the box
+ *   that opened it. The number is `SELECT_MENU_MAX_HEIGHT` in config.ts, read
+ *   there and not typed into the override.
+ * - `MuiTabs` carries no scroll arrows: MUI shows them when the first or last
+ *   tab is under 99 % inside the scroller, and a dialog re-centred on a
+ *   fractional height lit both arrows over a four-tab strip with nothing to
+ *   scroll. A strip that does overflow still scrolls by swipe.
+ */
+function checkThemeDefaults(): string[] {
+  // existence-ok: checkDesignModules reports the theme module that is missing.
+  const overrides = readIfPresent(join(frontendSrc, "theme", "overrides.ts"));
+  if (overrides === null) return [];
+  const issues: string[] = [];
+  const select = /MuiSelect:\s*\{[\s\S]*?\n\s{4}\}/.exec(overrides)?.[0] ?? "";
+  if (!/maxHeight:\s*SELECT_MENU_MAX_HEIGHT/.test(select)) {
+    issues.push(
+      "frontend/src/theme/overrides.ts: MuiSelect has no default MenuProps with " +
+        "maxHeight: SELECT_MENU_MAX_HEIGHT — a long vocabulary's menu takes the viewport " +
+        "and leaves the box that opened it (measured: 86 values, 804px, from y=80)",
+    );
+  }
+  const autocomplete = /MuiAutocomplete:\s*\{[\s\S]*?\n\s{4}\}/.exec(overrides)?.[0] ?? "";
+  if (!/maxHeight:\s*SELECT_MENU_MAX_HEIGHT/.test(autocomplete)) {
+    issues.push(
+      "frontend/src/theme/overrides.ts: MuiAutocomplete's listbox has no " +
+        "maxHeight: SELECT_MENU_MAX_HEIGHT — MUI gives it 40vh, which is a different height on " +
+        "every screen, while the Select beside it is bounded by the constant",
+    );
+  }
+  const tabs = /MuiTabs:\s*\{[\s\S]*?\n\s{4}\}/.exec(overrides)?.[0] ?? "";
+  if (!/scrollButtons:\s*false/.test(tabs)) {
+    issues.push(
+      "frontend/src/theme/overrides.ts: MuiTabs does not default scrollButtons: false — " +
+        "MUI lights both arrows when a tab sits half a pixel outside the scroller, over a " +
+        "strip with nothing to scroll (measured on the 기준규격 tab)",
+    );
+  }
+  return issues;
+}
+
+/**
+ * A surface colour has a counterpart in the other mode.
+ *
+ * The theme is built per mode now, so `background.paper`, `text.primary` and the
+ * rest resolve to whatever the reader chose. What does **not** move is a grey or
+ * a `common.*` picked by hand: `grey[800]` is a page-dark card in dark mode and
+ * near-black text in light, and `common.white` is a surface in one and a glare in
+ * the other.
+ *
+ * So outside `theme/`, a line that paints a background or text with one of those
+ * is only allowed in a file that reads `palette.mode` — that is the file saying
+ * it knows there are two answers. `alpha(grey[500], …)` is untouched: a tint of
+ * the mid grey is the one value that reads on both surfaces, which is why the
+ * divider and every hover in the design is built from it.
+ */
+function checkSurfacesHaveBothModes(): string[] {
+  const issues: string[] = [];
+  for (const file of readSources(frontendSrc)) {
+    if (file.label.startsWith("frontend/src/theme/")) continue;
+    const modeAware = /palette\.mode/.test(file.content);
+    if (modeAware) continue;
+    file.content.split("\n").forEach((line: string, index: number) => {
+      const code = line.replace(/\/\/.*$/, "");
+      if (!/(?:bgcolor|backgroundColor|color):/.test(code)) return;
+      const fixed = /common\.(?:white|black)|grey\[(?:0|100|200|700|800|900)\]/.exec(code);
+      if (fixed === null) return;
+      // A tint keeps its meaning on either surface; a solid does not.
+      if (/alpha\(/.test(code)) return;
+      issues.push(
+        `${file.label}:${index + 1}: paints with ${fixed[0]}, which is one mode's answer — ` +
+          "read a token that moves with the mode (background.paper, text.primary), or " +
+          "branch on palette.mode where the two really differ",
+      );
+    });
+  }
   return issues;
 }
 
@@ -252,6 +340,39 @@ function checkLayoutLiterals(position: string, line: string, fileLabel: string):
   return issues;
 }
 
+/**
+ * Every nav item draws its own glyph.
+ *
+ * The icon column is the sidebar's fastest read - a reader aims at the shape,
+ * not the word - and a shape shared by four items says nothing about which row
+ * it is. Measured: `food_chat`, `food_item_report`, `food_item_report_event` and
+ * `food_raw_material` all pointed at `ic_food.svg`, so half the sidebar was one
+ * drawing and every gate was green, because each name existed in the registry
+ * and each file existed on disk.
+ *
+ * Read off `config-navigation.tsx`, which is where a screen picks its glyph.
+ */
+function checkNavGlyphsAreDistinct(): string[] {
+  const label = "frontend/src/layouts/dashboard/config-navigation.tsx";
+  const content = readIfPresent(join(frontendSrc, "layouts/dashboard/config-navigation.tsx"));
+  if (content === null) return [`${label}: missing — the navigation model lives here`];
+  const issues: string[] = [];
+  const owner = new Map<string, string>();
+  for (const match of content.matchAll(/titleKey:\s*'([\w.]+)'[^}]*icon:\s*'(\w+)'/g)) {
+    const [, title, icon] = match;
+    const first = owner.get(icon);
+    if (first === undefined) {
+      owner.set(icon, title);
+      continue;
+    }
+    issues.push(
+      `${label}: ${first} and ${title} both draw '${icon}' — a glyph two items share ` +
+        "says nothing about which row it is",
+    );
+  }
+  return issues;
+}
+
 /** A status rendered as a `Chip` is a status that does not match the design. */
 function checkStatusBadge(): string[] {
   const issues: string[] = [];
@@ -295,6 +416,52 @@ function checkDetailSurface(): string[] {
         `${file.label}: a detail tab renders neither DetailSection nor PagedTableSection — ` +
           "its content would sit loose on the neutral body instead of in a titled card",
       );
+    }
+  }
+  return issues;
+}
+
+/**
+ * Two cards in a row need their parent on a gap.
+ *
+ * `DetailSection` carries no margin on purpose — the gap belongs between two
+ * cards, not on one — so a component that returns several cards from a bare
+ * fragment draws them touching. Measured on the 품목제조보고 dialog:
+ * the 표시사항 tab's two cards stood at 0px while the 기준규격 tab's three,
+ * wrapped in `<Stack spacing={2}>`, stood at 16 and 16. Nothing else saw it:
+ * every gate was green and the tab strip reads the same either way.
+ *
+ * So a file that renders two or more cards must return them from a `Stack` that
+ * spells a spacing. The root is what matters: a fragment deeper inside is a
+ * cell's children or a conditional branch, and neither stacks cards.
+ */
+function checkCardGap(): string[] {
+  const issues: string[] = [];
+  const CARD = /<(?:DetailSection|PagedTableSection)\b/g;
+  for (const root of [SRC_DIRECTORIES.sections, SRC_DIRECTORIES.components]) {
+    for (const file of readSources(root)) {
+      const cards = file.content.match(CARD)?.length ?? 0;
+      if (cards < 2) continue;
+      // The component's own root: the `return (` at one indent level, past any
+      // comment lines an author put between it and the element.
+      const root_element = file.content.match(
+        /\n  return \(\n(?:\s*(?:\/\/[^\n]*|\{\/\*[\s\S]*?\*\/\})\n)*\s*<([A-Za-z]*)/,
+      );
+      if (root_element === null) continue;
+      const tag = root_element[1];
+      if (tag === "") {
+        issues.push(
+          `${file.label}: returns ${cards} cards from a fragment — they draw touching, ` +
+            "because DetailSection carries no margin; return them from <Stack spacing={2}>",
+        );
+        continue;
+      }
+      if (tag === "Stack" && !/<Stack\s+spacing=\{/.test(file.content)) {
+        issues.push(
+          `${file.label}: returns ${cards} cards from a Stack with no spacing — ` +
+            "a Stack without one is a column of cards that touch",
+        );
+      }
     }
   }
   return issues;

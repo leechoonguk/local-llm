@@ -34,14 +34,14 @@ per glob (one sample covers its edit/write pair) and per bare stream:
 pattern the guards use, applied to triggers: dead streams cannot be detected
 mechanically in general (a forbidden-token rule *should* match nothing in the
 tree), but an author who cannot write a sample for a stream has just discovered
-that the condition can never fire there. Measured 2026-08-31: an edit narrowed
+that the condition can never fire there. Measured: an edit narrowed
 `condition` to command shapes (`alembic\s+revision`) while adding
 `tool:write(backend/alembic/versions/*.py)` — a stream carrying paths and file
 content that the regex could not match. Every existing frontmatter check passed;
 the sample requirement is what would have stopped it.
 
 **Quoted conditions must tolerate JSON escaping.** Tool arguments may reach the
-stream serialized — measured 2026-08-31: `pi.on("tool_result"` fired the
+stream serialized — measured: `pi.on("tool_result"` fired the
 crash-guard while `pi.on(\"tool_result\"` did not, until the condition gained
 `\\?` before each quote. Any condition containing `"` or `'` needs the same.
 (omp's own TTSR authoring guide states this.) `check-omp-rules` runs the proof
@@ -51,9 +51,9 @@ carries a quote), cached by rule-content hash in `.omp/state/` so an unchanged
 rule costs zero engine calls (~0.3s per call cold, measured). A failure prints
 the exact repro command. Hosts without the omp CLI fall back to the regex floor.
 
-**How-to sections follow the proven ordered-verified structure.** Measured
-2026-09-01: the fullstack notice cell went from a 60-minute-cap timeout (one
-failing check left) to a 65.5-minute self-terminated green when the domain
+**How-to sections follow the proven ordered-verified structure.** Measured on a
+benchmark cell: a fullstack task went from a capped-out timeout (one failing
+check left) to a self-terminated green when the domain
 rule's artifact list became this structure — the three late-red classes
 (unapplied migration, wrong exemplar for a unique field, wiring) reproduced
 zero times. `check-omp-rules` enforces the mechanical half:
@@ -75,6 +75,18 @@ rulebook rule is the *documentation* of an invariant that a hook enforces
 mechanically. When an invariant must reach the model at the moment it is about
 to be broken, that is a TTSR trigger — not a longer rulebook entry.
 
+**The harness carries no dated history.** A rule states an invariant; a hook
+comment states the reason a constant or branch exists. The dated incident that
+produced either is history, and history lives in a deck —
+`decks/harness-history` for the harness's own lessons,
+`decks/ledger-measurements` for the data domain's — or, for a domain
+measurement, beside the code as a dated docstring one-liner
+(rule://backend-ledger, "A Refused Branch Leaves Its Measurement").
+`check-omp-rules` refuses a `YYYY-MM-DD` anywhere under `.omp/` (rules, hooks,
+skills, extensions, ast-grep); a line that must show a dated *format* or a
+wire-data date marks itself `history-ok`. A rule that carries every past
+number stops reading as a contract.
+
 **Body size is a per-read tax, not a per-session one.** A rulebook body costs
 nothing until something reads it, and then it costs all of it: measured over 87
 sessions, guidance reads are **whole-file** (121 whole vs 12 paged), while the
@@ -95,7 +107,7 @@ replacement, the enforcing hook, and `rule://<full-rule>` for the rest.
 | Frontmatter | Required | Why |
 |---|---|---|
 | `condition` | yes | Regex, **quoted string** (a YAML list registers at runtime but reads as a rulebook rule to `check-omp-rules`, so the two disagree) |
-| `scope` | yes | The default watches assistant prose and every tool argument — a code-token trigger would fire on *writing about* the token. Code triggers cover every file-writing tool with the same glob — `tool:edit(<glob>), tool:write(<glob>), tool:replace(<glob>), tool:insert(<glob>)` (the last two are the pi-hashline-edit-pro edit tools; a scope naming only `edit` goes dead when a plugin swaps the toolset); a workflow trigger states `text, tool` on purpose |
+| `scope` | yes | The default watches assistant prose and every tool argument — a code-token trigger would fire on *writing about* the token. Code triggers cover every file-writing tool with the same glob — `tool:edit(<glob>), tool:write(<glob>)`; a workflow trigger states `text, tool` on purpose |
 | `interruptMode` | yes | Otherwise the machine-global default decides whether an edit is aborted |
 | `globs` | no | Redundant once `scope` carries path globs, and fatal for bash-triggered rules (see the globs trap above) |
 

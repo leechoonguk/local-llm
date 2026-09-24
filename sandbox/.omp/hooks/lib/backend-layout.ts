@@ -85,3 +85,24 @@ export function layerDepthViolation(appRelative: string): string | null {
     ? `\`${segments[0]}/\` is a flat layer — its files sit at the layer root, and every scan of it assumes that`
     : `\`${segments[0]}/\` allows one folder level (a domain), never more — a deeper file is invisible to every layer scan`;
 }
+
+/**
+ * The text between the bracket at `open` and the one that closes it.
+ *
+ * A Python call spans lines the way `ruff format` breaks it, and a reader
+ * that stops at the first line ending in `)` stops inside the call — measured
+ * on `relationship(primaryjoin=lambda: foreign(X.col)\n== Y.col,
+ * ..., lazy=...)`: the `lazy=` check read one line and reported it missing on
+ * seven of seventeen relationships that had it.
+ */
+export function balanced(content: string, open: number): string {
+  let depth = 0;
+  for (let i = open; i < content.length; i += 1) {
+    if (content[i] === "(" || content[i] === "[" || content[i] === "{") depth += 1;
+    else if (content[i] === ")" || content[i] === "]" || content[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return content.slice(open + 1, i);
+    }
+  }
+  return content.slice(open + 1);
+}

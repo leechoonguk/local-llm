@@ -79,5 +79,20 @@
   },
   "[typescriptreact]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
-  }
+  },
+  // ==========================================
+  // 7. YAML — docker compose 병합 태그
+  // ==========================================
+  // compose 오버레이는 `!override`(속성 통째 교체)와 `!reset`(속성 제거)로 병합
+  // 규칙을 무시합니다. compose 자체는 이를 해석하고(`make qa-config` 통과) YAML
+  // 언어 서버만 모르는 태그라 "Unresolved tag" 를 냅니다. 스펙 스키마의 오탐이지
+  // 파일의 오류가 아니므로, 서버에 두 태그를 알려 줍니다.
+  "yaml.customTags": [
+    "!override sequence",
+    "!override mapping",
+    "!override scalar",
+    "!reset sequence",
+    "!reset mapping",
+    "!reset scalar"
+  ]
 }

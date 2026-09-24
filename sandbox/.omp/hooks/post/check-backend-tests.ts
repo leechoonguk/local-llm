@@ -62,7 +62,7 @@ const API_VERSION_PREFIX = "(?:/api/v\\d+)?";
  */
 
 /** The 10 standard API cases every CRUD domain test file must cover. */
-// 케이스마다 그것을 owed 로 만드는 라우터 메서드를 적는다(요구 방향, 2026-08-30 감사).
+// 케이스마다 그것을 owed 로 만드는 라우터 메서드를 적는다(요구 방향 감사).
 // POST+GET 만 있는 라우터에 update/delete 테스트를 요구하면 존재하지 않는 엔드포인트의 테스트를
 // 요구하는 셈이다 — 실측에서 이 형태로 69건이 나갔다. null 은 메서드와 무관하게 항상 owed.
 const CASE_METHOD: Record<string, RegExp | null> = {
@@ -200,7 +200,7 @@ function checkBackendTestsSync(): string[] {
       if (!f.endsWith(".py") || f === "__init__.py") continue;
       const name = f.replace(/\.py$/, "");
       if (belongsToAggregateDomain(name, aggregates)) continue;
-      // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
+      // 요구 방향(감사 실측): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
       // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
       if (!hasLayer(projectRoot, "router", name)) continue;
@@ -345,7 +345,7 @@ function checkBackendTestsSync(): string[] {
       const name = f.replace(/\.py$/, "").split("/").pop() ?? "";
       const domain = f.includes("/") ? f.split("/")[0] : name;
       if (belongsToAggregateDomain(domain, aggregates)) continue;
-      // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
+      // 요구 방향(감사 실측): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
       // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
       if (!hasLayer(projectRoot, "router", domain)) continue;
@@ -367,7 +367,7 @@ function checkBackendTestsSync(): string[] {
   if (existsSync(servicesDir) && existsSync(servicesTestDir)) {
     for (const f of layerFiles(servicesDir)) {
       const serviceDomain = f.includes("/") ? f.split("/")[0] : f.replace(/\.py$/, "");
-      // 요구 방향(2026-08-30 감사): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
+      // 요구 방향(감사 실측): 라우터가 서기 전에는 테스트를 요구하지 않는다. 모델 파일 하나에
       // 10케이스 HTTP 스위트를 요구하는 것은 트리거 시점에 **충족 불가능**한 요구였고, 실측상 191세션 중
       // 125세션에 걸쳐 이 목록이 모델에게 작업 큐로 읽혔다. 완성 계약은 커버리지 100% 게이트가 지킨다.
       if (!hasLayer(projectRoot, "router", serviceDomain)) continue;

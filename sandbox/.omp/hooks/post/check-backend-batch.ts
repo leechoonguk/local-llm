@@ -10,14 +10,6 @@ import { guarded } from "../lib/hook-visibility.ts";
 import { printRuleHint } from "../lib/hook-rule-hint.ts";
 import { MUTATING_TOOLS } from "../lib/hook-mutating-tools.ts";
 import { resolveProjectRoot } from "../lib/hook-project-root.ts";
-import {
-  listIntegrationCallerInputs,
-  listIntegrationOperationCodes,
-  listIntegrationOperations,
-  listIntegrationProviderCodes,
-  listIntegrationResponseKeys,
-} from "../lib/backend-migration-policy.ts";
-import { feedsOf, listLedgerFeeds, type LedgerFeed } from "../lib/backend-ledger-feeds.ts";
 
 /**
  * Check-Backend-Batch Post Hook
@@ -32,14 +24,10 @@ import { feedsOf, listLedgerFeeds, type LedgerFeed } from "../lib/backend-ledger
  *   5. No business logic — all work goes through service layer methods
  *   6. A job that walks a provider feed records one step per window under
  *      the run in context, and a job that reads the run writes steps under it
- *   7. A provider job (`sync_<provider>_ledgers.py`) states one provider, one
- *      window, one end code set, and a `FEEDS` tuple that ties every operation
- *      it walks to the `replace_<table>_ledger` of that table's service — and
- *      every code it names is a row some migration seeded, of that provider.
- *   8. The reverse: every seeded operation that pages (`range_start` or
- *      `page_no` among its caller inputs) is a feed some provider job walks.
- *      An integration target is a ledger — seeding the operation is the first
- *      half of the work, and the table plus its `Feed` is the second.
+ *   7. Every knob is an UPPER_SNAKE constant and a parameter defaulted to it.
+ *
+ * What a provider job syncs and a derive job rebuilds — feeds, floors, the
+ * ledger contract, derivations — is check-backend-ledger (backend-ledger.md).
  *
  * It also enforces that the *schedule* lives in the database, not in Python.
  * The chain a job must complete — function → registry → seeded row → scheduler
@@ -95,23 +83,33 @@ function checkBackendBatchSync(): string[] {
   // Structural checks that string matching cannot express precisely:
   //   batch/batch-job-async.yml           — batch job functions must be async def
   //   batch/batch-service-constructor.yml — must construct Service(session)
+  // A ledger job opens no session and builds no service: it names its feed and
+  // hands it to `sync_ledger`, which owns the pinned ledger session, the call
+  // session and the steps for all of them. The
+  // session rules still hold for every job that does its own work, so they run
+  // over those files rather than over the directory.
   const astRulesDir = join(projectRoot, ".omp", "ast-grep", "rules", "batch");
-  if (existsSync(astRulesDir)) {
-    issues.push(...runAstRules(astRulesDir, [batchDir]));
+  const ownWorkFiles = readdirSync(batchDir)
+    .filter((f: string) => f.endsWith(".py") && f !== "__init__.py")
+    .map((f: string) => join(batchDir, f))
+    .filter((path: string) => !delegatesToLedgerRunner(readFileSync(path, "utf-8")));
+  if (existsSync(astRulesDir) && ownWorkFiles.length > 0) {
+    issues.push(...runAstRules(astRulesDir, ownWorkFiles));
   }
 
   for (const f of readdirSync(batchDir)) {
     if (!f.endsWith(".py") || f === "__init__.py") continue;
 
     const content = readFileSync(join(batchDir, f), "utf-8");
+    const delegates = delegatesToLedgerRunner(content);
 
     // 1. Must use engine directly from app.core.database
-    if (!/from app\.core\.database import\s+.*\bengine\b/.test(content)) {
+    if (!delegates && !/from app\.core\.database import\s+.*\bengine\b/.test(content)) {
       issues.push(`${f}: must use engine directly (from app.core.database import engine)`);
     }
 
     // 2. Must construct a service with Service(session) — never receive session from DI
-    if (!/\b\w+Service\(session\)/.test(content)) {
+    if (!delegates && !/\b\w+Service\(session\)/.test(content)) {
       issues.push(`${f}: must construct a service via Service(session) constructor`);
     }
 
@@ -129,7 +127,10 @@ function checkBackendBatchSync(): string[] {
 
     // 4. Must return a meaningful count/status. `written` is what a ledger
     //    job answers: the rows the night changed, over every feed.
-    if (!/return\s+\w*(?:count|deleted|total|status|written)\w*/.test(content)) {
+    if (
+      !/return\s+\w*(?:count|deleted|total|status|written)\w*/.test(content) &&
+      !(delegates && /return await sync_ledger\(/.test(content))
+    ) {
       issues.push(`${f}: must return a meaningful count/status (e.g. return deleted, return written)`);
     }
 
@@ -141,29 +142,29 @@ function checkBackendBatchSync(): string[] {
     // 6. A walked feed is recorded in steps; a step belongs to a run.
     issues.push(...checkRunContract(f, content));
 
-    // 7. A provider job states its provider, its window and its feeds.
-    const feeds = feedsOf(content, f.replace(/\.py$/, ""));
-    issues.push(...checkProviderJobShape(f, content, feeds));
-
-    // 8. Every knob is a named constant the caller can override.
+    // 7. Every knob is a named constant the caller can override.
     issues.push(...checkJobKnobs(f, content, moduleJobs(content)));
-
-    // 9. And the configuration it names exists in a migrated database.
-    issues.push(...checkSeededConfiguration(f, feeds));
-
-    // 10. And every ledger it fills reads every key its feed answers.
-    for (const feed of feeds) issues.push(...checkLedgerReadsTheContract(feed));
-
-    // 11. And it walks positions - a filter would migrate a subset.
-    issues.push(...checkMigrationWalksPositions(f, content, feeds));
   }
 
+  // 8. The schedule is a table: registry, seeded row, scheduler options, lifespan.
   issues.push(...checkDatabaseManagedSchedule(batchDir));
 
-  // 12. And, across every job: each seeded paging operation is somebody's feed.
-  issues.push(...checkEveryPagingOperationIsAFeed());
+  // What a provider job syncs and a derive job rebuilds is check-backend-ledger.
+  issues.push(...checkCodesFitTheirColumns());
 
   return issues;
+}
+
+/**
+ * A ledger job states its feed and hands the walk to the shared runner.
+ *
+ * `sync_ledger` (app/services/batch/ledger_feed.py) owns the pinned ledger
+ * session, the call session, the step per window and the failure, so a ledger
+ * job holds four constants and one call. The checks that read a job for its
+ * own session and its own service are about jobs that do their own work.
+ */
+function delegatesToLedgerRunner(content: string): boolean {
+  return /\bsync_ledger\(/.test(content);
 }
 
 /**
@@ -218,116 +219,6 @@ function checkJobFileName(file: string, jobs: JobDeclaration[]): string[] {
   return [];
 }
 
-/**
- * A provider job is `sync_<provider>_ledgers.py`, and it says what a provider job says.
- *
- * The shape is one rule for every feed: one `PROVIDER_CODE`, one `PAGE_SIZE`
- * (the portal's cap, measured), one `END_CODES` (what the portal answers past
- * its last row), one `SYNCED_BY`, and a `FEEDS` tuple of `Feed(<operation>,
- * <Service>, <Service>.replace_<table>_ledger)`. Nothing else is a setting:
- * there is no cursor, no ceiling on windows and no `total_count`, because the
- * feeds carry no change stamp to follow and the count lies on some operations
- * (measured 2026-09-06), so a pass is the whole feed every night.
- *
- * Each half of the shape is a fact somewhere else in the stack:
- *
- * - The name carries the provider's code, or its leading tokens
- *   (`mfds-food-safety-korea` → `sync_mfds_ledgers`), so a renamed provider
- *   leaves the schedule, the module and the seeded code naming nothing.
- *   Measured before it: five jobs named after tables, all stale together when
- *   `barcode` became `food_barcode`.
- * - The service a feed names is imported from `app.services.<domain>.<table>`,
- *   and the method it hands over is that table's `replace_<table>_ledger` -
- *   the only path through `LedgerStage`, whose floor refuses a pass that came
- *   back empty or lost half the ledger. A feed replaced any other way has no
- *   floor.
- * - Every walk is asked with the module's own window and end codes, so one
- *   feed cannot quietly page differently from its siblings.
- * - A feed fails alone: the job catches `LedgerFloorError` beside
- *   `IntegrationError` and raises after every feed had its turn.
- */
-function checkProviderJobShape(file: string, content: string, feeds: LedgerFeed[]): string[] {
-  const walks = /\.walk_operation\(/.test(content);
-  const named = /^sync_[a-z0-9_]+_ledgers\.py$/.test(file);
-  if (!walks && !named && feeds.length === 0) return [];
-  const issues: string[] = [];
-  const stem = file.replace(/\.py$/, "");
-
-  if (!named) {
-    issues.push(
-      `app/batch/${file}: walks a provider feed but is not called sync_<provider>_ledgers.py - ` +
-        "a job that replaces ledgers is named after the provider whose feeds it reads",
-    );
-  }
-  for (const [required, why] of [
-    ["PROVIDER_CODE", "the provider a job reads is a seeded code, never a URL"],
-    ["PAGE_SIZE", "the window is the portal's measured cap, one for every feed"],
-    ["END_CODES", "what the portal answers past its last row is one fact per portal"],
-    ["SYNCED_BY", "the rows say which job wrote them"],
-  ] as const) {
-    if (new RegExp(`^${required}\\s*(?::[^=]*)?=`, "m").test(content)) continue;
-    issues.push(`app/batch/${file}: no ${required} - ${why}`);
-  }
-  // Read off the code, not the prose: the docstring names what the job refuses.
-  const code = content.replace(/"""[\s\S]*?"""/g, "").replace(/#[^\n]*/g, "");
-  for (const retired of ["MAX_PAGE_SIZE", "DEFAULT_MAX_", "total_count", "find_checkpoint"]) {
-    if (!code.includes(retired)) continue;
-    issues.push(
-      `app/batch/${file}: mentions ${retired} - a pass is the whole feed every night; the ` +
-        "floor in LedgerStage is the only guard, and there is no cursor, ceiling or count",
-    );
-  }
-
-  const provider = /^PROVIDER_CODE\s*=\s*"([^"]+)"/m.exec(content)?.[1];
-  const token = /^sync_([a-z0-9_]+)_ledgers$/.exec(stem)?.[1].replace(/_/g, "-");
-  if (provider !== undefined && token !== undefined && provider !== token && !provider.startsWith(`${token}-`)) {
-    issues.push(
-      `app/batch/${file}: reads '${provider}' but is called '${stem}' - the name is the ` +
-        "provider's code or its leading tokens, so a renamed provider is found by name",
-    );
-  }
-
-  if (feeds.length === 0) {
-    issues.push(
-      `app/batch/${file}: no FEEDS - a provider job is a tuple of ` +
-        "Feed(<operation>, <Service>, <Service>.replace_<table>_ledger), one per ledger",
-    );
-  }
-  for (const feed of feeds) {
-    if (feed.table === "") {
-      issues.push(
-        `app/batch/${file}: ${feed.operation} names ${feed.service}, which is not imported from ` +
-          "app.services.<domain>.<table> - the ledger a feed fills is a domain's table",
-      );
-      continue;
-    }
-    if (feed.replace !== `replace_${feed.table}_ledger`) {
-      issues.push(
-        `app/batch/${file}: ${feed.operation} replaces through ${feed.service}.${feed.replace}, ` +
-          `but ${feed.service} is app/services/${feed.domain}/${feed.table}.py - the method is ` +
-          `replace_${feed.table}_ledger, the one path through LedgerStage and its floor`,
-      );
-    }
-  }
-
-  for (const call of content.matchAll(/\.walk_operation\(([\s\S]*?)\n\s*\)/g)) {
-    for (const [keyword, constant] of [["page_size", "PAGE_SIZE"], ["end_codes", "END_CODES"]]) {
-      if (new RegExp(`${keyword}=${constant}\\b`).test(call[1])) continue;
-      issues.push(
-        `app/batch/${file}: a walk_operation call does not pass ${keyword}=${constant} - one ` +
-          "window and one end code set for every feed of the provider, or one feed pages alone",
-      );
-    }
-  }
-
-  if (walks && !/except\s*\([^)]*\bLedgerFloorError\b[^)]*\)|except\s+LedgerFloorError\b/.test(content)) {
-    issues.push(
-      `app/batch/${file}: never catches LedgerFloorError - a feed under the floor is that ` +
-        "feed's night, and the others still get their turn before the first failure is raised",
-    );
-  }
-  return issues;
-}
 
 /**
  * A knob is a named constant, and the job takes it as a parameter.
@@ -342,7 +233,7 @@ function checkProviderJobShape(file: string, content: string, feeds: LedgerFeed[
  * matters as much as the first — an orphan `DEFAULT_PAGE_SIZE` is a knob the
  * job reads directly, which reads like a setting and behaves like a literal.
  * A provider job takes no parameter at all: its `PAGE_SIZE` is the portal's
- * cap, a fact, not a knob (`checkProviderJobShape`).
+ * cap, a fact, not a knob (check-backend-ledger).
  */
 function checkJobKnobs(file: string, content: string, jobs: JobDeclaration[]): string[] {
   if (jobs.length !== 1) return [];
@@ -377,202 +268,10 @@ function checkJobKnobs(file: string, content: string, jobs: JobDeclaration[]): s
   return issues;
 }
 
-/**
- * The provider and every operation a job names must be rows a revision inserts,
- * and the operations must page the same way.
- *
- * `PROVIDER_CODE` and each feed's operation are strings resolved at 03:00
- * against `integration_provider` / `integration_operation`. Nothing else in the
- * stack connects them: the job type-checks, its tests script the seam and never
- * look the codes up, and every gate stays green - measured, by pointing a job at
- * `search-ghost-material` and running the whole suite. The failure surfaces once
- * a night, in a scheduler log, as configuration that does not exist.
- *
- * The family is a provider fact too: the job asks every feed for windows of
- * `PAGE_SIZE` and reads the end the same way, which only holds when the feeds
- * page by the same keys. A feed of the other family in the tuple would be
- * asked for `range_start` by a walk that sends `page_no`.
- *
- * Read from the migrations rather than the database, so a fresh clone answers
- * the same as the machine that already ran `migrate`.
- */
-function checkSeededConfiguration(file: string, feeds: LedgerFeed[]): string[] {
-  if (feeds.length === 0) return [];
-  const issues: string[] = [];
-  const providers = listIntegrationProviderCodes();
-  const operations = listIntegrationOperationCodes();
-  const inputs = listIntegrationCallerInputs();
 
-  const [{ provider }] = feeds;
-  if (provider !== "" && !providers.includes(provider)) {
-    issues.push(
-      `app/batch/${file}: PROVIDER_CODE '${provider}' is seeded by no migration - a job whose ` +
-        "integration_provider row does not exist runs once a night and fails on " +
-        `configuration, not on data (seeded: ${providers.join(", ") || "none"})`,
-    );
-  }
-  const families = new Map<string, string>();
-  const providerOf = new Map(listIntegrationOperations().map((op) => [op.code, op.provider]));
-  for (const feed of feeds) {
-    if (!operations.includes(feed.operation)) {
-      issues.push(
-        `app/batch/${file}: feed '${feed.operation}' is seeded by no migration - a job whose ` +
-          "integration_operation row does not exist runs once a night and fails on " +
-          `configuration, not on data (seeded: ${operations.join(", ") || "none"})`,
-      );
-      continue;
-    }
-    const owner = providerOf.get(feed.operation) ?? null;
-    if (owner !== null && provider !== "" && owner !== provider) {
-      issues.push(
-        `app/batch/${file}: feed '${feed.operation}' is an operation of '${owner}', not of ` +
-          `'${provider}' - the walk resolves (provider, operation) as a pair, and a job ` +
-          "walks its own provider's feeds",
-      );
-    }
-    const keys = inputs.get(feed.operation) ?? [];
-    const family = keys.includes("range_start") ? "RANGE" : keys.includes("page_no") ? "PAGE" : "none";
-    families.set(feed.operation, family);
-  }
-  const distinct = new Set(families.values());
-  if (distinct.size > 1) {
-    const listed = [...families].map(([operation, family]) => `${operation}=${family}`).join(", ");
-    issues.push(
-      `app/batch/${file}: its feeds page by different families (${listed}) - one provider job ` +
-        "asks every feed for the same window, so a feed of another family belongs to another job",
-    );
-  }
-  if (distinct.has("none")) {
-    const unpaged = [...families].filter(([, family]) => family === "none").map(([op]) => op);
-    issues.push(
-      `app/batch/${file}: ${unpaged.join(", ")} seeds no paging keys (range_start or page_no) - ` +
-        "a feed a walk cannot window is not a feed",
-    );
-  }
-  return issues;
-}
 
-/**
- * Every seeded operation that pages is a feed of its provider's job.
- *
- * The forward checks read a job and ask whether what it names exists; this
- * one reads the seeds and asks whether what exists is walked. Without it, an
- * integration is "done" the moment its configuration is seeded and its
- * fixture recorded - and a paging operation nobody walks is a feed the
- * database never holds, which is the whole point of seeding one. Measured
- * on this tree: `search-product-classification` and `search-test-item` were
- * seeded (revision 64) and configured, and no job read either for the whole
- * life of the five-jobs design.
- *
- * Paging is the criterion, not existence: an operation without a window
- * (`range_start`/`page_no` absent from its caller inputs) is a lookup the API
- * answers per call, and a lookup has no feed to replace a ledger with.
- */
-function checkEveryPagingOperationIsAFeed(): string[] {
-  const issues: string[] = [];
-  const backendApp = join(projectRoot, "backend", "app");
-  const feeds = listLedgerFeeds(backendApp);
-  const walked = new Set(feeds.map((feed) => feed.operation));
-  const jobOf = new Map(feeds.map((feed) => [feed.provider, feed.job]));
-  const inputs = listIntegrationCallerInputs();
-  for (const operation of listIntegrationOperations()) {
-    if (!operation.configured || walked.has(operation.code)) continue;
-    const keys = inputs.get(operation.code) ?? [];
-    if (!keys.includes("range_start") && !keys.includes("page_no")) continue;
-    const provider = operation.provider ?? "its provider";
-    const job = jobOf.get(provider) ?? `sync_${provider.replace(/-/g, "_")}_ledgers`;
-    issues.push(
-      `app/batch/${job}.py: seeded operation '${operation.code}' (${provider}) pages but no Feed ` +
-        "walks it - an integration target is a ledger: build the table and its " +
-        "`replace_<table>_ledger` (the `ledger` skill), then add " +
-        `Feed("${operation.code}", <Table>Service, <Table>Service.replace_<table>_ledger) ` +
-        `to FEEDS${jobOf.has(provider) ? "" : " of a new provider job"}`,
-    );
-  }
-  return issues;
-}
 
-/**
- * A ledger's `from_record` and its feed's seeded record keys agree, both ways.
- *
- * The mapping is a list of `record.get("<key>")` calls, and nothing types it:
- * `record` is a `Mapping[str, object]`, so a misspelt key reads `None`, the
- * column is stored NULL on every record forever, and the run reports success.
- * The reverse drift is quieter still - a key added to the seed that the ledger
- * never reads is simply data the sync drops.
- *
- * A key the ledger declines on purpose (`row_no`, the record's position inside
- * its page) is declared in an `UNSTORED_KEYS` set beside `from_record`, with
- * the reason, so the decline is a decision the check can read rather than an
- * omission it cannot tell from a mistake.
- *
- * Per feed: the schema is `app/schemas/<domain>/<table>.py`, the service's
- * sibling, and the keys are the ones the feed's operation answers.
- */
-function checkLedgerReadsTheContract(feed: LedgerFeed): string[] {
-  if (feed.table === "") return [];
-  const seeded = listIntegrationResponseKeys().get(feed.operation);
-  if (seeded === undefined || seeded.length === 0) return [];
-  const schemaPath = join(projectRoot, "backend", "app", "schemas", feed.domain, `${feed.table}.py`);
-  if (!existsSync(schemaPath)) return [];
-  const schema = readFileSync(schemaPath, "utf-8");
-  const label = `app/schemas/${feed.domain}/${feed.table}.py`;
-  const issues: string[] = [];
 
-  const read = new Set([...schema.matchAll(/record\.get\("([a-z0-9_]+)"\)/g)].map((m) => m[1]));
-  const unstored = new Set(
-    [...(/^UNSTORED_KEYS\s*=\s*frozenset\(\{([^}]*)\}\)/m.exec(schema)?.[1] ?? "").matchAll(/"([a-z0-9_]+)"/g)]
-      .map((m) => m[1]),
-  );
-  for (const key of read) {
-    if (seeded.includes(key)) continue;
-    issues.push(
-      `${label}: from_record reads "${key}", which ${feed.operation} never answers - the column ` +
-        "is NULL on every record and the sync reports success",
-    );
-  }
-  for (const key of seeded) {
-    if (read.has(key) || unstored.has(key)) continue;
-    issues.push(
-      `${label}: ${feed.operation} answers "${key}" and the ledger neither stores it nor declines ` +
-        "it in UNSTORED_KEYS - data dropped on the floor, or a column that was never added",
-    );
-  }
-  return issues;
-}
-
-/**
- * A pass walks positions; it never sends a filter.
- *
- * Every operation here seeds optional caller inputs beside its paging keys -
- * `change_date`, `changed_from`, `last_updated_from`, `update_date`, a product
- * name, a licence number. Each reads a *subset*, and a subset is not a ledger:
- * a job that sent `change_date` would import what changed since a date and
- * call the ledger whole. The temptation is real - measured on
- * `search-food-item-report`, the unfiltered walk is capped at 100 calls an hour
- * (`INFO-320`) and the date filter is not - and the answer is to pay the quota
- * in hours, which the walk's quota wait exists for.
- *
- * So the window a walk sends holds the paging family's keys and nothing the
- * seed lists as a caller input. Read as dict-key syntax (`"key":`), because the
- * job's docstring names the filters it refuses.
- */
-function checkMigrationWalksPositions(file: string, content: string, feeds: LedgerFeed[]): string[] {
-  const paging = new Set(["range_start", "range_end", "page_no", "num_of_rows"]);
-  const issues: string[] = [];
-  const inputs = listIntegrationCallerInputs();
-  for (const feed of feeds) {
-    for (const key of inputs.get(feed.operation) ?? []) {
-      if (paging.has(key)) continue;
-      if (!new RegExp(`"${key}"\\s*:`).test(content)) continue;
-      issues.push(
-        `app/batch/${file}: sends "${key}" to ${feed.operation} - a filter reads a subset, and a ` +
-          "ledger is everything; a pass is windows of PAGE_SIZE from row 1, never a date",
-      );
-    }
-  }
-  return issues;
-}
 
 /**
  * A walked feed leaves steps, and a step belongs to the run in context.
@@ -589,6 +288,67 @@ function checkMigrationWalksPositions(file: string, content: string, feeds: Ledg
  * touches one side of a pair owes the other. A job that never walks a feed
  * owes nothing here — the purge jobs are that shape.
  */
+/**
+ * Every job's signature fits the column that stores it.
+ *
+ * A job signs the rows it writes `batch:<job code>`, and that string lands in
+ * `AuditMixin.created_by`/`updated_by`. Measured: three
+ * jobs renamed after their ledgers were 51 to 57 characters
+ * against a 50-wide column, and each one opened its run, wrote its first call
+ * log, and died on `StringDataRightTruncationError` before the portal was ever
+ * called - a night lost to a width nothing compared.
+ *
+ * The same reading covers the other code-shaped strings: a `batch_schedule.code`
+ * and an `integration_operation.code` are stored in columns of their own width,
+ * and a seed longer than the column is the same failure at 03:00.
+ */
+function checkCodesFitTheirColumns(): string[] {
+  const issues: string[] = [];
+  const appDir = join(projectRoot, "backend", "app");
+  if (!existsSync(appDir)) return issues;
+  const widths = new Map<string, number>();
+  const base = join(appDir, "models", "base.py");
+  if (existsSync(base)) {
+    const actor = /ACTOR_LENGTH\s*=\s*(\d+)/.exec(readFileSync(base, "utf-8"));
+    if (actor !== null) widths.set("actor", Number(actor[1]));
+  }
+  const schedule = join(appDir, "models", "batch", "schedule.py");
+  if (existsSync(schedule)) {
+    const code = /code:\s*Mapped\[str\][^\n]*String\((\d+)\)/.exec(readFileSync(schedule, "utf-8"));
+    if (code !== null) widths.set("schedule", Number(code[1]));
+  }
+  const actorWidth = widths.get("actor");
+  const scheduleWidth = widths.get("schedule");
+  for (const code of listJobCodes()) {
+    const signature = `batch:${code}`;
+    if (actorWidth !== undefined && signature.length > actorWidth) {
+      issues.push(
+        `app/core/scheduler.py: job '${code}' signs its rows '${signature}' (${signature.length} ` +
+          `characters) but AuditMixin.created_by holds ${actorWidth} - the run fails on its ` +
+          "first written row, before the portal is called",
+      );
+    }
+    if (scheduleWidth !== undefined && code.length > scheduleWidth) {
+      issues.push(
+        `app/core/scheduler.py: job code '${code}' is ${code.length} characters but ` +
+          `batch_schedule.code holds ${scheduleWidth} - the row that schedules it cannot be seeded`,
+      );
+    }
+  }
+  return issues;
+}
+
+/** Every job code the registry names. */
+function listJobCodes(): string[] {
+  const scheduler = join(projectRoot, "backend", "app", "core", "scheduler.py");
+  if (!existsSync(scheduler)) return [];
+  const content = readFileSync(scheduler, "utf-8");
+  const registry = /BATCH_JOBS[^{]*\{([\s\S]*?)\n\s*\}/.exec(content);
+  if (registry === null) return [];
+  return [...registry[1].matchAll(/"([a-z0-9_]+)"\s*:/g)].map((match) => match[1]);
+}
+
+
 function checkRunContract(file: string, content: string): string[] {
   const issues: string[] = [];
   const readsRun = /\bcurrent_run_id\.get\(\)/.test(content);
@@ -607,7 +367,10 @@ function checkRunContract(file: string, content: string): string[] {
         "— a step belongs to the run the scheduler opened, and a job run by hand has none",
     );
   }
-  if (readsRun && !recordsStep) {
+  // A job may also read the run to know which run is *itself* — the derive
+  // job asks which other jobs are in flight, and its own row is in that answer.
+  const excludesOwnRun = /excluding=current_run_id\.get\(\)/.test(content);
+  if (readsRun && !recordsStep && !excludesOwnRun) {
     issues.push(
       `${file}: reads current_run_id but writes nothing under it — the run is read for ` +
         "steps, and a job that records none has no use for it",
@@ -653,7 +416,9 @@ function checkDatabaseManagedSchedule(batchDir: string): string[] {
     return ["core/scheduler.py: no `BATCH_JOBS = MappingProxyType({...})` registry found"];
   }
   const registered = new Map<string, string>();
-  for (const entry of registry[1].matchAll(/"([a-z0-9_]+)"\s*:\s*(\w+)/g)) {
+    // The value may be parenthesised: a job code long enough to name its ledger
+  // table wraps under the formatter, and the wrap is not a different entry.
+  for (const entry of registry[1].matchAll(/"([a-z0-9_]+)"\s*:\s*\(?\s*(\w+)/g)) {
     registered.set(entry[1], entry[2]);
   }
   if (registered.size === 0) {

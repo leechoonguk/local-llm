@@ -89,9 +89,14 @@ disagreeing is a bug that was measured in this repository:
   number, so the user gets a generic 422 toast that names no field.
 
 So the length lives in one named constant per side, and
-`check-frontend-contract` compares them. A `.matches()` in a dialog requires a
-`pattern=` on the server field; otherwise the check fails and the choice is
-explicit: declare it on both sides or drop it.
+`check-frontend-contract` compares them. A `.matches()` in a dialog requires the
+server to declare the same shape, in any of the three ways it can: `pattern=` on
+the field, a service that parses it (`CODE_PATTERN.fullmatch`, `urlsplit`), or a
+`@field_validator` on the schema — `cron` is parsed by `validated_cron`, and a
+malformed expression is a 422 from the model that caps its length. Reading only
+`pattern=` made that third form invisible and reported the batch dialog as
+rejecting input the API accepts, which the API refuses. Otherwise the check
+fails and the choice is explicit: declare it on both sides or drop it.
 
 **Required is the third axis, and it runs both ways.** A field the server has no
 default for must carry `.required()`, or an empty submit comes back a 422 naming

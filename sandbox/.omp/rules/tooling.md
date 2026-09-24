@@ -27,9 +27,9 @@ one place.** `make db-query q="SELECT …"` for a human, `query()` in
 | Rule | The failure it closes |
 |---|---|
 | One spawn site in `.omp/hooks/` (`,\s*"psql",` in an argv) | `rowCounts()` built its own `docker compose exec` argv beside `query()`, so the credentials and the container name existed twice while the comment above claimed they did not |
-| The form is `docker compose exec -T postgres psql` | a host `psql` assumes a local client (this machine has none), and `docker exec` by container name bypasses compose's project scoping |
+| The form is `docker compose exec -T postgres psql` (any stack's `$(DC…)` variable) | a host `psql` assumes a local client (this machine has none), and `docker exec` by container name bypasses compose's project scoping |
 | No driver import (`asyncpg`, `psycopg`, `pg`) in a hook | a second connection path with a second copy of the credentials, invisible to `make db-query` |
-| A Makefile target that runs `psql` also runs `migrate` | an answer read from a database behind head is "drift" that is only a missing `make migrate` |
+| A Makefile target that runs `psql` brings its database to head first (`migrate`, or `alembic upgrade head` in the container) | an answer read from a database behind head is "drift" that is only a missing migration |
 
 **Never check a row through an API endpoint.** Measured: the seeded-operation
 drift gate first compared migrations against `GET /integration/`, and a

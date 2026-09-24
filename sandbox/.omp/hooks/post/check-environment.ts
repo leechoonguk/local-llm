@@ -242,7 +242,7 @@ function checkBackendEnvironmentSync(): string[] {
   if (existsSync(composePath)) {
     const compose = readFileSync(composePath, "utf-8");
     const rootEnvAll = `${rootEnvContent}\n${rootEnvExampleContent}`;
-    // 트리 고유(2026-08-31): 이 sandbox 는 backend 도 키별 \${VAR} 매핑을 유지한다(포트를 compose 에
+    // 트리 고유: 이 sandbox 는 backend 도 키별 \${VAR} 매핑을 유지한다(포트를 compose 에
     // 고정한 축소 사본). fast-api-standard 쪽은 checkBackendEnvFile 이 env_file 매핑을 강제한다.
     issues.push(...checkComposeIndirection(compose, rootEnvAll));
   }
@@ -273,6 +273,112 @@ function checkBackendEnvironmentSync(): string[] {
     }
   }
 
+  // --- 8. The QA stack's env file is held to the same contract ---
+  issues.push(...checkQaEnvFile(rootEnvContent, rootEnvExampleContent));
+
+  return issues;
+}
+
+/**
+ * `.env.qa` is a second copy of the root contract, and nothing was reading it.
+ *
+ * The QA stack runs the same compose file under another project name, so its env
+ * file decides two things no test covers: whether the container starts at all,
+ * and whether it starts *next to* development instead of on top of it.
+ *
+ * - **Same keys as the root `.env`.** Compose appends `env_file` lists, so a key
+ *   the QA file omits keeps the development value silently - the QA backend
+ *   would talk to the QA database and hold a development secret. The reverse
+ *   (an extra key) is a setting nobody else has.
+ * - **Every published port differs.** Two stacks that publish the same host port
+ *   cannot both run; the second fails at `docker compose up` with a bind error,
+ *   which reads like a Docker problem and is a configuration one.
+ *
+ * The local file is git-ignored like `.env`, so the checked one is whichever
+ * exists: `.env.qa` on a machine that runs the stack, `.env.qa.example` in a
+ * fresh checkout. Neither present - no QA stack here - reports nothing.
+ */
+function checkQaEnvFile(rootEnvContent: string, rootEnvExampleContent: string): string[] {
+  const issues: string[] = [];
+  const qaPath = join(projectRoot, ".env.qa");
+  const qaExamplePath = join(projectRoot, ".env.qa.example");
+  const path = existsSync(qaPath) ? qaPath : qaExamplePath;
+  if (!existsSync(path)) return issues;
+  const label = path.endsWith(".example") ? ".env.qa.example" : ".env.qa";
+  const qaContent = readFileSync(path, "utf-8");
+  const reference = rootEnvContent || rootEnvExampleContent;
+  if (!reference) return issues;
+
+  const referenceKeys = new Set(extractEnvKeys(reference));
+  const qaKeys = new Set(extractEnvKeys(qaContent));
+  for (const key of referenceKeys) {
+    if (qaKeys.has(key)) continue;
+    issues.push(
+      `${label}: missing ${key} - compose appends env_file lists, so a key the QA file ` +
+        "omits keeps the development value and the two stacks share it",
+    );
+  }
+  for (const key of qaKeys) {
+    if (referenceKeys.has(key)) continue;
+    issues.push(`${label}: declares ${key}, which the root .env does not - the two carry one key set`);
+  }
+
+  for (const key of referenceKeys) {
+    if (!key.endsWith("_PORT") || !qaKeys.has(key)) continue;
+    const rootValue = extractEnvValue(reference, key);
+    const qaValue = extractEnvValue(qaContent, key);
+    if (rootValue === null || qaValue === null || rootValue !== qaValue) continue;
+    issues.push(
+      `${label}: ${key} is ${qaValue}, the same host port the development stack publishes - ` +
+        "the second stack to start fails to bind, so QA and development each own their ports",
+    );
+  }
+
+  // The project name is what separates the two stacks' volumes, and an env var
+  // outranks a compose file's `name:` - so stating it here is what survives a run
+  // that forgets the overlay. Equal names would put QA on the development
+  // database while every port still looked separate.
+  const rootProject = extractEnvValue(reference, "COMPOSE_PROJECT_NAME");
+  const qaProject = extractEnvValue(qaContent, "COMPOSE_PROJECT_NAME");
+  if (qaProject === null) {
+    issues.push(
+      `${label}: missing COMPOSE_PROJECT_NAME - compose would fall back to the compose ` +
+        "file's name, so a run without the QA overlay attaches the development volumes",
+    );
+  } else if (rootProject !== null && rootProject === qaProject) {
+    issues.push(
+      `${label}: COMPOSE_PROJECT_NAME is ${qaProject}, the development project - the two ` +
+        "stacks would share every volume, which is one database wearing two names",
+    );
+  }
+
+  if (!/^#\s*={5,}/m.test(qaContent)) {
+    issues.push(`${label} missing the "# ===..." header banner (root .env style)`);
+  }
+  if ((qaContent.match(/^#\s*---\s*.+?\s*---/gm) ?? []).length < 2) {
+    issues.push(`${label} missing "# --- <Section> ---" markers (need at least 2 sections, root .env style)`);
+  }
+  for (const m of qaContent.matchAll(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/gm)) {
+    if (/^\s*[A-Za-z_][A-Za-z0-9_]*\s=\s/m.test(m[0])) continue;
+    issues.push(`${label}: '${m[1]}' must use aligned 'KEY = value' form (space on both sides of =)`);
+  }
+
+  // The QA stack is published on every interface and lists a public address in
+  // ALLOWED_HOSTS, so its signing key is a real secret. The template's value is
+  // what every clone starts from, which makes it the one key an outsider can
+  // read - a token signed with it opens QA to anyone. Only the real file is
+  // held to this; the example is supposed to carry the placeholder.
+  if (!path.endsWith(".example") && existsSync(qaExamplePath)) {
+    const qaSecret = extractEnvValue(qaContent, "SECRET_KEY");
+    const exampleSecret = extractEnvValue(readFileSync(qaExamplePath, "utf-8"), "SECRET_KEY");
+    if (qaSecret !== null && (qaSecret === exampleSecret || /change-me/i.test(qaSecret) || qaSecret.length < 32)) {
+      issues.push(
+        `${label}: SECRET_KEY is the template's placeholder (or under 32 bytes) - QA is reachable ` +
+          "from outside and a token signed with a public key is a forged session; generate one " +
+          "(e.g. openssl rand -base64 48) and keep it out of git",
+      );
+    }
+  }
   return issues;
 }
 

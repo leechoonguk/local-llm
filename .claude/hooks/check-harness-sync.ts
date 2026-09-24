@@ -33,6 +33,23 @@ const TREE_ONLY: Record<string, string> = {
   ".omp/hooks/lib/hook-publish-consent.ts": "fas 정책 가드의 전용 lib",
   "SANDBOX.md": "sandbox 트리 설명 + 이 원장 자신",
   "decks/package-lock.json": "덱 빌드 로컬 산물",
+  // 2026-09-24: fas 의 배포·공급망 인프라는 피험자 트리에 두지 않는다 — QA/CI 스택(Jenkins)은 실서비스 운영이고,
+  // OSV 의존성 감사·이미지 다이제스트 감사는 네트워크에 기대 벤치 게이트의 hermetic 성을 깬다(c4e2d39 원칙).
+  "Jenkinsfile": "fas 배포 인프라: CI 파이프라인",
+  "ci": "fas 배포 인프라: Jenkins 이미지·JCasC·플러그인 핀",
+  "docker-compose.ci.yml": "fas 배포 인프라: CI 스택",
+  "docker-compose.qa.yml": "fas 배포 인프라: QA 스택 오버레이",
+  ".env.qa.example": "fas 배포 인프라: QA env 예시",
+  ".env.ci.example": "fas 배포 인프라: CI env 예시",
+  ".env.qa": "fas 로컬 QA env(gitignored)",
+  ".env.ci": "fas 로컬 CI env(gitignored)",
+  ".omp/skills/qa-deploy": "fas 배포 스킬",
+  ".omp/rules/ci-jenkins.md": "fas 배포 인프라 규칙",
+  ".omp/rules/dependency-audit.md": "fas 공급망 감사 규칙(OSV, 네트워크)",
+  ".omp/hooks/post/check-ci-jenkins.ts": "fas 배포 인프라 검사",
+  ".omp/hooks/post/check-dependency-audit.ts": "fas 공급망 감사(OSV, 네트워크)",
+  ".omp/hooks/lib/hook-audit-images.ts": "fas 이미지 다이제스트 감사(레지스트리, 네트워크)",
+  ".omp/hooks/lib/backend-batch-sequence.ts": "fas 운영: 라이브 배포에 원장 잡 순차 실행",
 };
 
 /** 값 자체가 트리별인 파일(전문 diff 허용 — 포트 대역·프로젝트명·생성물). */
@@ -41,20 +58,27 @@ const VALUE_OK = new Set([
   "backend/.env", "backend/.env.example", ".vscode/launch.json",
   "docker-compose.yml", "backend/.coverage",
   "decks/harness-rules/slides.md", "decks/omp-harness/slides.md",
+  "decks/harness-history/slides.md", "decks/ledger-measurements/slides.md",   // 2026-09-24: 새 덱 둘도 각자 재생성(sync 해시)
 ]);
 
 /** diff 줄 전부가 이 패턴에 매치해야 통과하는 파일 — 정책 어휘로 한정된 부분 분기. */
 const PATTERN_OK: Record<string, RegExp> = {
   ".omp/RULES.md": /commit|push|publish|consent|verify|`make|서브에이전트|슬롯|GPU|문맥 비용|에이전트|병렬|^$/i, // 발행 정책 + no-subagents 사유문(정책 동일, 근거만 트리별)
   ".omp/rules/root-git-workflow.md": /./, // 파일 전체가 발행 정책이다 — sandbox 판은 VCS 금지, fas 판은 동의 기반 발행
-  ".omp/rules/root-makefile.md": /commit|push|publish/i,
-  ".omp/rules/omp-hooks.md": /no-vcs-publish|publish-consent|verified-git|hook-publish-consent|RULES\.md/,
+  ".omp/rules/root-makefile.md": /commit|push|publish|qa-|ci-|jenkins|dependency-audit|audit-images|batch-sequence|`make verify`/i, // + fas 배포·공급망 타깃 행, verify 행은 그 타깃들을 뺀 목록(2026-09-24)
+  ".omp/rules/omp-hooks.md": /no-vcs-publish|publish-consent|verified-git|hook-publish-consent|RULES\.md|ci-jenkins|dependency-audit|audit-images/, // + fas 배포·공급망 훅 행(2026-09-24)
   ".omp/skills/commit/SKILL.md": /./, // 발행 스킬 자체가 정책이다 — 전문 트리별
   ".omp/hooks/pre/strict-no-subagents.ts": /./, // 정책 동일, 사유문(로컬 GPU 한 슬롯)만 트리별
+  ".omp/config.yml": /check-ci-jenkins|check-dependency-audit/,
+  ".omp/rules/omp-skills.md": /qa-deploy|ci-reset/, // fas 배포 스킬 행만 빠진다(2026-09-24) // disabledExtensions 에서 fas 배포·공급망 훅 두 줄만 빠진다(2026-09-24)
 };
 
 /** 루트 Makefile: 타깃 집합 차이는 정확히 fas 전용 {commit, push} 여야 한다. */
-const FAS_ONLY_TARGETS = new Set(["commit", "push"]);
+const FAS_ONLY_TARGETS = new Set(["commit", "push",
+  // 2026-09-24: fas 배포·공급망 인프라 타깃(원장 "배포·공급망 인프라" 행)
+  "qa-up", "qa-deploy", "qa-down", "qa-db-init", "qa-db-query", "qa-logs", "qa-ps", "qa-config",
+  "ci-up", "ci-down", "ci-reset", "ci-logs", "ci-ps", "ci-config",
+  "check-ci-jenkins", "check-dependency-audit", "audit-images", "batch-sequence"]);
 
 const EXCLUDES = [".git", "node_modules", ".venv", "__pycache__", ".pytest_cache",
   ".ruff_cache", "dist", "state", "slides.html", ".DS_Store", ".coverage",

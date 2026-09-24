@@ -61,9 +61,10 @@ Run from the project root.
 | `make db-query` | `make -C backend migrate` + `docker compose exec -T postgres psql -c` | Run SQL at head — `make db-query q="SELECT …"` |
 | `make logs` | `docker compose logs -f` | Tail logs from all services |
 | `make ps` | `docker compose ps` | List running services |
+| `make config` | `docker compose config --quiet` | Resolve and validate the compose configuration — the only command that interpolates every variable without touching a container |
 | `make clean` | `make -C backend clean` + `make -C frontend clean` | Remove backend and frontend caches |
 | `make docker-clean` | `docker compose down -v` | Stop services and remove volumes (data loss!) |
-| `make verify` | `check-backend-domain + check-backend-contract + check-backend-migrations + check-backend-table-design + check-backend-model-files + check-backend-repository-files + check-backend-service-injection + check-backend-auth + check-backend-exceptions + check-backend-api-http + check-backend-router-params + check-backend-naming + check-backend-transaction + check-backend-batch + check-backend-tests + check-backend-middleware + check-backend-app-setup + check-backend-core-config + check-backend-rate-limit + check-backend-background-tasks + check-backend-ownership + check-backend-audit-log + check-backend-redis-cache + check-backend-file-upload + check-backend-sse + check-backend-api-keys + check-backend-integration + check-backend-integration-configuration + check-environment + check-duplicate-blocks + check-code-layout + check-tooling + check-frontend-code + check-frontend-domain + check-frontend-api-layer + check-frontend-screens + check-frontend-design + check-frontend-components + check-frontend-routing + check-frontend-contract + check-frontend-types + check-frontend-i18n + check-ast-rules + check-omp-types + check-omp-hooks + check-omp-rules + check-omp-skills + check-makefiles + check-decks-sync + check-verify` | Run all OMP hooks + backend + frontend verify (hermetic — no running stack needed) |
+| `make verify` | `check-backend-domain + check-backend-contract + check-backend-migrations + check-backend-table-design + check-backend-model-files + check-backend-repository-files + check-backend-service-injection + check-backend-relations + check-backend-auth + check-backend-exceptions + check-backend-api-http + check-backend-router-params + check-backend-naming + check-backend-transaction + check-backend-batch + check-backend-ledger + check-backend-tests + check-backend-middleware + check-backend-app-setup + check-backend-core-config + check-backend-rate-limit + check-backend-background-tasks + check-backend-ownership + check-backend-audit-log + check-backend-redis-cache + check-backend-file-upload + check-backend-sse + check-backend-api-keys + check-backend-integration + check-backend-integration-configuration + check-environment + check-duplicate-blocks + check-code-layout + check-tooling + check-frontend-code + check-frontend-domain + check-frontend-api-layer + check-frontend-screens + check-frontend-design + check-frontend-components + check-frontend-routing + check-frontend-contract + check-frontend-types + check-frontend-i18n + check-product-areas + check-ast-rules + check-omp-types + check-omp-hooks + check-omp-rules + check-omp-skills + check-makefiles + check-decks-sync + check-verify` | Run all OMP hooks + backend + frontend verify (hermetic — no running stack needed) |
 | `make check-verify` | `node .omp/hooks/post/check-verify.ts` | Run backend + frontend verify (lint, typecheck, test/build) |
 | `make check-backend-domain` | `node .omp/hooks/post/check-backend-domain.ts` | Check backend CRUD domain structure |
 | `make check-backend-contract` | `node .omp/hooks/post/check-backend-contract.ts` | Check every backend surface is reachable from an entry point |
@@ -72,6 +73,7 @@ Run from the project root.
 | `make check-backend-model-files` | `node .omp/hooks/post/check-backend-model-files.ts` | Check model files — one table, one class, one file (`rule://backend-model-files`) |
 | `make check-backend-repository-files` | `node .omp/hooks/post/check-backend-repository-files.ts` | Check repository files — one repository, one table, named after it (`rule://backend-repository-files`) |
 | `make check-backend-service-injection` | `node .omp/hooks/post/check-backend-service-injection.ts` | Check no service imports another service (`rule://backend-service-injection`) |
+| `make check-backend-relations` | `node .omp/hooks/post/check-backend-relations.ts` | Check no ledger is an edge's endpoint, edges are viewonly with their own primaryjoin, no ForeignKey, no join by class (`rule://backend-relations`) |
 | `make check-backend-auth` | `node .omp/hooks/post/check-backend-auth.ts` | Check backend auth conventions |
 | `make check-backend-exceptions` | `node .omp/hooks/post/check-backend-exceptions.ts` | Check core exception policy (raise only core exceptions) |
 | `make check-backend-api-http` | `node .omp/hooks/post/check-backend-api-http.ts` | Check router ↔ .http sync |
@@ -79,6 +81,7 @@ Run from the project root.
 | `make check-backend-naming` | `node .omp/hooks/post/check-backend-naming.ts` | Check backend naming conventions |
 | `make check-backend-transaction` | `node .omp/hooks/post/check-backend-transaction.ts` | Check backend transaction conventions |
 | `make check-backend-batch` | `node .omp/hooks/post/check-backend-batch.ts` | Check backend batch job conventions |
+| `make check-backend-ledger` | `node .omp/hooks/post/check-backend-ledger.ts` | Check backend ledger feeds and derived tables |
 | `make check-backend-tests` | `node .omp/hooks/post/check-backend-tests.ts` | Check backend test standard (per-domain, 10 cases, auth, conftest) |
 | `make check-backend-middleware` | `node .omp/hooks/post/check-backend-middleware.ts` | Check backend middleware (CORS, security headers, request ID, logging) |
 | `make check-backend-app-setup` | `node .omp/hooks/post/check-backend-app-setup.ts` | Check backend app setup (health, OpenAPI metadata, /api/v1) |
@@ -105,6 +108,7 @@ Run from the project root.
 | `make check-frontend-contract` | `node .omp/hooks/post/check-frontend-contract.ts` | Check frontend types/endpoints against the backend schemas/routers |
 | `make check-frontend-types` | `node .omp/hooks/post/check-frontend-types.ts` | Check request/response types, nullability, optionality, verbs and query params |
 | `make check-frontend-i18n` | `node .omp/hooks/post/check-frontend-i18n.ts` | Check locale parity, referenced keys and hardcoded text |
+| `make check-product-areas` | `node .omp/hooks/post/check-product-areas.ts` | Check each nav area's screen pattern (record / operations / derived) |
 | `make check-frontend-design` | `node .omp/hooks/post/check-frontend-design.ts` | Check the design system (theme tokens, metrics, component vocabulary) |
 | `make check-frontend-components` | `node .omp/hooks/post/check-frontend-components.ts` | Check component boundaries — no shape written twice (`rule://frontend-components`) |
 | `make check-ast-rules` | `node .omp/hooks/post/check-ast-rules.ts` | Prove every ast-grep rule fires (valid/invalid cases) |

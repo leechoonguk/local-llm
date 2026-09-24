@@ -30,8 +30,9 @@ export function writtenPaths(toolName: string, input: Record<string, unknown>): 
     const path = String(input.path ?? "").replace(/#[0-9A-Fa-f]{4}$/, "");
     return path === "" ? [] : [path];
   }
-  // pi-hashline-edit-pro(2026-09-01): 플러그인 편집 툴은 전부 평문 input.path 를 싣는다.
+  // pi-hashline-edit-pro: 플러그인 편집 툴은 전부 평문 input.path 를 싣는다.
   // 이 분기가 없으면 replace/insert 편집이 모든 pre 가드(마이그레이션 불변·구조·additive)를 우회한다 — 실측.
+  // 플러그인은 omp 전역 링크라 fas 세션에도 같은 툴이 실린다 — 두 트리 공통(프루프 F7·M7a~c 가 지킨다).
   if (toolName === "replace" || toolName === "insert" || toolName === "undo_last_change") {
     const path = String(input.path ?? "");
     return path === "" ? [] : [path];

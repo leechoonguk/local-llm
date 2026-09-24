@@ -286,6 +286,35 @@ export function parseServiceShapeRules(source: string): Set<string> {
 }
 
 /**
+ * Field names whose **shape** the schema parses in Python rather than declaring
+ * in a `pattern=`.
+ *
+ * A `@field_validator` that hands the value to a parser is the schema declaring
+ * a shape: `cron` goes through `validated_cron`, and a malformed expression is a
+ * 422 from the model that caps its length. Reading only `pattern=` made that
+ * invisible and reported the batch dialog as rejecting input the API accepts —
+ * input the API refuses.
+ *
+ * A validator that checks **membership** is not a shape and is deliberately not
+ * read: `code` must name a job in `BATCH_JOBS`, which no regex can mirror and no
+ * form should try to. So the body must reach a parser — a `validated_*` call, a
+ * `*_PATTERN` match, or a URL split — before the field counts as shaped.
+ */
+export function parseSchemaValidatorFields(source: string): Set<string> {
+  const fields = new Set<string>();
+  const decorators = [...source.matchAll(/@field_validator\(\s*["'](\w+)["']/g)];
+  decorators.forEach((match: RegExpMatchArray, index: number) => {
+    const from = match.index ?? 0;
+    const to = decorators[index + 1]?.index ?? source.length;
+    const body = source.slice(from, to);
+    if (/\bvalidated_\w+\(|[A-Z][A-Z0-9_]*_PATTERN\b|\.fullmatch\(|\burlsplit\(/.test(body)) {
+      fields.add(match[1]);
+    }
+  });
+  return fields;
+}
+
+/**
  * Whether the server refuses a body that omits this field.
  *
  * Required is the **absence of a default**, which is not the same as the absence
@@ -361,6 +390,40 @@ export function normalisePath(path: string): string {
 }
 
 export function readBackendModule(projectRoot: string, ...segments: string[]): string | null {
+  const source = readBackendModuleRaw(projectRoot, ...segments);
+  return source === null ? null : expandAnnotatedAliases(projectRoot, source);
+}
+
+/**
+ * A field typed with an imported `Annotated` alias (`name: MfdsText = None`,
+ * `MfdsText = Annotated[str | None, BeforeValidator(...)]` in `schemas/mfds.py`)
+ * is, on the wire, its inner type: the validator runs on the way in and the
+ * response carries a `str | None`. Substitute the inner type into every
+ * annotation so the field parsers read what the client receives. The alias
+ * module is found from the import line, never named here; an alias the module
+ * does not declare as `Annotated[...]` is left as written and reported by the
+ * parser as unread, which is the honest answer.
+ */
+function expandAnnotatedAliases(projectRoot: string, source: string): string {
+  const aliases = new Map<string, string>();
+  for (const hit of source.matchAll(/^from app\.((?:\w+\.)*\w+) import (\([^)]*\)|[^\n]+)$/gm)) {
+    const modulePath = join(projectRoot, "backend", "app", ...hit[1].split("."));
+    if (!existsSync(`${modulePath}.py`)) continue; // existence-ok: a package import, not an alias module
+    const module = readFileSync(`${modulePath}.py`, "utf-8");
+    for (const name of hit[2].replace(/[()]/g, "").split(",").map((n: string) => n.trim())) {
+      if (!/^\w+$/.test(name)) continue;
+      const declared = new RegExp(`^${name}\\s*=\\s*Annotated\\[\\s*([^,]+?)\\s*,`, "m").exec(module);
+      if (declared !== null) aliases.set(name, declared[1]);
+    }
+  }
+  if (aliases.size === 0) return source;
+  return source.replace(/^(\s+\w+\s*:\s*)(\w+)(\s*(?:=|$))/gm, (line: string, head: string, type: string, tail: string) => {
+    const inner = aliases.get(type);
+    return inner === undefined ? line : `${head}${inner}${tail}`;
+  });
+}
+
+function readBackendModuleRaw(projectRoot: string, ...segments: string[]): string | null {
   const path = join(projectRoot, "backend", "app", ...segments);
   if (existsSync(path)) return readFileSync(path, "utf-8");
 

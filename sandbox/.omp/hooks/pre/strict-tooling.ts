@@ -8,7 +8,7 @@ import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
  * bad path is fix-forward work, and blocking its `edit` strands it there with
  * nothing but the post check to nag about it. The one `edit` form that DOES
  * land a file somewhere new is `MV` (a patch move target), so that is checked
- * too (fas 병합, 2026-08-31). The policy itself:
+ * too (fas 병합). The policy itself:
  *
  *   - Python is application code only — `backend/app`, `backend/tests`,
  *     `backend/alembic`. A Python script anywhere else is automation, and
@@ -33,7 +33,7 @@ const projectRoot = `${process.cwd()}/`;
 
 export default function strictTooling(pi: ExtensionAPI): void {
   pi.on("tool_call", (event: { toolName: string; input: Record<string, unknown> }, _ctx: unknown) => {
-    // 중복 경로 오타를 먼저 짚는다. 전수 점검(2026-08-30): `.py` 차단 9건 중 6건이
+    // 중복 경로 오타를 먼저 짚는다. 전수 점검: `.py` 차단 9건 중 6건이
     // `backend/backend/app/...`·`sandbox/sandbox/...` 였는데, 안내는 "파이썬 스크립트 금지 — TypeScript 로
     // 옮기라"였다. 모델은 FastAPI 서비스를 TypeScript 로 다시 쓰라는 말로 읽고 같은 경로를 재시도했다.
     {

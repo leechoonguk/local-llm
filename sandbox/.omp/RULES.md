@@ -29,7 +29,6 @@ existing `with`/`try` wrapper while keeping the code it wraps.
 
 Run the verification after wiring each layer or file group, not only at the
 end — failures discovered early are cheaper than one pile at the finish.
-
 Before declaring work done, run the full `make verify` and confirm it is green.
 
 ## Working pattern

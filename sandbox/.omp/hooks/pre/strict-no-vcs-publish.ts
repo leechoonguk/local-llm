@@ -12,13 +12,13 @@
 
 const GIT_PUBLISH = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:commit|push)\b/;
 
-// 벤치 셀에서는 VCS 로 과제 산출물을 **되살리는** 것도 막는다. 실측 2026-08-29(harnessv2 integration):
+// 벤치 셀에서는 VCS 로 과제 산출물을 **되살리는** 것도 막는다. 실측(harnessv2 integration):
 // 피험자가 Mode A 로 지워진 참조 구현을 `git checkout HEAD -- …` 로 복원하고 "make verify 통과"로
 // 마쳤다 — 1248초, writes 2, 산출물 0/6. 게이트는 초록이었지만 측정된 것은 아무것도 없다.
 // 인터랙티브에서는 정당한 작업이므로 셀 모드에서만 막는다(BENCH_CELL=1, 러너가 주입).
 // 셀에서는 **읽기 경로로도** 정답에 닿을 수 없다. sandbox 에는 .git 이 없어 git 이 상위 레포로 올라가므로
 // `git show HEAD:<경로>`·`git log -p`·`git diff HEAD` 가 지워진 참조 구현을 그대로 되살려 보여준다
-// (2026-08-30 감사에서 열려 있음이 확인됐다 — 복원 차단만으로는 부족하다).
+// (감사에서 열려 있음이 확인됐다 — 복원 차단만으로는 부족하다).
 const GIT_READ = /(?:^|[&|;()\n'"]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:show|diff|cat-file|blame|grep)\b|git\s+log\b[^\n]*\s-p\b/;
 const GIT_RESTORE = /(?:^|[&|;()]\s*)(?:sudo\s+)?git(?:\s+-\S+(?:\s+\S+)?)*\s+(?:checkout|restore|stash|revert|reset)\b/;
 

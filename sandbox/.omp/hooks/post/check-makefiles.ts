@@ -45,7 +45,7 @@ const makefileRules: Array<{ ruleFile: string; makefilePath: string; label: stri
 ];
 
 /**
- * 하네스 텍스트가 부르는 `make <target>` 은 실재해야 한다 (2026-09-01).
+ * 하네스 텍스트가 부르는 `make <target>` 은 실재해야 한다.
  *
  * 실측된 충돌 부류 "실행 불가능한 지시": 마감 게이트가 제거된 `make verify-fast` 를 지시했고,
  * fas 의 문서가 제거된 `make continuity-report` 를 안내했다 — 둘 다 사람이 우연히 발견했다.

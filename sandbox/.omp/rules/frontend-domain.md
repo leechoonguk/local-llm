@@ -30,7 +30,7 @@ table instead of per CRUD resource:
 | service | `list<Table>s()` only - `create`/`update`/`remove` are refused | five methods |
 | hooks | `use<Domain><Table>List` - no `useCreate*`/`useUpdate*`/`useDelete*` | five hooks |
 | query keys | `<domain><Table>Keys` per table | `<domain>Keys` |
-| section | `<Domain><Table>LedgerList.tsx` - no `FormDialog` | `List` + `FormDialog` |
+| section | `<Domain><Table>DerivedList.tsx` + `<Domain><Table>DetailDialog.tsx` - no `FormDialog` | `List` + `FormDialog` |
 | page | `<Domain><Table>Page.tsx` | `<Domain>Page.tsx` |
 
 The rows are a nightly sync's copy of the provider's; every refused layer is a
