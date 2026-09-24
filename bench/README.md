@@ -92,6 +92,7 @@
 
 원본: `2026-08-23.s1.ollama-qwen3.6-coder.json`(s1 summary), `2026-08-24.s2.llm-bench-runner.json`(러너 `results.json` 7행 — 08-24 매트릭스·oMLX·3.8 재시도 포함, 누적 기록 수정 `1350c98` 이전 셀은 없음).
 README(루트)에 있는 08-20 oMLX vs Ollama 단발 비교, 3.8 양자화 속도, `reasoning_effort`/`thinking_budget` 실측은 벤치 캠페인이 아니라 설정 실측이라 여기 두지 않는다.
+| [`2026-09-24.s1.k2-horizon.md`](2026-09-24.s1.k2-horizon.md) | oMLX 0.7.0.dev4 업그레이드 + 신규 후보 K2-Horizon-MoVA-36B-A4B(oQ4e, 스토어 파일 2종 수정 후 로드) 내장 속도 벤치 n=1 — 기능 스모크 전부 통과하나 처리량이 3.6 의 0.3~0.5×(4k 생성 38.4 vs 73.9, 32k 15.1 vs 55.3 — 32k 는 wired 한도 복구 후에도 15.1 로 동일해 구조적, **K2 기각·삭제**). 3.8 재기각(디코드 15.0, ANE 튜닝 프리필 +54.5% 뿐). **MTP 계열 재검증 전부 기각**: vlm_mtp+budget 은 mRoPE 게이트 거절, DFlash 는 budget 무시, 네이티브 Lightning MTP(Jundot oQ4e-mtp)는 budget 과 공존하나 M4 Pro 에서 −19%/−13%(수락 45~63%·루프세금 1.32). `reasoning_parser: qwen` → `qwen_3_5` 이관 |
 
 ## 종합 (2026-08-24 기준, 셀당 n=1 — 전부 잠정)
 

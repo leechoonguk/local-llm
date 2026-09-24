@@ -26,9 +26,29 @@ app_managed() {
   return 1
 }
 
+# GPU wired 캡(2026-09-24): 부팅 지속 대신 "띄울 때 올린다". 값은 omlx/wired-limit.sh(티어 계산, 단일 진실),
+# 올리는 권한은 root 사본 /usr/local/sbin/omlx-wired-limit + sudoers(NOPASSWD, 그 경로만) — 설치는 omlx/install.sh.
+# oMLX 는 캡을 기동 시 읽어 캐시하므로(process_memory_enforcer), 서버가 이미 떠 있는데 지금 값을 올렸다면 재시작해야 먹는다.
+WL_SRC="$(cd "$(dirname "$0")" && pwd)/wired-limit.sh"
+WL_BIN=/usr/local/sbin/omlx-wired-limit
+WIRED_WANT=$(bash "$WL_SRC" tier 2>/dev/null || echo 0)
+WIRED_CUR=$(/usr/sbin/sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)
+WIRED_RAISED=0
+if [ "$WIRED_WANT" != "0" ] && [ "$WIRED_CUR" != "$WIRED_WANT" ]; then
+  if [ -x "$WL_BIN" ] && sudo -n "$WL_BIN" up 2>/dev/null; then
+    WIRED_RAISED=1
+  else
+    echo "omlx: 경고 — iogpu.wired_limit_mb=$WIRED_CUR (티어 $WIRED_WANT). 래퍼/sudoers 미설치 — 서버는 Apple 기본 캡으로 돈다. 설치: bash omlx/install.sh (sudo 1회)" >&2
+  fi
+fi
+
 if [ "${1:-}" != "--restart" ] && alive && app_managed; then
-  echo "omlx: 앱 소유 서버 가동 중 (uptime $(curl -s --max-time 3 $URL/api/status | /usr/bin/sed -n 's/.*uptime_seconds":\([0-9]*\).*/\1/p')s)"
-  exit 0
+  if [ "$WIRED_RAISED" = "1" ]; then
+    echo "omlx: wired 캡을 방금 올렸다($WIRED_CUR -> $WIRED_WANT) — 서버가 기동 시 캐시한 캡을 갱신하도록 재시작한다"
+  else
+    echo "omlx: 앱 소유 서버 가동 중 (uptime $(curl -s --max-time 3 $URL/api/status | /usr/bin/sed -n 's/.*uptime_seconds":\([0-9]*\).*/\1/p')s, wired $WIRED_CUR)"
+    exit 0
+  fi
 fi
 
 echo "omlx: 교정 — 서버·앱 재시작(auto_start_on_launch=true 로 앱이 자식 서버를 띄운다)"

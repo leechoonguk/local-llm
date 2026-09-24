@@ -3,7 +3,7 @@
  *
  * 규칙: .claude/rules/omlx-config.md
  *  - 두 JSON 모두 version 1. 설정마다 max_context_window > max_tokens(정수)
- *  - Qwen 계열은 enable_thinking 이면 reasoning_parser: "qwen"(없으면 CoT 가 content 에 섞임).
+ *  - Qwen 계열은 enable_thinking 이면 reasoning_parser: "qwen_3_5" — 0.7.0.dev4 의 xgrammar 레지스트리 값(qwen_3_5/qwen_3/qwen_3_coder). 옛 "qwen" 은 2026-09-24 부로 미지 값이라 admin PUT 이 422 로 거부한다(파일 로드는 통과하지만 구조화 출력 문법에서 실패).
  *    다른 계열은 서버가 계열별 출력 파서를 스스로 붙이므로(로그 `Output parser detected: <family>`)
  *    파서 이름을 요구하지 않는다 — 값이 있다면 비어 있지 않은 문자열이어야 한다
  *  - MTP 를 죽이는 값 금지: repetition_penalty != 1, presence_penalty != 0, guided_grammar
@@ -97,7 +97,7 @@ function checkSettings(tag: string, s: Rec): Issue[] {
   // Gemma 4 는 서버가 gemma4 출력 파서를 자동 감지하고(로그로 확인) xgrammar 0.2.3 은 `gemma_4`
   // 태그 등록을 주석 처리해 뒀다 — 이름을 넣을 곳이 없다. 실측으로 reasoning_content 는 분리된다.
   const qwenFamily = /^Qwen/i.test(tag.split(/[ :]/)[1] ?? tag);
-  if (s.enable_thinking === true && qwenFamily && s.reasoning_parser !== "qwen") out.push(`${tag}: Qwen 계열이 enable_thinking 인데 reasoning_parser: "qwen" 이 없다`);
+  if (s.enable_thinking === true && qwenFamily && s.reasoning_parser !== "qwen_3_5") out.push(`${tag}: Qwen 계열이 enable_thinking 인데 reasoning_parser: "qwen_3_5" 가 아니다(옛 "qwen" 은 0.7.0.dev4 에서 미지 값 — 2026-09-24)`);
   if ("reasoning_parser" in s && s.reasoning_parser !== null && typeof s.reasoning_parser !== "string") out.push(`${tag}: reasoning_parser 는 문자열이어야 한다`);
   for (const [k, v] of NEUTRAL) if (k in s && s[k] !== v) out.push(`${tag}: ${k}=${String(s[k])} — 비중립값은 MTP 를 끈다`);
   if ("guided_grammar" in s) out.push(`${tag}: guided_grammar 는 MTP 를 끈다`);

@@ -103,6 +103,18 @@ function checkOmlx(root: string): Issue[] {
       if (cur !== val) issues.push(`oMLX: ${dir}/settings.json ${sec}.${key} = ${JSON.stringify(cur)}, install.sh 는 ${JSON.stringify(val)}`);
     }
   }
+  // GPU wired 캡 래퍼(2026-09-24): 레포 omlx/wired-limit.sh 의 root 사본이 /usr/local/sbin 에 있고 내용이 같아야 한다.
+  // 값 자체는 서버가 떠 있을 때만 본다 — 관문(ensure-app-server.sh)이 기동 시 올리므로, 서버가 살아 있는데
+  // 티어와 다르면 래퍼 미설치·sudoers 누락·관문 우회 중 하나다. (부팅 지속은 설계상 없다 — 캡은 재부팅에 리셋)
+  const wlSrc = read(root, "omlx/wired-limit.sh"), wlBin = "/usr/local/sbin/omlx-wired-limit";
+  if (wlSrc !== null) {
+    if (!existsSync(wlBin)) issues.push(`oMLX: ${wlBin} 이 없다 — 래퍼 미설치. bash omlx/install.sh (sudo 1회) 로 설치한다`);
+    else if (readFileSync(wlBin, "utf-8") !== wlSrc) issues.push(`oMLX: ${wlBin} 이 omlx/wired-limit.sh 와 다르다 — bash omlx/install.sh 로 갱신`);
+    const tier = Number(shOut("bash", [join(root, "omlx/wired-limit.sh"), "tier"]) || 0);
+    const cur = Number(shOut("sysctl", ["-n", "iogpu.wired_limit_mb"]) || 0);
+    if (tier > 0 && cur !== tier && api("/v1/models") !== null)
+      issues.push(`oMLX: 서버가 떠 있는데 iogpu.wired_limit_mb = ${cur}, 티어는 ${tier} — bash omlx/ensure-app-server.sh --restart (래퍼·sudoers 가 있어야 올라간다)`);
+  }
   const hub = join(homedir(), ".cache", "huggingface", "hub");
   const models = ((jsonOf(read(root, "omlx/model_settings.json"))?.models ?? {}) as Rec);
   for (const [name, raw] of Object.entries(models)) {
@@ -118,6 +130,10 @@ function checkOmlx(root: string): Issue[] {
     }
   }
   return issues;
+}
+
+function shOut(cmd: string, args: string[]): string {
+  try { return execFileSync(cmd, args, { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { return ""; }
 }
 
 function hostRamGb(): number {

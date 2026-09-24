@@ -326,7 +326,11 @@ function residency(model: string): Record<string, unknown> | null {
     const aux = omlxId(AUX_MODEL).split(":")[0];
     // 예상 로드: 대상 코더, 그 드래프터(...-MTP-...), 4B aux 뿐. 그 밖의 코더가 있으면 이전 셀 잔재 = 오염.
     const unexpected = loaded.filter((m) => m !== coder && m !== aux && !/MTP/.test(m));
-    return { server: "omlx", loaded_models: loaded, coder, aux, ok: loaded.includes(coder) && unexpected.length === 0 };
+    // GPU wired 캡(2026-09-24): 재부팅으로 0 이 된 채 잰 셀은 메모리 상한이 다르다 — 값과 티어 일치를 행에 남긴다.
+    const wiredMb = Number(sh("sysctl", ["-n", "iogpu.wired_limit_mb"], WORKSPACE).out.trim() || 0);
+    const wiredTier = Number(sh("bash", ["omlx/wired-limit.sh", "tier"], WORKSPACE).out.trim() || 0);
+    return { server: "omlx", loaded_models: loaded, coder, aux, wired_limit_mb: wiredMb, wired_tier_mb: wiredTier,
+      wired_ok: wiredTier === 0 || wiredMb === wiredTier, ok: loaded.includes(coder) && unexpected.length === 0 };
   }
   if (model.startsWith("ollama/")) {
     const coder = model.replace(/^ollama\//, "").replace(/:latest$/, "");

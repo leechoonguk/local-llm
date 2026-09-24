@@ -18,7 +18,7 @@ curl -s -X POST http://127.0.0.1:9090/admin/api/hf/download \
 드래프터도 같은 방식으로. 게이트 모델이면 `hf_token` 필드 추가. (앱 UI 다운로드와 같은 경로다.)
 
 ## 2. 레시피 — `omlx/model_settings.json`
-키는 **짧은 id**(`<name>`). 코더는 `max_context_window 131072 / max_tokens 8192`, aux 는 `8192/1024`, 어드바이저는 `32768/4096`(48GB 캡). 샘플링은 모델 카드 권장값(출처 주석), `reasoning_parser: qwen` 필수, MTP 는 `vlm_mtp_enabled` + `vlm_mtp_draft_model: "<드래프터 짧은 id>"`. 3.8 계열은 `chat_template_kwargs: {"reasoning_effort": "medium"}`.
+키는 **짧은 id**(`<name>`). 코더는 `max_context_window 131072 / max_tokens 8192`, aux 는 `8192/1024`, 어드바이저는 `32768/4096`(48GB 캡). 샘플링은 모델 카드 권장값(출처 주석), `reasoning_parser: qwen_3_5` 필수(0.7.0.dev4 xgrammar 이름 — 옛 `qwen` 은 PUT 422), MTP 는 `vlm_mtp_enabled` + `vlm_mtp_draft_model: "<드래프터 짧은 id>"`. 3.8 계열은 `chat_template_kwargs: {"reasoning_effort": "medium"}`.
 
 ## 3. 프로파일 — `omlx/model_profiles.json` (필요 시)
 별칭 프로파일이 필요한 모델만(현재 35B `:coder`, 3.8-27B `:coding`). 별칭은 **default 모델만 서빙에 노출**된다 — 실험 모델은 bare id 로 쓰고 프로파일은 만들지 않는다.

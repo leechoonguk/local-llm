@@ -21,7 +21,7 @@ echo "서빙: $(curl -s "$URL/v1/models" | python3 -c 'import json,sys; print(",
 PID=$(lsof -nP -iTCP:9090 -sTCP:LISTEN -t 2>/dev/null | head -1)
 [ -n "$PID" ] && echo "uptime: $(ps -o etime= -p "$PID" | tr -d ' ')"
 
-BEFORE=$(grep -c "vlm_mtp stats" "$LOG" 2>/dev/null || echo 0)
+BEFORE=$(grep -c "vlm_mtp stats" "$LOG" 2>/dev/null || true)
 
 RESP=$(curl -s "$URL/v1/chat/completions" -H 'Content-Type: application/json' \
   -d "{\"model\":\"$MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Explain in two sentences why binary search is O(log n).\"}],\"max_tokens\":2000}")
@@ -38,7 +38,7 @@ if not c:
 print(f"  응답 {len(c)}자 | reasoning {len(r)}자(분리 {bool(r)})")
 ' || exit 1
 
-AFTER=$(grep -c "vlm_mtp stats" "$LOG" 2>/dev/null || echo 0)
+AFTER=$(grep -c "vlm_mtp stats" "$LOG" 2>/dev/null || true)
 if [ "$AFTER" -gt "$BEFORE" ]; then
   echo "  MTP 발화 ✓ $(grep 'vlm_mtp stats' "$LOG" | tail -1 | grep -o 'accepted=[0-9/]* ([0-9.]*%)')"
 else

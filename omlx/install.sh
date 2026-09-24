@@ -1,10 +1,10 @@
 #!/bin/bash
 # oMLX 설치·설정 동기화 스크립트.
 # ollama/install.sh 와 같은 역할을 oMLX 쪽에서 한다:
-#  - brew tap jundot/omlx 에서 oMLX 설치 (Qwen3.5/3.6 가속 커널 포함)
-#  - 모델 3개를 HF 캐시로 다운로드 (oMLX 는 ~/.cache/huggingface/hub 를 자동 발견한다)
+#  - 서버는 GUI 앱(/Applications/oMLX.app, DMG)이다 — brew 포뮬러·jundot/omlx 탭은 2026-08-27 폐지, 여기서 설치하지 않는다
+#    (앱이 없으면 아래에서 안내하고 멈춘다). 모델은 앱 스토어(~/.omlx/models)에서 admin API 로 관리
 #  - 이 디렉터리의 model_settings.json / model_profiles.json 을 ~/.omlx/ 에 설치
-#  - GPU wired 한도(iogpu.wired_limit_mb)를 RAM 티어에 맞춰 부팅 지속으로 설정(sudo)
+#  - GPU wired 캡 래퍼(omlx/wired-limit.sh 의 root 사본 + sudoers) 설치 — 값은 관문이 띄울 때 올린다(sudo 1회)
 #  - 서비스 잔재(brew services, 예전 LaunchAgent) 정리 후 앱만 실행(서버 기동은 사용자가 메뉴바 Start)
 #
 # 전역 ~/.omlx/settings.json 은 여기서 관리하지 않는다 - oMLX 가 자기 값(auth
@@ -16,27 +16,34 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if ! brew list omlx >/dev/null 2>&1; then
-  # --with-custom-kernel: Qwen3.5/3.6(우리 코더·aux 둘 다) 네이티브 커널 가속
-  brew install jundot/omlx/omlx --with-custom-kernel
+# 2026-09-24: 옛 `brew install jundot/omlx/omlx --with-custom-kernel` 블록 제거 — 탭·포뮬러가 사라져 brew 가
+# "invalid option" 으로 죽으면서 set -e 가 스크립트 전체를 중단시켰다(실측). 앱 유무만 확인한다.
+if [[ ! -d /Applications/oMLX.app ]]; then
+  echo "oMLX.app 이 없다 — https://github.com/jundot/omlx/releases 의 DMG(macos26-27) 를 /Applications 에 설치한 뒤 다시 실행" >&2
+  exit 1
 fi
-
-HF=/opt/homebrew/opt/omlx/libexec/bin/hf
 # 4bit(+MTP-4bit)는 2026-08-27 기각·캐시 삭제 — 웜 70.2 tok/s 로 5bit 동급 이하, 45m TO+회귀 1(bench/2026-08-27.s2.coder-4bit.md)
 # 모든 모델은 oMLX 앱 다운로드로 관리한다(~/.omlx/models, 짧은 서빙 id — 2026-08-28 전면 포팅,
 # HF 캐시 제거·hf CLI 경로 폐지, 다운로드는 POST /admin/api/hf/download). 관리 대상:
-# Qwen3.6-35B-A3B-5bit + Qwen3.6-35B-A3B-MTP-5bit(드래프터), Qwen3.5-4B-4bit + Qwen3.5-4B-MTP-4bit(aux),
-# Qwen3.8-27B-4bit(선택 코더, 2026-08-31 사용자 요청으로 재등록, 15GB) + Qwen3.8-27B-MTP-4bit(드래프터 253MB,
-#   2026-09-02 F3 프로브용 다운로드 — 3.8 은 nothink+MTP 로도 17.5 tok/s 상한이라 기각, 드래프터는 숨김 유지),
-# gemma-4-26b-a4b-it-5bit(선택 코더, 2026-08-31 — MoE 26B/활성 4B, 18GB, 드래프터 없음).
-# **`-it` 판이어야 한다**: 베이스 `gemma-4-26b-a4b-5bit`(+4bit)는 대화 형식·stop 토큰이 없어
-# 프롬프트를 되풀이한다(실측 2026-08-31). 그래서 베이스 두 벌(5bit 17GB + 4bit 15GB)은
-# 같은 날 스토어에서 삭제했다 — `DELETE /admin/api/hf/models/<id>`.
+# Qwen3.6-35B-A3B-5bit(코더, 드래프터 없음), Qwen3.5-4B-4bit + Qwen3.5-4B-MTP-4bit(aux — MTP 실동 45.3 tok/s),
+# 2026-09-24 스토어 정리(사용자 결정, DELETE /admin/api/hf/models/<id>): Qwen3.8-27B-4bit(15GB)+MTP-4bit+DFlash2 —
+#   dense 27B 는 M4 Pro 에서 디코드 15 tok/s 상한(bench/2026-09-24.s1.k2-horizon.md), gemma-4-26b-a4b-it-5bit(17GB) —
+#   8/25 로스터 파괴적·이후 미사용, Qwen3.6-35B-A3B-MTP-5bit·Qwen3.6-35B-A3B-DFlash — MTP 계열 전부 재기각(같은 기록 13~21행),
+#   Jundot/Qwen3.6-35B-A3B-oQ4e-mtp(20GB, 네이티브 MTP 실험용·레포 미등록) — 순손실 −19%.
+# K2-Horizon-MoVA-36B-A4B-oQ4e(후보였다가 **같은 날 기각·삭제** — 32k 생성 15.1 tok/s, MoVA 긴 컨텍스트 비용. MBZUAI IFM 9/3 공개, MoE 36B/활성 4B, oQ4e 21GB.
+#   oMLX 0.7.0.dev1+ 가 k2_horizon 을 네이티브 지원(reasoning·tool 파서는 model_type 으로 자동 선택, reasoning_parser 키 불필요)).
+#   mlx-community oQ4e 는 그대로는 안 올라간다(2026-09-24 실측): 전문가 키가 `mlp.switch_mlp.*`(리포 동봉 모듈 이름)라
+#   내장 모듈(`mlp.experts.*`)과 어긋나고, `self_attn.v_router` 가 4~5bit 로 양자화돼 있어 "routers require BF16" 으로
+#   죽는다. `trust_remote_code` 로 동봉 모듈을 돌리는 대신 파일을 고쳤다 — 앱 인터프리터(~/.omlx/bin/omlx-cluster-python)로
+#   (1) 샤드 5개의 switch_mlp 키를 experts 로 리네임 + 인덱스 갱신, (2) v_router weight/scales/biases 를 mx.dequantize 로
+#   BF16 복원 + config quantization 의 해당 경로를 false 로 — `omlx/fix-k2-horizon-checkpoint.py`(멱등). 재다운로드하면 다시 돌린다.
+# Gemma 를 되살린다면 **`-it` 판이어야 한다**: 베이스 `gemma-4-26b-a4b-5bit`(+4bit)는 대화 형식·stop 토큰이 없어
+# 프롬프트를 되풀이한다(실측 2026-08-31).
 #
-# 서빙 목록에서 숨긴 것들(`is_hidden: true`, 2026-08-31) — omp 가 discovery 로 `/v1/models` 를
-# 그대로 읽으므로, 채팅으로 부를 수 없는 것은 서버가 아예 안 내보내게 한다:
-#   Qwen3.6-35B-A3B-MTP-5bit, Qwen3.5-4B-MTP-4bit, Qwen3.8-27B-MTP-4bit  - MTP 드래프터(단독 호출 대상 아님)
-#   Qwen3.6-35B-A3B-DFlash, Qwen3.8-27B-DFlash2    - DFlash 사이드카
+# 서빙 목록에서 숨긴 것(`is_hidden: true`) — omp 가 discovery 로 `/v1/models` 를 그대로 읽으므로,
+# 채팅으로 부를 수 없는 것은 서버가 아예 안 내보내게 한다:
+#   Qwen3.5-4B-MTP-4bit  - aux MTP 드래프터(단독 호출 대상 아님)
+#   (0.7.0.dev4 는 z-lab/… 처럼 org 가 다른 스토어 항목을 `z-lab--<name>` id 로 내보낸다 — 숨김 키가 짧은 이름이면 안 맞아 노출됐다, 2026-09-24 실측. 해당 사이드카는 삭제)
 # 숨김은 파일에 직접 써 넣으면 앱이 무시한다 - `PUT /admin/api/models/<id>/settings` 로 적용한다.
 # 9B·3.8 실험 모델은 2026-08-28 어드바이저 매트릭스 기각과 함께 삭제(bench/2026-08-28.s2.advmatrix.md).
 # 9B 코더·3.8 어드바이저(+각 MTP 드래프터)는 oMLX 앱 다운로드로 관리한다(~/.omlx/models,
@@ -90,39 +97,41 @@ print('oMLX port ->', d['server']['port'], '| auto_start_on_launch ->', d['serve
       '| memory_guard_tier ->', d['memory']['memory_guard_tier'], '| hot_cache_max_size ->', d['cache']['hot_cache_max_size'])
 PY
 
-# --- GPU wired 한도 (RAM 티어별, 부팅 지속) ----------------------------------------
+# --- GPU wired 한도: "띄울 때 올리는" 래퍼 설치 (2026-09-24 개정) ---------------------
 # macOS 는 GPU 가 고정(wired)할 수 있는 메모리를 RAM 의 ~75% 로 막는다(48GB→~36GB, 64GB→~48GB).
-# 코더(로드 23GB, 창이 차면 +~10GB)와 aux(4B ~5GB)가 이 한도를 넘으면 레이어가 CPU 로 내려가
-# 속도가 급락한다. RAM 티어에 맞춰 올린다 — 48·64GB 는 RAM-8GB(memory_guard_tier 'safe' 와 같은
-# 값이라 admin 배너도 안 뜬다), 96GB+ 는 RAM-12GB, 48GB 미만은 35B 가 어차피 안 들어가 기본값
-# 유지. macOS 는 부팅 시 /etc/sysctl.conf 를 읽으므로 거기에 idempotent 하게 써 재부팅에도 유지하고
-# 즉시 반영까지 한다. sudo 가 필요하고, 거부하면 수동 명령만 안내하고 계속 진행한다.
-RAM_GB=$(( $(sysctl -n hw.memsize) / 1073741824 ))
-if   (( RAM_GB >= 96 )); then WIRED_MB=$(( (RAM_GB - 12) * 1024 ))
-elif (( RAM_GB >= 48 )); then WIRED_MB=$(( (RAM_GB - 8) * 1024 ))   # 48GB→40960, 64GB→57344
-else WIRED_MB=0; fi
-SYSCTL_CONF=/etc/sysctl.conf
-if (( WIRED_MB > 0 )); then
-  CUR="$(sysctl -n iogpu.wired_limit_mb 2>/dev/null || echo 0)"
-  if [[ "$CUR" != "$WIRED_MB" ]] || ! grep -qxF "iogpu.wired_limit_mb=$WIRED_MB" "$SYSCTL_CONF" 2>/dev/null; then
-    echo "gpu: iogpu.wired_limit_mb $CUR -> $WIRED_MB (${RAM_GB}GB 호스트, sudo 필요)"
-    if sudo -n true 2>/dev/null || sudo -v; then
-      sudo sysctl -w "iogpu.wired_limit_mb=$WIRED_MB" >/dev/null              # 즉시 반영
-      sudo touch "$SYSCTL_CONF"                                               # 부팅 지속
-      if grep -q '^iogpu.wired_limit_mb=' "$SYSCTL_CONF"; then
-        sudo sed -i '' "s/^iogpu.wired_limit_mb=.*/iogpu.wired_limit_mb=$WIRED_MB/" "$SYSCTL_CONF"
-      else
-        echo "iogpu.wired_limit_mb=$WIRED_MB" | sudo tee -a "$SYSCTL_CONF" >/dev/null
-      fi
-      echo "gpu: 영구 적용 ($SYSCTL_CONF)"
+# 이 값은 캡이라 올려 둬도 비용이 없고 재부팅하면 기본값으로 돌아간다. 예전의 /etc/sysctl.conf 부팅
+# 지속은 걷어냈다 — macOS 가 그 파일을 처리한다는 보장이 없고(2026-09-24 재부팅 후 0), "LLM 을 돌릴 때만
+# 올린다"는 의도와도 어긋난다. 대신 `omlx/wired-limit.sh`(티어 계산 = 단일 진실)를 root 소유 사본으로
+# 설치하고, sudoers 로 그 고정 경로만 비밀번호 없이 허용한다. 관문 `omlx/ensure-app-server.sh` 가 서버를
+# 띄울 때마다 `sudo -n /usr/local/sbin/omlx-wired-limit up` 을 불러 이 머신의 티어 값으로 올린다.
+# 다른 스펙의 PC 에서도 같은 설치 1회로 끝난다(값은 hw.memsize 로 계산). sudo 가 필요하고, 거부하면
+# 안내만 하고 계속 진행한다(서버는 기본 캡으로 동작 — `make check-live-sync` 가 드리프트로 잡는다).
+WL_SRC="$PWD/wired-limit.sh"   # 17행에서 이미 스크립트 디렉터리로 cd 했다(상대 $0 재해석 금지 — 2026-09-24 실측 버그)
+WL_BIN=/usr/local/sbin/omlx-wired-limit
+WL_SUDOERS=/etc/sudoers.d/omlx-wired-limit
+WL_RULE='%admin ALL=(root) NOPASSWD: /usr/local/sbin/omlx-wired-limit'
+WIRED_MB=$(bash "$WL_SRC" tier)
+if [[ -x "$WL_BIN" ]] && cmp -s "$WL_SRC" "$WL_BIN" && sudo -n "$WL_BIN" tier >/dev/null 2>&1; then   # tier 는 항상 exit 0 — sudoers 유무만 본다
+  echo "gpu: 래퍼 설치됨($WL_BIN, sudoers OK) — $(bash "$WL_SRC" status)"
+else
+  echo "gpu: 래퍼 설치/갱신 (sudo 필요) — $WL_BIN + $WL_SUDOERS"
+  if sudo -n true 2>/dev/null || sudo -v; then
+    sudo install -d -o root -g wheel -m 755 /usr/local/sbin
+    sudo install -o root -g wheel -m 755 "$WL_SRC" "$WL_BIN"
+    echo "$WL_RULE" | sudo tee "$WL_SUDOERS" >/dev/null && sudo chmod 440 "$WL_SUDOERS"
+    if sudo visudo -cf "$WL_SUDOERS" >/dev/null; then
+      echo "gpu: sudoers 검증 OK"
     else
-      echo "gpu: sudo 거부 - 한도를 올리지 못했다. 수동: sudo sysctl -w iogpu.wired_limit_mb=$WIRED_MB" >&2
+      sudo rm -f "$WL_SUDOERS"; echo "gpu: sudoers 문법 실패 — 파일 제거" >&2
     fi
   else
-    echo "gpu: iogpu.wired_limit_mb=$WIRED_MB (이미 적용됨)"
+    echo "gpu: sudo 거부 — 래퍼 미설치. 서버는 기본 캡으로 돈다(목표 ${WIRED_MB}MiB). 수동 설치는 omlx/wired-limit.sh 상단 주석" >&2
   fi
+fi
+if (( WIRED_MB > 0 )); then
+  sudo -n "$WL_BIN" up 2>/dev/null || echo "gpu: 지금은 올리지 못했다(관문이 서버 기동 시 다시 시도)" >&2
 else
-  echo "gpu: ${RAM_GB}GB 호스트 - wired limit 기본값 유지(35B 미적재 티어)"
+  echo "gpu: ${RAM_GB:-$(( $(sysctl -n hw.memsize) / 1073741824 ))}GB 호스트 - wired limit 기본값 유지(35B 미적재 티어)"
 fi
 
 # --- 서버 = GUI 앱 (DMG) -----------------------------------------------------------

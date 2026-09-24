@@ -18,6 +18,7 @@ paths:
 | `omlx/install.sh` 의 settings 값 | `~/.omlx/settings.json` `server.port`, `memory.memory_guard_tier`, `cache.hot_cache_max_size` | `omlx/install.sh` 의 python 블록 |
 | `omlx/model_settings.json` 의 모델·드래프터 | oMLX 앱 스토어 `~/.omlx/models/mlx-community/<name>` (HF 캐시는 2026-08-28 폐지) | 앱 다운로드 또는 `POST /admin/api/hf/download` — 절차는 `/add-model` |
 | (oMLX 서버) | `/Applications/oMLX.app` | 사용자가 DMG 설치. brew 서비스·예전 LaunchAgent 는 `omlx/install.sh` 가 걷어낸다 |
+| `omlx/wired-limit.sh` | `/usr/local/sbin/omlx-wired-limit`(root 소유 사본, 내용 동일) + `/etc/sudoers.d/omlx-wired-limit`(NOPASSWD, 그 경로만) | `omlx/install.sh`(sudo 1회, 사용자). 값 자체는 영구화하지 않는다 — 관문 `ensure-app-server.sh` 가 기동 시 `up`. 검사는 사본 동일성 + "서버 가동 중 `iogpu.wired_limit_mb` == 티어"(sudoers 는 root 전용이라 읽지 않는다) |
 | `ollama/com.ollama.serve.plist.template` | `~/Library/LaunchAgents/com.ollama.serve.plist` (자리표시자 치환됨) | 사용자가 `ollama/install.sh` |
 | `ollama/Modelfile.<name>` | `ollama show <name>` 의 parameters | `ollama create <name> -f ollama/Modelfile.<name>` — 서버(127.0.0.1:11434)가 떠 있을 때만 비교, 내려가 있으면 skip |
 

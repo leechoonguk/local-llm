@@ -36,7 +36,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 |---|---|
 | 서버 | GUI 앱 `/Applications/oMLX.app`(DMG, 2026-08-25) — 메뉴바 Start/Stop 또는 `omlx start|stop|restart`. brew services(KeepAlive)·LaunchAgent 는 쓰지 않는다(`make check-autostart`), 포트 9090 (8000 은 FastAPI 등 개발 서버와 충돌해 이전, 2026-08-24) |
 | 코더 | `Qwen3.6-35B-A3B-5bit` (23GiB, oMLX 앱 스토어 `~/.omlx/models` — 2026-08-28 전면 포팅, HF 캐시 폐지) |
-| MTP 드래프터 | `Qwen3.6-35B-A3B-MTP-5bit` (0.6GiB, `qwen3_5_mtp` 타입, 앱 스토어) |
+| MTP 드래프터 | ~~`Qwen3.6-35B-A3B-MTP-5bit`~~ — **2026-09-24 삭제**. 코더는 MTP 를 쓰지 않는다(budget 과 공존 불가 8/28, 0.7.0.dev4 재검증도 전부 기각 — `bench/2026-09-24.s1.k2-horizon.md`) |
 | aux | `Qwen3.5-4B-4bit` (2.9GiB, thinking off, 앱 스토어) + MTP 드래프터 `Qwen3.5-4B-MTP-4bit` (83MiB, 45.3 tok/s 실측 2026-08-28) |
 | ~~실험 9B 코더·3.8 어드바이저~~ | 2026-08-28 어드바이저 매트릭스 기각과 함께 **삭제**(`bench/2026-08-28.s2.advmatrix.md` — MoE 속도 역전·실행 불능). aux 는 MTP 드래프터 페어링(45.3 tok/s 실측) 유지 |
 | ~~무거운 추론~~ | ~~`Qwen3.8-27B-oQ6`/`nvfp4`~~ — **2026-08-25 제거**(s2 벤치 writes 0 실패, `bench/2026-08-24.s2.qwen-recipe.md`). 아래 3.8 실측 절은 근거로 보존 |
@@ -46,7 +46,7 @@ oMLX는 `thinking_budget_enabled`가 켜져 있으면 Qwen VLM 어댑터에서 M
 실제 chat template(`chat_template.jinja`)을 그대로 태우는데, Qwen3.8 템플릿이 `reasoning_effort`
 를 네이티브로 해석한다: 유효값은 `xhigh`(기본) / `medium` / `low` 뿐이고(`high`/`none`이 아니다),
 `xhigh`/`low`는 지시문을 프롬프트에 주입하고 `medium`은 지시문 없이 모델 기본 판단에 맡긴다.
-`omlx/model_settings.json` + `model_profiles.json` 의 3.8 항목(2026-08-31 기준 `Qwen3.8-27B-4bit`, 프로파일 `coder` — 2026-09-01 통일)에
+`omlx/model_settings.json` + `model_profiles.json` 의 3.8 항목(2026-08-31 기준 `Qwen3.8-27B-4bit`, 프로파일 `coder` — 2026-09-01 통일, **2026-09-24 스토어·설정에서 제거** — 기록으로만 남긴다)에
 `chat_template_kwargs: {"reasoning_effort": "medium"}` 으로 서버쪽 기본값을 박았다 —
 클라이언트가 값을 안 보내도 적용되고, 요청에서 명시하면 오버라이드 가능(강제 아님).
 
@@ -131,7 +131,7 @@ nvfp4가 oQ6보다 **약 2배 빠르다** — 6bit이 4bit보다 가중치당 �
 | 생성 속도 (n=2, 512~666 tok, 프리필 포함) | 75~80 tok/s — Ollama nvfp4 실측 ~65 tok/s 대비 빠르지만 **양자화가 달라(5bit vs nvfp4) 서버 차이로 단정하지 말 것** |
 | `:nothink` 전환 | 리로드 없음, 같은 슬롯 (0.65s 응답) |
 | aux(4B) 로드 후 코더 재호출 | 리로드 없음 — 동시 상주 확인 |
-| thinking 분리 | `reasoning_parser: qwen` 필요. 없으면 CoT 가 content 에 섞인다. `/v1/responses` 는 reasoning/message 아이템으로 분리 |
+| thinking 분리 | `reasoning_parser: qwen_3_5`(0.7.0.dev4 부터 — 옛 `qwen` 은 미지 값으로 admin PUT 422, 2026-09-24). 0.6.x 에선 없으면 CoT 가 content 에 섞였다. `/v1/responses` 는 reasoning/message 아이템으로 분리 |
 | omlx-server RSS | 14.0GB (코더+aux 상주, mmap lazy 라 Ollama 의 23GB 상주 수치와 직접 비교 불가) |
 | `--with-custom-kernel` | **빌드 실패** (macOS 27 은 brew Tier 1 이 아니라 소스 빌드 거부) — 표준 MLX 커널로 동작 중 |
 
@@ -156,9 +156,10 @@ suffix(`:coder`)를 붙이지 않는다 — oMLX 가 `active_profile_name` 을 b
 | omp id | 스토어 | 크기 | 용도 |
 |---|---|---|---|
 | `omlx/Qwen3.6-35B-A3B-5bit` | `mlx-community/Qwen3.6-35B-A3B-5bit` | 23GB | **기본 코더**. 창 131072 / 출력 8192, thinking budget 2048 |
-| `omlx/Qwen3.8-27B-4bit` | `mlx-community/Qwen3.8-27B-4bit` | 15GB | 선택지(사용자 요청, 2026-08-31 등록). 같은 레시피, temp 1.0, `reasoning_effort: medium`. **이 계열은 2026-08-25 에 writes 0 으로 배제된 적이 있다** — 다시 쓰려면 `/llm-bench` 로 재확인할 것 |
+| ~~`omlx/Qwen3.8-27B-4bit`~~ | `mlx-community/Qwen3.8-27B-4bit` | 15GB | **2026-09-24 삭제**(디코드 15 tok/s 재기각, `bench/2026-09-24.s1.k2-horizon.md`). 이전: 선택지(사용자 요청, 2026-08-31 등록). 같은 레시피, temp 1.0, `reasoning_effort: medium`. **이 계열은 2026-08-25 에 writes 0 으로 배제된 적이 있다** — 다시 쓰려면 `/llm-bench` 로 재확인할 것 |
 | `omlx/Qwen3.5-4B-4bit` | `mlx-community/Qwen3.5-4B-4bit` | 4GB | 보조(tiny). thinking off, MTP 드래프터 페어링 |
-| `omlx/gemma-4-26b-a4b-it-5bit` | `mlx-community/gemma-4-26b-a4b-it-5bit` | 18GB | 선택지(사용자 요청, 2026-08-31 등록). MoE 26B/활성 4B. 창 131072 / 출력 8192, temp 1.0·top_p 0.95·top_k 64(카드값), thinking budget 2048 |
+| ~~`omlx/gemma-4-26b-a4b-it-5bit`~~ | `mlx-community/gemma-4-26b-a4b-it-5bit` | 18GB | **2026-09-24 삭제**(미사용 정리). 이전: 선택지(사용자 요청, 2026-08-31 등록). MoE 26B/활성 4B. 창 131072 / 출력 8192, temp 1.0·top_p 0.95·top_k 64(카드값), thinking budget 2048 |
+| ~~`omlx/K2-Horizon-MoVA-36B-A4B-oQ4e`~~ | `mlx-community/K2-Horizon-MoVA-36B-A4B-oQ4e` | 21GB | **2026-09-24 등록 당일 기각·삭제**(4k 생성 38.4 / 32k 15.1 tok/s — wired 한도 복구 후에도 동일, `bench/2026-09-24.s1.k2-horizon.md`). 이전 기록: MBZUAI IFM K2 Horizon(9/3 공개), MoE 36B/활성 4B, 창 131072 / 출력 8192, temp 1.0·top_p 0.95(카드값), `reasoning_effort: high`(카드 권장, 유효값 high/medium/low), thinking budget 2048(코더와 같은 기준 — 요청 `thinking_budget: 256` 으로 사고가 ~240 토큰에서 잘리는 것을 확인, K2 마커 `<ifm\|think>` 에도 동작). oMLX 0.7.0.dev4 부터 로드 가능. **스토어 파일을 두 번 손봤다(2026-09-24)**: (1) `mlp.switch_mlp.*` 키 405개를 oMLX 내장 K2 모듈 이름 `mlp.experts.*` 로 리네임, (2) 4~5bit 로 양자화돼 있던 `self_attn.v_router` 48개를 BF16 으로 역양자화(oMLX 가 라우터 BF16 을 요구) — 스크립트 `omlx/fix-k2-horizon-checkpoint.py`(멱등, 앱 인터프리터 `~/.omlx/bin/omlx-cluster-python` 로 실행). 원본 config 는 `config.json.orig` |
 
 **Gemma 4 는 `-it` 판을 받아야 한다 (2026-08-31 실측).** 베이스 판(`mlx-community/gemma-4-26b-a4b-5bit`,
 `-4bit` — 확인 후 같은 날 스토어에서 삭제, 32GB)에는 대화 템플릿도 stop 토큰도 없다 — 서버 로그가 `stop_tokens=[]` 를 찍고, 5 토큰짜리 프롬프트
@@ -291,7 +292,7 @@ Qwen3.6/3.8은 기본 thinking ON. 실측(qwen3.6 nvfp4, 단순 코딩 질문):
 | `OLLAMA_KEEP_ALIVE` | 1h | 기본 5분이면 대화 사이에 모델이 내려가 매번 5~11초 재로드 |
 | `OLLAMA_NUM_PARALLEL` | 1 | 슬롯당 KV가 잡히므로 2→1로 64K ctx 기준 ~5GB 절약. 보조 요청은 thinking off라 직렬화돼도 0.4~1s |
 | `OLLAMA_MAX_LOADED_MODELS` | 2 (64GB+) / 1 (그 아래) | 코더 + 보조 모델 동시 상주. `install.sh`가 RAM을 보고 채운다 — 1이면 보조 호출마다 코더가 내려간다(왕복 5~10s). 27B는 여전히 쓸 때만 스왑 |
-| `iogpu.wired_limit_mb` (sysctl) | 48GB→40960, 64GB→57344, 96GB+→RAM−12GB, 그 아래 0(기본) | env가 아니라 macOS 커널 한도. 기본값(RAM의 ~75%)을 넘는 모델은 레이어가 CPU로 내려가 속도가 급락한다. `omlx/install.sh`(및 롤백용 `ollama/install.sh`)가 RAM 티어를 보고 즉시 적용 + `/etc/sysctl.conf`로 영구화(sudo, 거부 시 수동 명령 안내). |
+| `iogpu.wired_limit_mb` (sysctl) | 48GB→40960, 64GB→57344, 96GB+→RAM−12GB, 그 아래 0(기본) | env가 아니라 macOS 커널 **캡** — 올려 둬도 비용이 없고 재부팅하면 0 으로 돌아간다. **2026-09-24 부터 영구화하지 않고 "띄울 때 올린다"**: 티어는 `omlx/wired-limit.sh`(`hw.memsize` 로 계산, 다른 스펙의 PC 에서도 같은 식), 권한은 root 사본 `/usr/local/sbin/omlx-wired-limit` + sudoers(NOPASSWD, 그 경로만 — `omlx/install.sh` 가 1회 설치, sudo), 실행은 관문 `omlx/ensure-app-server.sh` 가 매 기동 시(`up`). `/etc/sysctl.conf` 는 macOS 가 처리한다는 보장이 없어 걷어냈다(재부팅 후 0 실측). 롤백용 `ollama/install.sh` 는 옛 방식 그대로다. |
 
 컨텍스트 길이는 env(`OLLAMA_CONTEXT_LENGTH`)가 아니라 Modelfile `num_ctx`로 관리한다. `/v1` OpenAI 호환 API는 `num_ctx`를 요청에 실을 수 없기 때문이다.
 
@@ -337,7 +338,7 @@ launchctl bootout gui/$(id -u)/com.ollama.serve        # 중지
 
 ### 48GB 맥
 
-macOS 기본 GPU wired 한도는 ~36GB(RAM의 75%)다. `install.sh`가 `iogpu.wired_limit_mb=40960`(OS 몫 8GB)으로 올려 영구화하므로, 그 뒤 상한은 ~40GB.
+macOS 기본 GPU wired 한도는 ~36GB(RAM의 75%)다. 관문 `omlx/ensure-app-server.sh` 가 서버를 띄울 때 `iogpu.wired_limit_mb=40960`(OS 몫 8GB)으로 올리므로(영구화 아님 — 캡은 재부팅에 리셋, 래퍼 설치는 `omlx/install.sh` 1회), 그 뒤 상한은 ~40GB.
 
 | 35B-A3B 양자화 | 디스크 | 창 포화 시 | 48GB(한도 40GB) |
 |---|---|---|---|
@@ -565,8 +566,10 @@ omlx/
   install.sh                       # ~/.omlx 설정 동기화 + 서비스 잔재 정리 + 앱 서버 재시작 (멱등, 앱은 DMG 로 먼저. 모델은 앱 스토어 관리)
   model_settings.json              # 모델별 설정(창/샘플링/MTP/thinking budget) → ~/.omlx/ 로 설치
   model_profiles.json              # 3.6 :coder/:nothink · 3.8-27B :coding 프로파일 → ~/.omlx/ 로 설치
-  ensure-app-server.sh             # 앱 소유 보장 관문 — oMLX 를 만지는 모든 플로우의 첫 단계(고아 서버 방지)
+  ensure-app-server.sh             # 앱 소유 보장 관문 — oMLX 를 만지는 모든 플로우의 첫 단계(고아 서버 방지 + wired 캡 올리기)
+  wired-limit.sh                   # GPU wired 캡 티어 계산(단일 진실)·up/down — root 사본 /usr/local/sbin/omlx-wired-limit + sudoers 로 관문이 부른다(2026-09-24)
   smoke.sh                         # 베이크 후 검증(서빙·응답·reasoning 분리·MTP 발화·서버가 보는 설정값) — `make smoke`
+  fix-k2-horizon-checkpoint.py     # K2-Horizon oQ4e 스토어 파일 수정(switch_mlp→experts 리네임 + v_router BF16 복원, 멱등) — 모델은 2026-09-24 삭제, 재검증 시 재다운로드 후 실행
 omp/
   models.yml                       # ~/.omp/agent/models.yml 로 그대로 설치
   config.fragment.yml              # config.yml 에 병합할 조각 (덮어쓰지 않음)
