@@ -8,6 +8,7 @@ contract test in this file — enforced by `check-backend-integration-configurat
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import re
@@ -46,6 +47,7 @@ def operation(**overrides) -> IntegrationOperation:
         code="test",
         display_name="Test",
         base_url="https://example.com",
+        min_interval_ms=0,
         enabled=True,
     )
     values = {
@@ -350,6 +352,25 @@ def _upgrade_body(source: str) -> str:
     return match.group(1) if match else ""
 
 
+def _way_up(source: str) -> str:
+    """Everything a migration writes on the way up: the file before `def downgrade()`.
+
+    Wider than `_upgrade_body` on purpose — seeds build their rows in module
+    constants and helpers above `upgrade()`, and a code literal there is a row
+    the upgrade inserts. What lies below is the reverse path: revision 119's
+    downgrade re-seeds the operation row its upgrade retired, and reading that
+    literal would have kept the operation alive at the very revision that
+    removed it (`lib/backend-migration-policy.ts` skips the same calls).
+    """
+    downgrade_at = source.find("\ndef downgrade()")
+    return source if downgrade_at < 0 else source[:downgrade_at]
+
+
+# An upgrade that deletes an operation row by its id retires the operation
+# (`lib/backend-migration-policy.ts` reads the same statement).
+_RETIRES_OPERATION = r"\.delete\(\)\.where\([^)]*\.id\s*==\s*OPERATION_ID\)"
+
+
 def _seed_owner(source: str) -> str | None:
     """The seed string a migration's rows belong to: its operation, else its provider.
 
@@ -369,12 +390,15 @@ def _live_seed_owners(migrations_dir: Path) -> set[str]:
     A provider `_replace_` (delete + insert in its **upgrade**) cascades every
     operation seeded before it — for that provider only. An operation erased that way
     has no row in any database, so replaying its seed describes a state that does not
-    exist.
+    exist. An operation retired on its own — a revision that deletes its row by
+    `OPERATION_ID` on the way up and seeds nothing in its place (119 for
+    `search-barcode-item-info`) — is gone the same way.
     """
     owners: set[str] = set()
     provider_of: dict[str, str] = {}
     seeded_at: dict[str, int] = {}
     replaced_at: dict[str, int] = {}
+    retired_at: dict[str, int] = {}
     for path in sorted(migrations_dir.glob("*.py"), key=_revision):
         source = path.read_text(encoding="utf-8")
         revision = _revision(path)
@@ -390,6 +414,14 @@ def _live_seed_owners(migrations_dir: Path) -> set[str]:
             replaced_at[provider_seed] = max(replaced_at.get(provider_seed, 0), revision)
         if not tables & {"integration_provider", "integration_operation"}:
             continue
+        retires_operation = (
+            "integration_operation" in tables
+            and re.search(_RETIRES_OPERATION, _upgrade_body(source))
+            and "op.bulk_insert(" not in _way_up(source)
+        )
+        if retires_operation:
+            retired_at[owner] = max(retired_at.get(owner, 0), revision)
+            continue
         owners.add(owner)
         seeded_at[owner] = revision
         if provider_seed is not None:
@@ -397,7 +429,8 @@ def _live_seed_owners(migrations_dir: Path) -> set[str]:
     return {
         owner
         for owner in owners
-        if seeded_at[owner] >= replaced_at.get(provider_of.get(owner, owner), 0)
+        if seeded_at[owner]
+        >= max(replaced_at.get(provider_of.get(owner, owner), 0), retired_at.get(owner, 0))
     }
 
 
@@ -499,7 +532,12 @@ def test_mfds_seed_migration_persists_executable_configuration() -> None:
             # The page, not its first record: /body/items/0 truncated every answer
             # to one row and made num_of_rows unobservable (58_replace_…_operation).
             "response_root": "/body/items",
-            "secret_count": 1,
+            # Two credentials, not a pool: measured 2026-09-13, the first key
+            # answers SERVICE_KEY_IS_NOT_REGISTERED_ERROR on the 수입식품 services
+            # and the second answers them - a data.go.kr key carries the datasets
+            # its own account applied for, so a field names the one its dataset
+            # was approved under (revision 216).
+            "secret_count": 2,
             "request_field_count": 11,
             "response_field_count": 193,
         }
@@ -595,7 +633,14 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
         nutrition provider replace at revision 20 and answers exactly like an
         operation that never existed; and reading `.delete()` anywhere in the file —
         including a `downgrade` that only cleans up — made the second provider's seed
-        look like a replace that erased the first provider's operations.
+        look like a replace that erased the first provider's operations;
+      - honouring an operation's own retirement: a revision binding
+        `integration_operation` whose upgrade deletes by `OPERATION_ID` ends every
+        seed of that operation older than itself (revision 119 retired
+        `search-barcode-item-info`, seeded at 72). A `_replace_` deletes and
+        re-inserts in one upgrade, so its row is seeded *at* the retiring revision
+        and survives the same `<`. Code literals are read from the way up only —
+        the retiring revision's downgrade re-seeds the very row it took.
     """
     migrations_dir = Path(__file__).parents[2] / "alembic" / "versions"
     api_dir = Path(__file__).parents[3] / "api"
@@ -604,6 +649,7 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
     configured_seeds: set[str] = set()
     provider_of: dict[str, str | None] = {}
     provider_replaced_at: dict[str, int] = {}
+    operation_retired_at: dict[str, int] = {}
     for path in sorted(migrations_dir.glob("*.py"), key=_revision):
         source = path.read_text(encoding="utf-8")
         revision = _revision(path)
@@ -621,23 +667,59 @@ def test_every_seeded_operation_owns_a_request_file() -> None:
             )
         if "integration_operation" not in tables:
             continue
-        for match in re.finditer(r'"code":\s*"([a-z0-9-]+)"', source):
+        if seed is not None and re.search(
+            r"\.delete\(\)\.where\([^)]*\.id\s*==\s*OPERATION_ID\)", upgrade_body
+        ):
+            operation_retired_at[seed] = max(operation_retired_at.get(seed, 0), revision)
+        for match in re.finditer(r'"code":\s*"([a-z0-9-]+)"', _way_up(source)):
             seed_of[match.group(1)] = seed
             seeded_at[match.group(1)] = revision
             provider_of[match.group(1)] = provider_seed
     for code, revision in seeded_at.items():
         replaced = provider_replaced_at.get(provider_of.get(code) or "", 0)
-        if revision < replaced:
+        retired = operation_retired_at.get(seed_of.get(code) or "", 0)
+        if revision < max(replaced, retired):
             seed_of.pop(code, None)
 
     assert set(seed_of) == {
+        "search-barcode-product-info",
+        "search-common-standard",
+        "search-common-standard-exclusion",
+        "search-common-standard-type",
+        "search-food-admin-disposition",
+        "search-food-collection-inspection",
         "search-food-nutrition",
+        "search-food-recall",
+        "search-food-production",
+        "search-livestock-production",
+        "search-health-functional-production",
+        "search-health-functional-item-report",
+        "search-food-inspection-failure",
         "search-food-item-report",
+        "search-food-qr-label",
+        "search-food-qr-caution",
+        "search-food-qr-manufacture",
+        "search-food-qr-packaging",
+        "search-food-qr-raw-material",
+        "search-food-qr-storage",
+        "search-haccp-label",
+        "search-import-food-label",
+        "search-food-qr-nutrition",
+        "search-food-qr-allergy",
         "search-food-item-report-raw-material",
+        "search-individual-standard",
+        "search-livestock-item-report-raw-material",
         "search-product-classification",
         "search-food-raw-material",
-        "search-barcode-item-info",
         "search-test-item",
+        "search-food-business",
+        "search-food-business-site",
+        "search-food-manufacturing-closure",
+        "search-food-additive-manufacturing-closure",
+        "search-food-import-business-closure",
+        "search-food-health-functional-closure",
+        "search-food-livestock-processing-closure",
+        "search-food-meat-packaging-closure",
     }
     for code, seed in seed_of.items():
         request_file = api_dir / f"integration.{code}.http"
@@ -691,6 +773,15 @@ async def test_execute_renders_the_seeded_contract(fixture_path: Path) -> None:
     assert result.status_code == expected["status_code"]
     assert result.canonical_payload == expected["canonical_payload"]
     assert result.metadata == expected["metadata"]
+    if "rows" in expected:
+        # A file's execute is the download; its rows are what stream hands the
+        # ledger, and a fixture that recorded them proves the reader on them.
+        streamed = _client_from_seeds(operation_code, fixture)
+        try:
+            rows = [row async for chunk in streamed.stream(inputs) for row in chunk]
+        finally:
+            await streamed.aclose()
+        assert rows == expected["rows"]
 
 
 @pytest.mark.parametrize(
@@ -739,14 +830,36 @@ def _client_from_seeds(code: str, fixture: dict[str, object]) -> IntegrationClie
     expected = cast(dict[str, object], fixture["expect"])
     recorded = cast(dict[str, object], fixture["response"])
     query = cast(dict[str, str], expected.get("query", {}))
+    # A form screen's contract is its form: every part the browser posts, by name
+    # and value, in a multipart body. Measured 2026-09-13 on impfood: one part
+    # more or less than the screen's own JS sends is `302 -> /error/error`.
+    form = cast(dict[str, str], expected.get("form", {}))
+    bootstrap = cast(str | None, expected.get("bootstrap_path"))
 
     def handler(request: httpx2.Request) -> httpx2.Response:
+        # The bootstrap is told from the call by its path, not its verb: a screen
+        # read by GET (a detail lookup) has the same verb as the session fetch.
+        if bootstrap is not None and request.url.path == bootstrap:
+            return httpx2.Response(200, text="<html></html>", headers={"set-cookie": "S=1"})
         assert request.url.path == expected["path"], (
             f"{code}: rendered path {request.url.path} is not the measured {expected['path']}"
         )
         for name, value in query.items():
             assert request.url.params[name] == value, (
                 f"{code}: query {name}={request.url.params.get(name)} is not the measured {value}"
+            )
+        if form:
+            sent = _multipart_parts(request)
+            assert sent == form, f"{code}: form parts {sent} are not the measured {form}"
+        if "text" in recorded:
+            return httpx2.Response(cast(int, recorded["status"]), text=cast(str, recorded["text"]))
+        if "gzip_base64" in recorded:
+            # A file door answers bytes, and the headers are part of what was
+            # measured: the name the portal gave the file is read off them.
+            return httpx2.Response(
+                cast(int, recorded["status"]),
+                content=base64.b64decode(cast(str, recorded["gzip_base64"])),
+                headers=cast(dict[str, str], recorded.get("headers", {})),
             )
         return httpx2.Response(cast(int, recorded["status"]), json=recorded["json"])
 
@@ -775,6 +888,17 @@ def _client_from_seeds(code: str, fixture: dict[str, object]) -> IntegrationClie
         operation=seeded,
         client=httpx2.AsyncClient(transport=httpx2.MockTransport(handler)),
     )
+
+
+def _multipart_parts(request: httpx2.Request) -> dict[str, str]:
+    """The (name, value) parts of a multipart body, in the order they were sent."""
+    boundary = request.headers["content-type"].split("boundary=", 1)[1]
+    parts: dict[str, str] = {}
+    for chunk in request.content.decode("utf-8").split("--" + boundary)[1:-1]:
+        head, _, value = chunk.partition("\r\n\r\n")
+        name = head.split('name="', 1)[1].split('"', 1)[0]
+        parts[name] = value.removesuffix("\r\n")
+    return parts
 
 
 def _replay_newest_integration_seeds(connection: sa.Connection) -> None:
@@ -974,7 +1098,10 @@ def _seeded_create_requests(connection: sa.Connection) -> list[IntegrationCreate
     """
     providers = (
         connection.execute(
-            sa.text("SELECT id, code, display_name, base_url, enabled FROM integration_provider")
+            sa.text(
+                "SELECT id, code, display_name, base_url, transport, bootstrap_path, enabled "
+                "FROM integration_provider"
+            )
         )
         .mappings()
         .all()
@@ -1003,7 +1130,8 @@ def _seeded_create_requests(connection: sa.Connection) -> list[IntegrationCreate
     fields = (
         connection.execute(
             sa.text(
-                "SELECT operation_id, direction, location, key, wire_path, value_source, value, "
+                "SELECT operation_id, direction, location, key, wire_path, locator_kind, "
+                "value_source, value, "
                 "secret_id, value_type, format, required, description, sensitive, "
                 "ordinal, enabled, "
                 "match_mode, expected_values FROM integration_field ORDER BY ordinal"
@@ -1020,6 +1148,8 @@ def _seeded_create_requests(connection: sa.Connection) -> list[IntegrationCreate
                 code=provider["code"],
                 display_name=provider["display_name"],
                 base_url=provider["base_url"],
+                transport=provider["transport"],
+                bootstrap_path=provider["bootstrap_path"],
                 enabled=bool(provider["enabled"]),
                 secrets=[
                     IntegrationSecretCreateRequest(
@@ -1055,6 +1185,7 @@ def _seeded_create_requests(connection: sa.Connection) -> list[IntegrationCreate
                                 location=field["location"],
                                 key=field["key"],
                                 wire_path=field["wire_path"],
+                                locator_kind=field["locator_kind"],
                                 value_source=field["value_source"],
                                 value=json.loads(field["value"]) if field["value"] else None,
                                 secret_name=secret_name_of.get(field["secret_id"]),

@@ -20,6 +20,8 @@
 
 import type { ReactNode } from 'react'
 import {
+  Box,
+  LinearProgress,
   Table,
   TableBody,
   TableCell,
@@ -69,6 +71,14 @@ interface ServerPagedTableProps<T> {
   pagination: ServerTablePagination
   /** The sentence shown instead of an empty body. */
   empty: string
+  /**
+   * True while the page in flight has not landed - the query's `isFetching`,
+   * never `isLoading`, which is true once and then never again once a
+   * previous page is kept on screen. The bar says a request is running, and
+   * the footer's buttons lock so a second page cannot race the first
+   * (measured in the runs dialog before the prop existed: no bar, live buttons).
+   */
+  loading: boolean
   /** Supplied only by a table whose rows open something: draws the chevron. */
   expanded?: (row: T) => boolean
   onRowClick?: (row: T) => void
@@ -81,6 +91,7 @@ export default function ServerPagedTable<T>({
   renderCells,
   pagination,
   empty,
+  loading,
   expanded,
   onRowClick,
 }: ServerPagedTableProps<T>) {
@@ -88,14 +99,19 @@ export default function ServerPagedTable<T>({
 
   if (rows.length === 0) {
     return (
-      <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
-        {empty}
-      </Typography>
+      <>
+        {loading && <LinearProgress />}
+        <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+          {empty}
+        </Typography>
+      </>
     )
   }
 
   return (
     <>
+      {/* Zero height when idle so the rows do not shift by the bar's 4px on every fetch. */}
+      <Box sx={{ height: 0, overflow: 'visible' }}>{loading && <LinearProgress />}</Box>
       <Table
         size="small"
         sx={{
@@ -149,7 +165,7 @@ export default function ServerPagedTable<T>({
         </TableBody>
       </Table>
 
-      <TablePagination component="div" {...pagination} />
+      <TablePagination component="div" {...pagination} disabled={loading} />
     </>
   )
 }

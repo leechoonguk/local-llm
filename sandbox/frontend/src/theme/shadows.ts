@@ -1,17 +1,24 @@
 /**
- * Shadows, ported verbatim from the reference application.
+ * Shadows, ported from the reference application.
  *
  * Two sets, because they answer different questions. MUI's 25-step `shadows`
  * array is what `elevation` reads; `customShadows` is the named set the design
  * actually uses — `card`, `dialog`, `dropdown` are specific two-layer shadows
  * that no elevation step reproduces, which is why a component that writes its
  * own `boxShadow` never matches the ones beside it.
+ *
+ * **The tint follows the mode.** A shadow is grey on a light page and black on a
+ * dark one: measured on the reference, the same card carries
+ * `rgba(145,158,171,…)` in light and `rgba(0,0,0,…)` in dark. Grey on a
+ * a dark page is a *lighter* halo — a glow where a shadow belongs.
  */
 
 import { alpha } from '@mui/material/styles'
 import { GREY, palette } from '@/theme/palette'
+import type { ThemeMode } from '@/theme/palette'
 
-const SHADOW_COLOR = GREY[500]
+/** The tint each mode casts with: grey on a light page, black on a dark one. */
+const SHADOW_COLOR: Record<ThemeMode, string> = { light: GREY[500], dark: palette.common.black }
 
 function elevations(color: string): string[] {
   const first = alpha(color, 0.2)
@@ -68,8 +75,8 @@ function named(color: string) {
   }
 }
 
-export const shadows = elevations(SHADOW_COLOR)
+export const buildShadows = (mode: ThemeMode) => elevations(SHADOW_COLOR[mode])
 
-export const customShadows = named(SHADOW_COLOR)
+export const buildCustomShadows = (mode: ThemeMode) => named(SHADOW_COLOR[mode])
 
-export type CustomShadows = typeof customShadows
+export type CustomShadows = ReturnType<typeof buildCustomShadows>

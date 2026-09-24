@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 건강기능식품 생산실적: one GET answers the whole feed as gzip CSV (316,747 records, 5.8 MB, measured 2026-09-20) where the paged walk needed 321 windows across ten year segments. Three of its rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I0310.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE7VPy0rDQBTdF/oPLhXu4nainbVpoxXSaTqZKlnNr0hRKWo3kiEqBioqduEiSpCCAf8nucFfkCmtuHLn7pxzL+fx9fHphmFPiz4EsuuHyqL9kTsS0NMHyutb7ndEqMUAvENfR3L9KL1gIJXV9yJP6kB2O0roXVcqPYxgRYdRs0HmhNK8jgtKZhTPN+mh2AJKYprMoXzNy8yUi6w6f6KLtL6aQH0zpXEBDBkiouNwbvHOb6EFbUTAZoNmd5Tm9HxcZbEF149L943qbErJaX17SeOX6s1QuljZ2sO7IXPfPuLO3+kMkeE2Zz/pa6GFwG2TZYH/2/YNy9lLY5sBAAA="
+ },
+ "expect": {
+  "path": "/api/issued-key/I0310/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I0310.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 263,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "item_report_no": "202000033771",
+    "report_year": "2025",
+    "product_name": "엔숨",
+    "business_name": "아이피엠씨(주)",
+    "license_no": "20200003377",
+    "product_type_name": "홍삼",
+    "production_qty": "0",
+    "annual_capacity_qty": "600",
+    "product_kind_name": "건강기능식품"
+   },
+   {
+    "item_report_no": "2022002047210",
+    "report_year": "2025",
+    "product_name": "홍삼농축액6W73",
+    "business_name": "제이지바이오(주) 농업회사법인",
+    "license_no": "20220020472",
+    "product_type_name": "홍삼",
+    "production_qty": "0",
+    "annual_capacity_qty": "70000",
+    "product_kind_name": "건강기능식품"
+   },
+   {
+    "item_report_no": "202000033771",
+    "report_year": "2025",
+    "product_name": "엔숨",
+    "business_name": "아이피엠씨(주)",
+    "license_no": "20200003377",
+    "product_type_name": "홍삼",
+    "production_qty": "0",
+    "annual_capacity_qty": "600",
+    "product_kind_name": "건강기능식품"
+   }
+  ]
+ }
+}

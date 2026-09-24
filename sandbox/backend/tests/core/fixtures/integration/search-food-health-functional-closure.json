@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 건강기능식품 폐업정보 (I2822): one GET answers the whole feed as gzip CSV (302,685 rows, 5.7MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2822.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE43O0UrCUBwG8HvBd/Cy4Fz8z9ycu8ztIkGneFZQN3uVqBXiAjVYSW6xsCjDYE4FpUnvc/YfvUJsFnTRxe4+zvm+c35fH58NVWem3iI1xg5NvUnaHabpRprqunZknOzOmszUDKI2WK1++jcdM1PV0kqjpbbNA03rkLrOjHRfLFBFqYBUpiDIBB9meOGhs42DKSF8vuSBw9dB3HtG20tuuuhFcTBKrgfxyxPeXZJsWwVKBACJAhVI0h+kF+hb8fkrXw5xEiVXq8SZJr1NvLDQdkto++h0+SrI1yoWBAABJCgrVCR8c5aMu2j7PNyi76RhEaE3wvEgDzh7SqHVDAyyIOcBx2/TpD9D283XysAiAJVAKZM9nET7fL7E2+GO9C/Tt+LZGn0XH4MfpggiVIgAVARZkH6ZPNymu75VSv8K3QxluXi/xvC9WPgG1xMQQCoCAAA="
+ },
+ "expect": {
+  "path": "/api/issued-key/I2822/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2822.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 347,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "19960531027",
+    "business_name": "재생약방",
+    "president_name": "",
+    "industry_name": "건강기능식품일반판매업",
+    "permit_date": "19960801",
+    "closed_date": "20051012",
+    "closure_kind": "폐업",
+    "district": "전남광주통합특별시 신안군",
+    "institution_name": "전남광주통합특별시 신안군"
+   },
+   {
+    "license_no": "20020503914",
+    "business_name": "김훈신경정신과의원",
+    "president_name": "",
+    "industry_name": "건강기능식품일반판매업",
+    "permit_date": "20020918",
+    "closed_date": "20050727",
+    "closure_kind": "폐업",
+    "district": "전남광주통합특별시 목포시",
+    "institution_name": "전남광주통합특별시 목포시"
+   },
+   {
+    "license_no": "20040015093",
+    "business_name": "(주)건양식품",
+    "president_name": "",
+    "industry_name": "건강기능식품전문제조업",
+    "permit_date": "20040406",
+    "closed_date": "20140725",
+    "closure_kind": "폐업",
+    "district": "경기도 포천시",
+    "institution_name": "서울청"
+   }
+  ]
+ }
+}

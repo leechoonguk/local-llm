@@ -1,0 +1,72 @@
+{
+  "why": "Two measured rows of the 공통기준종류 service (I2590), no filter sent: the whole feed is 90 groups (total_count 90, read 2026-09-07 after 19:00 KST - the service answers ERROR-503 from 09:00 to 19:00). The first row is a root (empty HRNK_CMMN_SPEC_CD), the second its child.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I2590": {
+        "total_count": "90",
+        "row": [
+          {
+            "USE_YN": "Y",
+            "LAST_UPDT_DTM": "2014-12-02 17:47:39.691282",
+            "SPEC_NM": "건강기능식품의 기준 및 규격 고시",
+            "HRNK_CMMN_SPEC_CD": "",
+            "LV": "1",
+            "CMMN_SPEC_CD": "000074",
+            "DFN": ""
+          },
+          {
+            "USE_YN": "Y",
+            "LAST_UPDT_DTM": "2014-12-02 17:47:39.721066",
+            "SPEC_NM": "제 2. 공통 기준 및 규격",
+            "HRNK_CMMN_SPEC_CD": "000074",
+            "LV": "2",
+            "CMMN_SPEC_CD": "000075",
+            "DFN": ""
+          }
+        ],
+        "RESULT": {
+          "MSG": "정상처리되었습니다.",
+          "CODE": "INFO-000"
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I2590/json/1/2",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "common_standard_type_code": "000074",
+        "standard_name": "건강기능식품의 기준 및 규격 고시",
+        "parent_common_standard_type_code": "",
+        "level": "1",
+        "definition": "",
+        "use_yn": "Y",
+        "last_updated_at": "2014-12-02 17:47:39.691282"
+      },
+      {
+        "common_standard_type_code": "000075",
+        "standard_name": "제 2. 공통 기준 및 규격",
+        "parent_common_standard_type_code": "000074",
+        "level": "2",
+        "definition": "",
+        "use_yn": "Y",
+        "last_updated_at": "2014-12-02 17:47:39.721066"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "90"
+    }
+  }
+}

@@ -38,7 +38,10 @@ import type {
 
 const METHODS: HttpMethod[] = ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']
 
-const RESPONSE_FORMATS: ResponseFormat[] = ['JSON', 'XML']
+// The CHECK's own vocabulary: a select that cannot show a stored value draws a
+// seeded row wrong. HTML is a screen, CSV a file read in chunks - both are
+// seeded by migration, and an operator reads them here rather than authoring them.
+const RESPONSE_FORMATS: ResponseFormat[] = ['JSON', 'XML', 'HTML', 'CSV']
 
 /** `gt=0` on the server: a zero timeout is refused, and 0 is what an emptied input gives. */
 const MIN_TIMEOUT_MS = 1

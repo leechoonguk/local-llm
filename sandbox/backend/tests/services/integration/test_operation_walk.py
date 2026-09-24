@@ -59,7 +59,7 @@ def _ranged(fields=None, **updates):
             ENVELOPE,
             response_field(key="name", wire_path="/name", required=False),
         ],
-        **updates,
+        **{"page_size": 2, **updates},
     )
 
 
@@ -90,13 +90,13 @@ def _portal(names: list[str], *, end_code: str | None = None):
     return handler, asked
 
 
-async def _walk(session, *, page_size=2, end_codes=frozenset()) -> list[IntegrationPage]:
+async def _walk(session, *, end_codes=frozenset()) -> list[IntegrationPage]:
     """Every page of the walk, in order."""
     service = IntegrationOperationService(session)
     return [
         page
         async for page in service.walk_operation(
-            "portal", "feed", actor="tester", page_size=page_size, end_codes=end_codes
+            "portal", "feed", actor="tester", end_codes=end_codes
         )
     ]
 

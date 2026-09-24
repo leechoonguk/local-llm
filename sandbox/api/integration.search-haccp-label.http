@@ -1,0 +1,120 @@
+### Integration · search-haccp-label API — 외부 API 실행 (공공데이터포털 B553748 CertImgListServiceV3)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           CALLER 소스 REQUEST 필드 4개(page_no, num_of_rows, item_report_no,
+###           product_name)를 블록 하나씩 전부 호출한다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(20_replace_mfds_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = bdbbe05a-4966-523b-83f8-fa28606f402c
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. page_no / num_of_rows — 200 (CALLER 필드: 창의 위치와 크기)
+# 이 게이트웨이는 레코드를 각자 `item` 노드로 감싼다 — 1471000 계열의 평범한 배열과 다르다.
+# 측정(2026-09-13): 전체 14,664건, 품목보고번호 14,664개가 서로 다르다.
+# 영양표시(nutrient)·이미지(imgurl1/2)·바코드는 시드에 없다 — 파싱 불가이거나 다른 피드가 답한다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}
+
+### 3. item_report_no — 200 (CALLER 필드: 품목보고번호 정확 일치)
+# 측정(2026-09-13): 201904962715 → total 1
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3,
+    "item_report_no": "201904962715"
+  }
+}
+
+### 4. product_name — 200 (CALLER 필드: 제품명 부분 일치)
+# 측정(2026-09-13): 김부각 → total 5
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3,
+    "product_name": "김부각"
+  }
+}
+
+### 5. num_of_rows — 200 (창의 크기 — 100이 이 기관의 상한이다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 100
+  }
+}
+
+### 6. 외부 API 실행 — 422 (paging 누락 — 기본값이 없다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "product_name": "김부각"
+  }
+}
+
+### 7. 외부 API 실행 — 200 (마지막 페이지 이후 — 빈 페이지)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 9999,
+    "num_of_rows": 3
+  }
+}
+
+### 8. 외부 API 실행 — 502 (상한 초과 — 측정 2026-09-13: numOfRows=101 → resultCode 13)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 101
+  }
+}
+
+### 9. 외부 API 실행 — 404 (없는 provider — operation 코드는 유효하다)
+POST {{base}}/integration/{{missingId}}/operations/search-haccp-label/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  }
+}

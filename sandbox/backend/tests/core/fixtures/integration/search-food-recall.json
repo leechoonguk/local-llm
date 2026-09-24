@@ -1,0 +1,120 @@
+{
+  "why": "One 회수·판매중지 window: the whole feed is 376 rows, and the record's identity is its 일련번호 - the 품목제조보고번호 beside it is absent on half the feed.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I0490": {
+        "total_count": "376",
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        },
+        "row": [
+          {
+            "RTRVLPLANDOC_RTRVLMTHD": "",
+            "PRDLST_CD": "E0205100000000",
+            "RTRVLPRVNS": "정부수거검사 부적합(프로바이오틱스 수)",
+            "FRMLCUNIT": "",
+            "PRDLST_REPORT_NO": "200900200209",
+            "CRET_DTM": "2026-09-14 17:19:13.501282",
+            "LCNS_NO": "20090020020",
+            "DISTBTMLMT": "제조일로부터 24개월",
+            "PRDLST_TYPE": "건강기능식품",
+            "ADDR": "충청북도 청주시 서원구",
+            "BRCDNO": "",
+            "IMG_FILE_PATH": "http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659986, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659987, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659988, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659989",
+            "MNFDT": "데이터없음",
+            "PRDTNM": "청인 해우",
+            "PRDLST_CD_NM": "프로바이오틱스",
+            "TELNO": "",
+            "BSSHNM": "(주)힐링바이오",
+            "RTRVLDSUSE_SEQ": "3000234541",
+            "RTRVL_GRDCD_NM": "3등급"
+          },
+          {
+            "RTRVLPLANDOC_RTRVLMTHD": "",
+            "PRDLST_CD": "C0309010200000",
+            "RTRVLPRVNS": "세균수 부적합",
+            "FRMLCUNIT": "80ml",
+            "PRDLST_REPORT_NO": "201302111191",
+            "CRET_DTM": "2026-09-11 18:59:46.24657",
+            "LCNS_NO": "20130211119",
+            "DISTBTMLMT": "(소비기한) 2028-08-28",
+            "PRDLST_TYPE": "가공식품",
+            "ADDR": "인천광역시 강화군",
+            "BRCDNO": "",
+            "IMG_FILE_PATH": "http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2658503, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2658504",
+            "MNFDT": "데이터없음",
+            "PRDTNM": "강화약쑥엑기스",
+            "PRDLST_CD_NM": "액상차",
+            "TELNO": "",
+            "BSSHNM": "한정푸드",
+            "RTRVLDSUSE_SEQ": "3000234426",
+            "RTRVL_GRDCD_NM": "3등급"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I0490/json/1/2",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "recall_disuse_seq": "3000234541",
+        "item_report_no": "200900200209",
+        "license_no": "20090020020",
+        "product_name": "청인 해우",
+        "business_name": "(주)힐링바이오",
+        "address": "충청북도 청주시 서원구",
+        "telephone": "",
+        "barcode_no": "",
+        "packaging_unit": "",
+        "manufactured_text": "데이터없음",
+        "recall_reason": "정부수거검사 부적합(프로바이오틱스 수)",
+        "recall_method": "",
+        "recall_grade": "3등급",
+        "shelf_life_text": "제조일로부터 24개월",
+        "product_type_group": "건강기능식품",
+        "product_code": "E0205100000000",
+        "product_type_name": "프로바이오틱스",
+        "image_url": "http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659986, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659987, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659988, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2659989",
+        "registered_at": "2026-09-14 17:19:13.501282"
+      },
+      {
+        "recall_disuse_seq": "3000234426",
+        "item_report_no": "201302111191",
+        "license_no": "20130211119",
+        "product_name": "강화약쑥엑기스",
+        "business_name": "한정푸드",
+        "address": "인천광역시 강화군",
+        "telephone": "",
+        "barcode_no": "",
+        "packaging_unit": "80ml",
+        "manufactured_text": "데이터없음",
+        "recall_reason": "세균수 부적합",
+        "recall_method": "",
+        "recall_grade": "3등급",
+        "shelf_life_text": "(소비기한) 2028-08-28",
+        "product_type_group": "가공식품",
+        "product_code": "C0309010200000",
+        "product_type_name": "액상차",
+        "image_url": "http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2658503, http://coop.foodsafetykorea.go.kr/open/minfo_image.do?fSeq=2658504",
+        "registered_at": "2026-09-11 18:59:46.24657"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "376"
+    }
+  }
+}

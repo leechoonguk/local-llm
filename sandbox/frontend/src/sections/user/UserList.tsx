@@ -27,11 +27,11 @@
  * what they are, and the row it sat in is now the filters'.
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card } from '@mui/material'
 import { GridEditInputCell, GridRowModes, useGridApiRef } from '@mui/x-data-grid'
-import type { GridColDef, GridRowId, GridRowModesModel } from '@mui/x-data-grid'
+import type { GridColDef, GridRowId } from '@mui/x-data-grid'
 import ConfirmDialog from '@/components/confirm-dialog/ConfirmDialog'
 import ListCardHead from '@/components/data-grid/ListCardHead'
 import ListFilters from '@/components/data-grid/ListFilters'
@@ -41,16 +41,35 @@ import { useCrudDialog } from '@/hooks/useCrudDialog'
 import { useDataGridState } from '@/hooks/useDataGridState'
 import { useListFilters } from '@/hooks/useListFilters'
 import { useQueryErrorToast } from '@/hooks/useQueryErrorToast'
+import { useRowEditor } from '@/hooks/useRowEditor'
+import type { RowRefusal } from '@/hooks/useRowEditor'
 import { useToast } from '@/hooks/useToast'
 import { toApiError } from '@/lib/api/errors'
 import { serverErrorMessage } from '@/lib/api/formErrors'
 import { useCreateUser, useDeleteUser, useUpdateUser, useUserList } from '@/lib/api/hooks/useUser'
+import { TIMESTAMP_COLUMN_FLOOR } from '@/config'
 import { formatDateTime } from '@/utils/formatTime'
 import type { User, UserListParams } from '@/types/user'
 
-const TIMESTAMP_COLUMN_WIDTH = 180
+/**
+ * Every column has a **floor** and a **share** (rule://frontend-screens, Column
+ * Width). Floors are the widest measured value: a 50-character username, an
+ * address, the eight-dot mask, the shared timestamp; the address earns the most
+ * attention, the mask the least - it never says more than that there is one.
+ */
+const COLUMN: Record<string, { floor: number; share: number }> = {
+  username: { floor: 140, share: 1 },
+  email: { floor: 200, share: 1.5 },
+  password: { floor: 160, share: 0.5 },
+  created_at: { floor: TIMESTAMP_COLUMN_FLOOR, share: 0.8 },
+}
 
-const PASSWORD_COLUMN_WIDTH = 160
+/** The grid props a column's floor and share become. */
+const sized = (field: keyof typeof COLUMN) => ({
+  field,
+  flex: COLUMN[field].share,
+  minWidth: COLUMN[field].floor,
+})
 
 /** Lengths and the shape of an address, as the user schemas declare them. */
 const USERNAME_MAX_LENGTH = 50
@@ -101,6 +120,11 @@ const PASSWORD_MASK = '••••••••'
  */
 const FILTER_FIELDS = ['username', 'email'] as const
 
+const FILTER_LABEL_KEYS = {
+  username: 'filter.username',
+  email: 'filter.email',
+} as const
+
 type FilterField = (typeof FILTER_FIELDS)[number]
 
 /**
@@ -140,7 +164,6 @@ export default function UserList() {
   const apiRef = useGridApiRef()
   const filters = useListFilters(FILTER_FIELDS, grid.resetPage)
   const [draft, setDraft] = useState<UserRow | null>(null)
-  const [rowModes, setRowModes] = useState<GridRowModesModel>({})
   /**
    * Rows whose save was refused, and therefore the rows allowed to look wrong.
    *
@@ -188,98 +211,75 @@ export default function UserList() {
     return params.value !== params.stored || refused.has(params.id)
   }
 
-  const startEdit = (id: GridRowId) =>
-    setRowModes((previous) => ({ ...previous, [id]: { mode: GridRowModes.Edit } }))
-  /**
-   * Saving says why it cannot, on the cell that cannot.
-   *
-   * The grid's own answer to an invalid row is to refuse the commit and stay
-   * open — silently, so the save button reads as broken. The pending values live
-   * in the grid's edit state, which is why the screen holds `apiRef`: it judges
-   * the row by the same rule the cells use, names the first field that fails,
-   * and puts the caret in it. Nothing is said while typing — a field is wrong
-   * only once someone claims it is finished.
-   */
   /**
    * Why a row cannot be saved, in the words the reader gets — or `null`.
    *
-   * One place, because the save button is not the only way out: pressing Enter
-   * commits through the grid, and a rule enforced on the button alone would let
-   * the keyboard past it into a 422 the server has to explain.
+   * The screen owns this and `problemOf`, because they are what this domain
+   * refuses — a password is required on a draft and never on a saved row.
+   * `useRowEditor` owns what is done with the answer: the commit, the caret move
+   * and the one sentence, which are the same on every screen that edits a row.
    */
-  const refusal = (row: UserRow): { field: EditableField; sentence: string } | null => {
-    for (const field of EDITABLE_FIELDS) {
-      const problem = problemOf(field, String(row[field] ?? ''), row.isNew === true)
-      if (problem === null) continue
-      return { field, sentence: t(problem.key, { count: problem.count ?? 0 }) }
-    }
-    return null
-  }
+  const refusal = useCallback(
+    (row: UserRow): RowRefusal<EditableField> | null => {
+      for (const field of EDITABLE_FIELDS) {
+        const problem = problemOf(field, String(row[field] ?? ''), row.isNew === true)
+        if (problem === null) continue
+        return { field, sentence: t(problem.key, { count: problem.count ?? 0 }) }
+      }
+      return null
+    },
+    [t],
+  )
 
-  /**
-   * Refusing a save says which cell refused, and puts the caret in it.
-   *
-   * The grid's own answer to an invalid row is to stay open, silently, so the
-   * save button reads as broken. The focus move is deferred because the button
-   * that was clicked takes focus back on its own mouse event — measured: the
-   * toast named a cell three columns from where the caret stayed.
-   */
-  const reportRefusal = (id: GridRowId, problem: { field: EditableField; sentence: string }) => {
-    setRefused((previous) => new Set(previous).add(id))
-    toast.error(problem.sentence)
-    queueMicrotask(() => {
-      apiRef.current?.setCellFocus(id, problem.field)
-      apiRef.current?.getCellElement(id, problem.field)?.querySelector('input')?.focus()
-    })
-  }
-
-  const forgetRefusal = (id: GridRowId) =>
-    setRefused((previous) => {
-      if (!previous.has(id)) return previous
-      const next = new Set(previous)
-      next.delete(id)
-      return next
-    })
-
-  const commitEdit = (id: GridRowId) => {
-    const row = apiRef.current?.getRowWithUpdatedValues(id, '') as UserRow | undefined
-    const problem = row === undefined ? null : refusal(row)
-    if (problem !== null) {
-      reportRefusal(id, problem)
-      return
-    }
-    forgetRefusal(id)
-    setRowModes((previous) => ({ ...previous, [id]: { mode: GridRowModes.View } }))
-  }
+  const forgetRefusal = useCallback(
+    (id: GridRowId) =>
+      setRefused((previous) => {
+        if (!previous.has(id)) return previous
+        const next = new Set(previous)
+        next.delete(id)
+        return next
+      }),
+    [],
+  )
 
   /**
    * Cancelling a draft removes it; cancelling a saved row restores it. Reverting
    * a draft would leave an empty row in the table that no endpoint has ever
    * heard of.
+   *
+   * The draft is dropped in the update *after* the one that ends its edit.
+   * Removed in the same update, the grid was still stopping an editor whose row
+   * had already vanished and fell back to committing it: cancelling a new row
+   * POSTed the empty draft and answered 422, with an error toast for a write
+   * nobody asked for (measured on this screen, twice — the second time by
+   * deriving the row's presence from its mode, which is the same update).
    */
-  const cancelEdit = (id: GridRowId) => {
-    forgetRefusal(id)
-    setRowModes((previous) => ({
-      ...previous,
-      [id]: { mode: GridRowModes.View, ignoreModifications: true },
-    }))
-    /**
-     * The draft is dropped in the update *after* the one that ends its edit.
-     *
-     * Removed in the same update, the grid was still stopping an editor whose
-     * row had already vanished and fell back to committing it: cancelling a new
-     * row POSTed the empty draft and answered 422, with an error toast for a
-     * write nobody asked for (measured on this screen, twice — the second time
-     * by deriving the row's presence from its mode, which is the same update).
-     */
-    if (draft?.id === id) queueMicrotask(() => setDraft(null))
-  }
+  const dropDraft = useCallback(
+    (id: GridRowId) => {
+      forgetRefusal(id)
+      if (draft?.id === id) queueMicrotask(() => setDraft(null))
+    },
+    [draft, forgetRefusal],
+  )
+
+  const editor = useRowEditor<UserRow, EditableField>({
+    apiRef,
+    refusal,
+    // A refused row is allowed to look wrong until it is fixed; a committed one
+    // is not, and a cancelled draft leaves the table altogether.
+    onRefused: (id) => setRefused((previous) => new Set(previous).add(id)),
+    onCommitted: forgetRefusal,
+    onCancelled: dropDraft,
+  })
 
   const startCreate = () => {
     const row = draftRow()
     setDraft(row)
     grid.resetPage()
-    setRowModes((previous) => ({
+    // The draft opens with the caret in its first cell, which is why this is not
+    // `editor.startEdit`: a new row is typed into from the left, a saved one is
+    // entered wherever the reader clicked.
+    editor.setRowModes((previous) => ({
       ...previous,
       [row.id]: { mode: GridRowModes.Edit, fieldToFocus: 'username' },
     }))
@@ -288,10 +288,8 @@ export default function UserList() {
   const columns = useMemo<GridColDef<UserRow>[]>(
     () => [
       {
-        field: 'username',
+        ...sized('username'),
         headerName: t('table.username'),
-        flex: 1,
-        minWidth: 140,
         editable: true,
         // The same lengths the server enforces. An invalid cell keeps the row in
         // edit mode, so a 422 never has to explain it.
@@ -307,10 +305,8 @@ export default function UserList() {
         }),
       },
       {
-        field: 'email',
+        ...sized('email'),
         headerName: t('table.email'),
-        flex: 1,
-        minWidth: 200,
         editable: true,
         preProcessEditCellProps: (params) => ({
           ...params.props,
@@ -324,9 +320,8 @@ export default function UserList() {
         }),
       },
       {
-        field: 'password',
+        ...sized('password'),
         headerName: t('table.password'),
-        width: PASSWORD_COLUMN_WIDTH,
         sortable: false,
         editable: true,
         /**
@@ -360,9 +355,8 @@ export default function UserList() {
         }),
       },
       {
-        field: 'created_at',
+        ...sized('created_at'),
         headerName: tCommon('fields.created_at'),
-        width: TIMESTAMP_COLUMN_WIDTH,
         // A draft has no creation time until the server gives it one, and a
         // date rendered from `new Date()` would claim it already has.
         renderCell: ({ row }) => (row.isNew === true ? '—' : formatDateTime(row.created_at)),
@@ -370,25 +364,25 @@ export default function UserList() {
       rowActionsColumn<UserRow>({
         count: 2,
         actions: ({ id, row }) =>
-          rowModes[id]?.mode === GridRowModes.Edit
+          editor.isEditing(id)
             ? [
                 {
                   label: tCommon('actions.save'),
                   icon: 'check',
                   tone: 'primary',
-                  onClick: () => commitEdit(id),
+                  onClick: () => editor.commitEdit(id),
                 },
                 {
                   label: tCommon('actions.cancel'),
                   icon: 'close',
-                  onClick: () => cancelEdit(id),
+                  onClick: () => editor.cancelEdit(id),
                 },
               ]
             : [
                 {
                   label: tCommon('actions.edit'),
                   icon: 'edit',
-                  onClick: () => startEdit(id),
+                  onClick: () => editor.startEdit(id),
                 },
                 {
                   label: tCommon('actions.delete'),
@@ -400,25 +394,17 @@ export default function UserList() {
       }),
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, tCommon, dialog, rowModes, draft, refused],
+    [t, tCommon, dialog, editor, draft, refused],
   )
 
   /**
    * One row, one write, and which write is the row's own answer.
    *
    * Returning the saved row is what puts the server's `id` and `version` in the
-   * grid; throwing is what makes the grid revert the cells and keep the row
-   * open, which is the only way a rejected save stays fixable in place.
+   * grid; the guard around it keeps a refused row open with one sentence, which
+   * is the only way a rejected save stays fixable in place.
    */
-  const handleRowUpdate = async (updated: UserRow): Promise<UserRow> => {
-    const problem = refusal(updated)
-    if (problem !== null) {
-      reportRefusal(updated.id, problem)
-      // Thrown so the grid keeps the row open; flagged so the error handler does
-      // not say a second, vaguer thing about a failure already named.
-      throw Object.assign(new Error(problem.sentence), { reported: true })
-    }
-
+  const handleRowUpdate = editor.guardRowUpdate(async (updated: UserRow): Promise<UserRow> => {
     if (updated.isNew === true) {
       const created = await createMutation.mutateAsync({
         username: updated.username.trim(),
@@ -440,7 +426,7 @@ export default function UserList() {
     })
     toast.success(tCommon('messages.saved'))
     return toRow(saved)
-  }
+  })
 
   const handleDelete = async () => {
     if (dialog.selected === null) return
@@ -459,6 +445,11 @@ export default function UserList() {
         <ListCardHead
           title={t('list_title')}
           count={rowCount}
+          reset={{
+            label: tCommon('actions.reset'),
+            onReset: filters.reset,
+            disabled: !filters.isFiltered,
+          }}
           add={{ label: tCommon('actions.add'), onAdd: startCreate, disabled: draft !== null }}
           refreshLabel={tCommon('actions.retry')}
           onRefresh={() => void query.refetch()}
@@ -467,13 +458,10 @@ export default function UserList() {
             <ListFilters
               fields={FILTER_FIELDS.map((field) => ({
                 name: field,
-                label: field === 'username' ? t('filter.username') : t('filter.email'),
+                label: t(FILTER_LABEL_KEYS[field]),
               }))}
               values={filters.inputs}
               onChange={(name, value) => filters.setInput(name as FilterField, value)}
-              isFiltered={filters.isFiltered}
-              onReset={filters.reset}
-              resetLabel={tCommon('actions.reset')}
             />
           }
         />
@@ -483,21 +471,22 @@ export default function UserList() {
           columns={columns}
           rowCount={rowCount}
           emptyTitle={tCommon('messages.no_data')}
-          loading={query.isLoading}
+          loading={query.isFetching}
           paginationModel={grid.paginationModel}
           onPaginationModelChange={grid.setPaginationModel}
+          sortModel={grid.sortModel}
+          onSortModelChange={grid.setSortModel}
           density={grid.density}
           columnVisibilityModel={grid.columnVisibilityModel}
           onColumnVisibilityModelChange={grid.setColumnVisibilityModel}
           localeText={grid.localeText}
           apiRef={apiRef}
-          rowModesModel={rowModes}
-          onRowModesModelChange={setRowModes}
+          rowModesModel={editor.rowModes}
+          onRowModesModelChange={editor.setRowModes}
           processRowUpdate={handleRowUpdate}
-          onProcessRowUpdateError={(error) => {
-            if ((error as { reported?: boolean }).reported === true) return
-            toast.error(serverErrorMessage(toApiError(error).code, tCommon))
-          }}
+          onProcessRowUpdateError={(error) =>
+            editor.rowUpdateError(error, (failure) => serverErrorMessage(toApiError(failure).code, tCommon))
+          }
         />
       </Card>
 

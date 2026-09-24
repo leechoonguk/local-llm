@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 식품첨가물제조업 폐업정보 (I2813): one GET answers the whole feed as gzip CSV (1,707 rows, 41KB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2813.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE4WPy0rDUBCG94G8Q5cKZzG51ixtsjCQnpaeKOgmr6IQQcwiqSAaiaWlggoV0hSLxYDvk0zwFeQktbhQuxv+C98/n+8fjkmZR3ukw9iBR7ukP2AWdfllU+vQPW60LvMsl5gO69gnP68j5pkWjzg9s+/tW9aA2JS5vC8KYBga6HIbQCJFOizDeAen+S4hGNxXVxeYPRXpaTnLcZzgJMWbc9I0YI/IAACaBKQKI27wyDSvLlflwsdRhKvbMvRbjYpBss0XBcnQZVAVjW/BhyFex8VigqNo26K6t16kSxKom0XLZ8xeyuXZNyhL6iG/yjVfAVD0mh+M8dFvkP+jFVClNkeroMvGBu0nePe2fjZIWujPyzAuXmd/O6LwBagwJpPrAQAA"
+ },
+ "expect": {
+  "path": "/api/issued-key/I2813/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2813.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 300,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "09950627001",
+    "business_name": "갑동(주)",
+    "president_name": "",
+    "industry_name": "식품첨가물제조업",
+    "permit_date": "09950608",
+    "closed_date": "20000510",
+    "closure_kind": "폐업",
+    "district": "제주특별자치도 제주시",
+    "institution_name": "제주특별자치도 제주시"
+   },
+   {
+    "license_no": "19620435001",
+    "business_name": "중앙곡자(주)",
+    "president_name": "",
+    "industry_name": "식품첨가물제조업",
+    "permit_date": "19620608",
+    "closed_date": "20061104",
+    "closure_kind": "폐업",
+    "district": "충청북도 제천시",
+    "institution_name": "충청북도 제천시"
+   },
+   {
+    "license_no": "19630036001",
+    "business_name": "신진식품",
+    "president_name": "",
+    "industry_name": "식품첨가물제조업",
+    "permit_date": "19630417",
+    "closed_date": "20040629",
+    "closure_kind": "폐업",
+    "district": "서울특별시 성동구",
+    "institution_name": "서울특별시 성동구"
+   }
+  ]
+ }
+}

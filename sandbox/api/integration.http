@@ -241,15 +241,23 @@ Authorization: Bearer {{login.response.body.access_token}}
 DELETE {{base}}/integration/{{integrationId}}/secrets/partner-api-key
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 15. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
+### 15. 호출 로그 — 200 (이 provider가 보낸 호출, 최신순 — 바디·헤더는 목록에 없다)
+GET {{base}}/integration/{{integrationId}}/calls?offset=0&limit=100
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 16. provider 삭제 — 200 (operations/secrets/fields가 CASCADE로 함께 사라진다)
 DELETE {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 16. provider 단건 조회 — 404 (15번 삭제가 실제로 반영됐음을 증명한다)
+### 17. provider 단건 조회 — 404 (16번 삭제가 실제로 반영됐음을 증명한다)
 GET {{base}}/integration/{{integrationId}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 17. 시크릿 수정 — 404 (provider가 사라졌으므로 하위 컬렉션도 주소가 없다)
+### 18. 호출 로그 — 404 (provider가 사라졌으므로 로그도 주소가 없다 — 빈 페이지가 아니다)
+GET {{base}}/integration/{{integrationId}}/calls?offset=0&limit=100
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 19. 시크릿 수정 — 404 (provider가 사라졌으므로 하위 컬렉션도 주소가 없다)
 PUT {{base}}/integration/{{integrationId}}/secrets/partner-api-key
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -258,7 +266,7 @@ Content-Type: application/json
   "value": "no-such-provider"
 }
 
-### 18. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
+### 20. provider 생성 — 422 (base_url이 HTTPS origin이 아니다)
 POST {{base}}/integration/
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
@@ -270,10 +278,10 @@ Content-Type: application/json
   "operations": []
 }
 
-### 19. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
+### 21. provider 목록 — 401 (토큰 없음 — 의도적으로 헤더를 생략)
 GET {{base}}/integration/?offset=0&limit=100
 
-### 20. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
+### 22. 외부 API 실행 — 422 (설정에 없는 operation — 코드별 실행 블록은 integration.<code>.http가 갖는다)
 POST {{base}}/integration/{{seededProviderId}}/operations/missing-operation/execute
 Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json

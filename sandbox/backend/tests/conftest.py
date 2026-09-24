@@ -5,11 +5,19 @@ own file — the production engine, an ambient environment variable, or a token
 minted by another test.
 """
 
+import os
+import re
 from collections.abc import AsyncIterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 from app.core.settings import Settings, settings
@@ -19,15 +27,115 @@ from app.models.batch.run import BatchRun  # noqa: F401 — on metadata
 from app.models.batch.schedule import BatchSchedule  # noqa: F401 — on metadata
 from app.models.batch.step import BatchStep  # noqa: F401 — on metadata
 from app.models.food.barcode import FoodBarcode  # noqa: F401 — on metadata
-from app.models.food.item_report import FoodItemReport  # noqa: F401 — on metadata
-from app.models.food.item_report_raw_material import (  # noqa: F401 — on metadata
-    FoodItemReportRawMaterial,
+from app.models.food.business import FoodBusiness  # noqa: F401 — on metadata
+from app.models.food.common_standard_exclusion import (
+    FoodCommonStandardExclusion,  # noqa: F401 — on metadata
 )
+from app.models.food.common_standard_type import FoodCommonStandardType  # noqa: F401 — on metadata
+from app.models.food.item_report import FoodItemReport  # noqa: F401 — on metadata
+from app.models.food.item_report_declaration import (  # noqa: F401 — on metadata
+    FoodItemReportDeclaration,
+)
+from app.models.food.item_report_ingredient import (  # noqa: F401 — on metadata
+    FoodItemReportIngredient,
+)
+from app.models.food.label import FoodLabel  # noqa: F401 — on metadata
+from app.models.food.label_allergen import FoodLabelAllergen  # noqa: F401 — on metadata
+from app.models.food.label_caution import FoodLabelCaution  # noqa: F401 — on metadata
+from app.models.food.label_packaging import FoodLabelPackaging  # noqa: F401 — on metadata
+from app.models.food.ledger_additive_manufacturing_closure import (  # noqa: F401 — on metadata
+    FoodLedgerAdditiveManufacturingClosure,
+)
+from app.models.food.ledger_admin_disposition import (  # noqa: F401 — on metadata
+    FoodLedgerAdminDisposition,
+)
+from app.models.food.ledger_barcode import FoodLedgerBarcode  # noqa: F401 — on metadata
+from app.models.food.ledger_business import (  # noqa: F401 — on metadata
+    FoodLedgerBusiness,
+)
+from app.models.food.ledger_business_site import (  # noqa: F401 — on metadata
+    FoodLedgerBusinessSite,
+)
+from app.models.food.ledger_collection_inspection import (  # noqa: F401 — on metadata
+    FoodLedgerCollectionInspection,
+)
+from app.models.food.ledger_common_standard import (
+    FoodLedgerCommonStandard,  # noqa: F401 — on metadata
+)
+from app.models.food.ledger_common_standard_exclusion import (  # noqa: F401 — on metadata
+    FoodLedgerCommonStandardExclusion,
+)
+from app.models.food.ledger_common_standard_type import (  # noqa: F401 — on metadata
+    FoodLedgerCommonStandardType,
+)
+from app.models.food.ledger_haccp_label import FoodLedgerHaccpLabel  # noqa: F401 — on metadata
+from app.models.food.ledger_health_functional_closure import (  # noqa: F401 — on metadata
+    FoodLedgerHealthFunctionalClosure,
+)
+from app.models.food.ledger_health_functional_item_report import (  # noqa: F401 — on metadata
+    FoodLedgerHealthFunctionalItemReport,
+)
+from app.models.food.ledger_health_functional_production import (  # noqa: F401 — on metadata
+    FoodLedgerHealthFunctionalProduction,
+)
+from app.models.food.ledger_import_business_closure import (  # noqa: F401 — on metadata
+    FoodLedgerImportBusinessClosure,
+)
+from app.models.food.ledger_import_food_label import (  # noqa: F401 — on metadata
+    FoodLedgerImportFoodLabel,
+)
+from app.models.food.ledger_individual_standard import (  # noqa: F401 — on metadata
+    FoodLedgerIndividualStandard,
+)
+from app.models.food.ledger_inspection_failure import (  # noqa: F401 — on metadata
+    FoodLedgerInspectionFailure,
+)
+from app.models.food.ledger_item_report import FoodLedgerItemReport  # noqa: F401 — on metadata
+from app.models.food.ledger_item_report_raw_material import (  # noqa: F401 — on metadata
+    FoodLedgerItemReportRawMaterial,
+)
+from app.models.food.ledger_livestock_item_report_raw_material import (  # noqa: F401 — on metadata
+    FoodLedgerLivestockItemReportRawMaterial,
+)
+from app.models.food.ledger_livestock_processing_closure import (  # noqa: F401 — on metadata
+    FoodLedgerLivestockProcessingClosure,
+)
+from app.models.food.ledger_livestock_production import (  # noqa: F401 — on metadata
+    FoodLedgerLivestockProduction,
+)
+from app.models.food.ledger_manufacturing_closure import (  # noqa: F401 — on metadata
+    FoodLedgerManufacturingClosure,
+)
+from app.models.food.ledger_meat_packaging_closure import (  # noqa: F401 — on metadata
+    FoodLedgerMeatPackagingClosure,
+)
+from app.models.food.ledger_nutrition import FoodLedgerNutrition  # noqa: F401 — on metadata
+from app.models.food.ledger_product_classification import (  # noqa: F401 — on metadata
+    FoodLedgerProductClassification,
+)
+from app.models.food.ledger_production import FoodLedgerProduction  # noqa: F401 — on metadata
+from app.models.food.ledger_qr_allergy import FoodLedgerQrAllergy  # noqa: F401 — on metadata
+from app.models.food.ledger_qr_caution import FoodLedgerQrCaution  # noqa: F401 — on metadata
+from app.models.food.ledger_qr_label import FoodLedgerQrLabel  # noqa: F401 — on metadata
+from app.models.food.ledger_qr_manufacture import (
+    FoodLedgerQrManufacture,  # noqa: F401 — on metadata
+)
+from app.models.food.ledger_qr_nutrition import FoodLedgerQrNutrition  # noqa: F401 — on metadata
+from app.models.food.ledger_qr_packaging import FoodLedgerQrPackaging  # noqa: F401 — on metadata
+from app.models.food.ledger_qr_raw_material import (
+    FoodLedgerQrRawMaterial,  # noqa: F401 — on metadata
+)
+from app.models.food.ledger_qr_storage import FoodLedgerQrStorage  # noqa: F401 — on metadata
+from app.models.food.ledger_raw_material import FoodLedgerRawMaterial  # noqa: F401 — on metadata
+from app.models.food.ledger_recall import FoodLedgerRecall  # noqa: F401 — on metadata
+from app.models.food.ledger_test_item import FoodLedgerTestItem  # noqa: F401 — on metadata
 from app.models.food.nutrition import FoodNutrition  # noqa: F401 — on metadata
 from app.models.food.product_classification import (  # noqa: F401 — on metadata
     FoodProductClassification,
 )
 from app.models.food.raw_material import FoodRawMaterial  # noqa: F401 — on metadata
+from app.models.food.safety_record import FoodSafetyRecord  # noqa: F401 — on metadata
+from app.models.food.standard import FoodStandard  # noqa: F401 — on metadata
 from app.models.food.test_item import FoodTestItem  # noqa: F401 — on metadata
 from app.models.integration.call import IntegrationCall  # noqa: F401 — on metadata
 from app.models.integration.field import IntegrationField  # noqa: F401 — on metadata
@@ -43,7 +151,7 @@ settings.env = "test"
 
 
 @pytest.fixture(autouse=True)
-def isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> dict[str, str]:
     """Hide ambient environment variables that map to Settings fields.
 
     `Settings(_env_file=None, ...)` bypasses the .env file but **not**
@@ -53,11 +161,18 @@ def isolate_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     green in one terminal and red in another.
 
     The names come from the model, not a hardcoded list, so a new field cannot
-    reintroduce the leak.
+    reintroduce the leak. What was hidden is returned, because one test starts
+    a subprocess that imports the app and needs the suite's own environment
+    (`[tool.pytest.ini_options] env`) - the process it starts, not this one.
     """
+    hidden: dict[str, str] = {}
     for field in Settings.model_fields:
-        monkeypatch.delenv(field.upper(), raising=False)
-        monkeypatch.delenv(field, raising=False)
+        for name in (field.upper(), field):
+            value = os.environ.get(name)
+            if value is not None:
+                hidden[name] = value
+            monkeypatch.delenv(name, raising=False)
+    return hidden
 
 
 @pytest.fixture()
@@ -115,10 +230,29 @@ async def engine():
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    with_postgresql_functions(engine)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield engine
     await engine.dispose()
+
+
+def with_postgresql_functions(engine: AsyncEngine) -> None:
+    """Give the SQLite double the PostgreSQL functions the app's SQL may name.
+
+    `regexp_replace(text, pattern, replacement, flags)` is the one PostgreSQL
+    function this project's SQL has needed; SQLite has no regex at all, so the
+    function is Python's. Registered on connect, before the first connection -
+    the pool is static, so that is the only one.
+    """
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _register(dbapi_connection, _record) -> None:
+        dbapi_connection.create_function("regexp_replace", 4, _regexp_replace)
+
+
+def _regexp_replace(text: str | None, pattern: str, replacement: str, _flags: str) -> str | None:
+    return None if text is None else re.sub(pattern, replacement, text)
 
 
 @pytest.fixture()

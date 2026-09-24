@@ -31,23 +31,53 @@ export interface NavItem {
 }
 
 export interface NavGroup {
-  /** Key inside the `nav` namespace, rendered as the group's subheader. */
-  subheaderKey: NavKey
+  /**
+   * Key inside the `nav` namespace, rendered as the group's subheader — and the
+   * **area** the group's screens answer to (rule://product-areas): the pattern
+   * every domain under it must carry is mapped from this key.
+   *
+   * `null` for the ungrouped head, which is the dashboard: an overview of every
+   * area is in none of them, and a subheader over a single item is a label for a
+   * group that does not exist.
+   */
+  subheaderKey: NavKey | null
   items: NavItem[]
 }
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    subheaderKey: 'group.admin',
+    subheaderKey: null,
+    items: [{ titleKey: 'dashboard', path: PATHS.dashboard, icon: 'dashboard' }],
+  },
+  {
+    subheaderKey: 'group.user',
+    items: [{ titleKey: 'user', path: PATHS.user, icon: 'user' }],
+  },
+  {
+    /**
+     * 배치 — configuration whose work happens elsewhere. 외부 연동 stands here
+     * rather than beside the dashboard because it *is* this pattern: a provider
+     * row is configuration, its operations are exercised on demand, and the
+     * calls are logged the way a schedule's runs are (rule://product-areas).
+     */
+    subheaderKey: 'group.batch',
     items: [
-      { titleKey: 'dashboard', path: PATHS.dashboard, icon: 'dashboard' },
-      { titleKey: 'user', path: PATHS.user, icon: 'user' },
       { titleKey: 'batch', path: PATHS.batch, icon: 'batch' },
       { titleKey: 'integration', path: PATHS.integration, icon: 'integration' },
     ],
   },
   {
     subheaderKey: 'group.food',
-    items: [{ titleKey: 'food_raw_material', path: PATHS.food.rawMaterial, icon: 'food' }],
+    items: [
+      { titleKey: 'food_chat', path: PATHS.food.chat, icon: 'food_chat' },
+      { titleKey: 'food_item_report', path: PATHS.food.itemReport, icon: 'food_item_report' },
+      { titleKey: 'food_raw_material', path: PATHS.food.rawMaterial, icon: 'food_raw_material' },
+      { titleKey: 'food_business', path: PATHS.food.business, icon: 'food_business' },
+      {
+        titleKey: 'food_safety_record',
+        path: PATHS.food.safetyRecord,
+        icon: 'food_event',
+      },
+    ],
   },
 ]

@@ -1,0 +1,88 @@
+{
+  "why": "One measured window of the 바코드연계제품정보 service (C005): the key and the window travel as path segments, the page root is /C005/row, and each record pairs one 유통바코드 with the 품목보고번호 it is sold under.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "C005": {
+        "total_count": "259669",
+        "row": [
+          {
+            "CLSBIZ_DT": "",
+            "SITE_ADDR": "부산광역시 동구",
+            "PRDLST_REPORT_NO": "19950129282236",
+            "PRMS_DT": "20090724",
+            "PRDLST_NM": "좋은상품 유기농 부침가루",
+            "BAR_CD": "8805522061018",
+            "POG_DAYCNT": "제조일로부터 12개월까지",
+            "PRDLST_DCNM": "기타가공품",
+            "BSSH_NM": "사조동아원(주) 부산공장",
+            "END_DT": "20200217",
+            "INDUTY_NM": "식품제조가공업"
+          },
+          {
+            "CLSBIZ_DT": "20231019",
+            "SITE_ADDR": "경기도 동두천시",
+            "PRDLST_REPORT_NO": "1997031009828",
+            "PRMS_DT": "19971009",
+            "PRDLST_NM": "쵸코카라멜",
+            "BAR_CD": "8801649120355",
+            "POG_DAYCNT": "제조일로부터 12개월",
+            "PRDLST_DCNM": "캔디류",
+            "BSSH_NM": "한양제과주식회사",
+            "END_DT": "20161124",
+            "INDUTY_NM": "식품제조가공업"
+          }
+        ],
+        "RESULT": {
+          "MSG": "정상처리되었습니다.",
+          "CODE": "INFO-000"
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/C005/json/1/2",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "barcode_no": "8805522061018",
+        "item_report_no": "19950129282236",
+        "permit_date": "20090724",
+        "production_end_date": "20200217",
+        "product_name": "좋은상품 유기농 부침가루",
+        "shelf_life": "제조일로부터 12개월까지",
+        "product_type_name": "기타가공품",
+        "business_name": "사조동아원(주) 부산공장",
+        "industry_name": "식품제조가공업",
+        "site_address": "부산광역시 동구",
+        "closed_business_date": ""
+      },
+      {
+        "barcode_no": "8801649120355",
+        "item_report_no": "1997031009828",
+        "permit_date": "19971009",
+        "production_end_date": "20161124",
+        "product_name": "쵸코카라멜",
+        "shelf_life": "제조일로부터 12개월",
+        "product_type_name": "캔디류",
+        "business_name": "한양제과주식회사",
+        "industry_name": "식품제조가공업",
+        "site_address": "경기도 동두천시",
+        "closed_business_date": "20231019"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "259669"
+    }
+  }
+}

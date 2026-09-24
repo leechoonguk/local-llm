@@ -93,8 +93,10 @@ class IntegrationProviderService:
         limit: int = 100,
         code: str | None = None,
         display_name: str | None = None,
+        sort: str | None = None,
+        order: str = "asc",
     ) -> list[Integration]:
-        return await self.provider_repository.list(offset, limit, code, display_name)
+        return await self.provider_repository.list(offset, limit, code, display_name, sort, order)
 
     async def create_integration(
         self, data: IntegrationCreateRequest, created_by: str
@@ -226,6 +228,61 @@ class IntegrationProviderService:
             )
 
     @staticmethod
+    def _validate_screen(operation: IntegrationOperationCreateRequest) -> None:
+        """An HTML operation reads by locator, and a JSON one by pointer - never mixed.
+
+        The row selector is the root (`table.board_list tbody tr:has(a)`), so a
+        pointer there resolves to nothing; and a POINTER row against a parsed
+        screen has nothing to point into, where a CSS row against a JSON body is a
+        configuration the client refuses at the first call. Both are refused here
+        so the configuration the API accepts is one the client can read.
+        """
+        root = operation.response_root
+        if root is not None and root.startswith("/"):
+            raise IntegrationConfigurationError(
+                "An HTML response root is a row selector, not a JSON Pointer"
+            )
+        for field in operation.fields:
+            if field.direction == "RESPONSE" and field.locator_kind == "POINTER":
+                raise IntegrationConfigurationError(
+                    f"An HTML operation reads its response by CSS, LABEL or REGEX: {field.key}"
+                )
+
+    @staticmethod
+    def _validate_file(operation: IntegrationOperationCreateRequest) -> None:
+        """A file operation answers the whole feed at once, so three shapes cannot apply.
+
+        No root, because the file is the page; no ENVELOPE row, because a file's
+        refusal is an HTTP status and its success has no wrapper to read; no
+        paging family, because a walk over a file is the file read in chunks and
+        a window input would be sent to a door that ignores it. Each column is
+        read by a one-segment pointer (`/PRDTNM`), the CSV header's own name.
+        """
+        if operation.response_root is not None:
+            raise IntegrationConfigurationError(
+                "A CSV operation has no response root: the file is the page"
+            )
+        for field in operation.fields:
+            if field.direction == "RESPONSE" and field.location == "ENVELOPE":
+                raise IntegrationConfigurationError(
+                    f"A CSV operation has no envelope to read: {field.key}"
+                )
+            if (
+                field.direction == "RESPONSE"
+                and field.location == "BODY"
+                and field.wire_path.count("/") != 1
+            ):
+                raise IntegrationConfigurationError(
+                    f"A CSV column is read by a one-segment pointer, '/COLUMN': {field.key}"
+                )
+        request_keys = [field.key for field in operation.fields if field.direction == "REQUEST"]
+        if paging_family(request_keys) is not None:
+            raise IntegrationConfigurationError(
+                "A CSV operation is read in chunks of page_size, not windowed: "
+                "drop the paging inputs"
+            )
+
+    @staticmethod
     def _validate_response_root(operation: IntegrationOperationCreateRequest) -> None:
         """A paging operation names the page it returns; anything else may map a record.
 
@@ -237,15 +294,19 @@ class IntegrationProviderService:
         was, which made the page-size input unobservable.
         """
         root = operation.response_root
-        if root is not None:
-            if not root.startswith("/"):
-                raise IntegrationConfigurationError(
-                    "A response root must be a JSON Pointer starting with '/'"
-                )
-            if re.search(r"/\d+$", root):
-                raise IntegrationConfigurationError(
-                    f"A response root must name the page, not one record in it: {root}"
-                )
+        if operation.response_format == "HTML":
+            IntegrationProviderService._validate_screen(operation)
+        elif operation.response_format == "CSV":
+            IntegrationProviderService._validate_file(operation)
+        elif root is not None:
+            IntegrationProviderService._validate_pointer_root(root)
+        if operation.response_format != "HTML":
+            for field in operation.fields:
+                if field.direction == "RESPONSE" and field.locator_kind != "POINTER":
+                    raise IntegrationConfigurationError(
+                        f"A {operation.response_format} operation reads its response by pointer: "
+                        f"{field.key}"
+                    )
         # The family check is the walk's own reading of the fields, so a set of
         # keys this refuses is exactly the set a feed walk could not window.
         request_keys = (field.key for field in operation.fields if field.direction == "REQUEST")
@@ -254,6 +315,17 @@ class IntegrationProviderService:
         if root is None:
             raise IntegrationConfigurationError(
                 "A paging operation must name the page it returns in response_root"
+            )
+
+    @staticmethod
+    def _validate_pointer_root(root: str) -> None:
+        if not root.startswith("/"):
+            raise IntegrationConfigurationError(
+                "A response root must be a JSON Pointer starting with '/'"
+            )
+        if re.search(r"/\d+$", root):
+            raise IntegrationConfigurationError(
+                f"A response root must name the page, not one record in it: {root}"
             )
 
     @staticmethod
@@ -352,8 +424,17 @@ class IntegrationProviderService:
             )
         if RESULT_KEY_PATTERN.fullmatch(field.key) is None:
             raise IntegrationConfigurationError(f"Response field key is invalid: {field.key}")
-        if field.location == "BODY" and not field.wire_path.startswith("/"):
-            raise IntegrationConfigurationError("Response body fields must use JSON Pointer paths")
+        # A pointer row addresses a decoded body; a locator row addresses a screen,
+        # and its `wire_path` is a selector, a label or a pattern (never a pointer).
+        if field.locator_kind == "POINTER":
+            if field.location in {"BODY", "ENVELOPE"} and not field.wire_path.startswith("/"):
+                raise IntegrationConfigurationError(
+                    "Response body fields must use JSON Pointer paths"
+                )
+        elif field.location not in {"BODY", "ENVELOPE"}:
+            raise IntegrationConfigurationError(
+                f"An HTML locator reads the body or its envelope only: {field.key}"
+            )
         if field.location == "HEADER" and HEADER_NAME_PATTERN.fullmatch(field.wire_path) is None:
             raise IntegrationConfigurationError(f"Response header name is invalid: {field.key}")
         if field.location in {"PATH", "QUERY"}:

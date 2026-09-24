@@ -43,9 +43,25 @@ export const INTEGRATION_ENDPOINTS = {
     `/integration/${id}/operations/${operation}/execute`,
   SECRETS: (id: string) => `/integration/${id}/secrets`,
   SECRET: (id: string, name: string) => `/integration/${id}/secrets/${name}`,
+  CALLS: (id: string) => `/integration/${id}/calls`,
 } as const
 
 export const FOOD_ENDPOINTS = {
+  ITEM_REPORT_LIST: '/food/item-report/',
+  SAFETY_RECORD_LIST: '/food/safety-record/',
+  SAFETY_RECORD_FACETS: '/food/safety-record/facets',
+  ITEM_REPORT_FACETS: '/food/item-report/facets',
+  ITEM_REPORT_DETAIL: (id: string) => `/food/item-report/${id}`,
+  ITEM_REPORT_DECLARATIONS: (id: string) => `/food/item-report/${id}/declarations`,
+  ITEM_REPORT_SAFETY_RECORDS: (id: string) => `/food/item-report/${id}/safety-records`,
+  ITEM_REPORT_STANDARDS: (id: string) => `/food/item-report/${id}/standards`,
+  ITEM_REPORT_LABELS: (id: string) => `/food/item-report/${id}/labels`,
   RAW_MATERIAL_LIST: '/food/raw-material/',
   RAW_MATERIAL_FACETS: '/food/raw-material/facets',
+  RAW_MATERIAL_DETAIL: (id: string) => `/food/raw-material/${id}`,
+  RAW_MATERIAL_ITEM_REPORTS: (id: string) => `/food/raw-material/${id}/item-reports`,
+  BUSINESS_LIST: '/food/business/',
+  BUSINESS_FACETS: '/food/business/facets',
+  BUSINESS_DETAIL: (id: string) => `/food/business/${id}`,
+  CHAT: '/food/chat',
 } as const

@@ -1,259 +1,162 @@
-"""FoodRawMaterialService tests — CRUD contracts and the ledger upsert the batch runs."""
+"""FoodRawMaterialService tests — the rebuild off I2520, and the reads over what it wrote."""
 
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import select
 
 from app.core.exceptions import NotFoundError
-from app.schemas.food.raw_material import (
-    FoodRawMaterialCreateRequest,
-    FoodRawMaterialFilter,
-    FoodRawMaterialUpdateRequest,
-    to_read,
-    to_read_list,
-)
+from app.models.food.ledger_raw_material import FoodLedgerRawMaterial
+from app.models.food.raw_material import FoodRawMaterial
+from app.schemas.food.raw_material import FoodRawMaterialFilter
 from app.services.food.raw_material import FoodRawMaterialService
-from tests.services.food.helpers import pages
 
 
-RAW_MATERIAL_CODE = "M000012345"
-
-SYNCED_BY = "batch:sync_food_raw_material_ledger"
+SYNCED_BY = "batch:derive_food_tables"
 
 
-def _record(**overrides: object) -> dict[str, object]:
-    """One canonical I2520 record, in the keys the operation's fields map to."""
-    record: dict[str, object] = {
-        "raw_material_code": RAW_MATERIAL_CODE,
-        "representative_raw_material_name": "고춧가루",
-        "raw_material_alias": "고추가루",
-        "english_name": "Red pepper powder",
-        "scientific_name": "Capsicum annuum",
-        "raw_material_large_class": "농산물",
-        "raw_material_medium_class": "채소류",
-        "region_code_name": "국내산",
-        "raw_material_status_code_name": "사용가능",
-        "valid_start_date": "20200101",
-        "use_yn": "Y",
-        "last_update_datetime": "20240115",
-    }
-    record.update(overrides)
-    return record
+def _code(code: str, name: str, **overrides: object) -> FoodLedgerRawMaterial:
+    """One ledger code, in use unless said otherwise."""
+    fields: dict[str, object] = {"use_yn": "Y", "raw_material_large_class": "식품원료(A코드)"}
+    fields.update(overrides)
+    return FoodLedgerRawMaterial(
+        raw_material_code=code, representative_raw_material_name=name, **fields
+    )
 
 
 @pytest.mark.asyncio
-async def test_food_raw_material_service_crud(factory) -> None:
-    """Each step runs in its own session, as the request lifecycle does.
+async def test_rebuild_writes_what_food_is_made_of_with_its_base_code(factory, pinned) -> None:
+    """The derived table is the ledger minus 기구·용기포장 and 위생용품, each code with its base.
 
-    A read autobegins a transaction, so reusing one session would make the
-    next write's `session.begin()` collide instead of exercising the contract.
+    A retired code stays - it is what an old report meant by the name - and
+    two variants of one material (밀가루 whole/powder, 밀기울 bran) share one
+    `base_code`, the first eight characters.
     """
     async with factory() as session:
-        created = await FoodRawMaterialService(session).create_raw_material(
-            FoodRawMaterialCreateRequest(
-                raw_material_code=RAW_MATERIAL_CODE, representative_raw_material_name="고춧가루"
-            ),
-            created_by="tester",
+        session.add_all(
+            [
+                _code("A1000911010001", "밀가루"),
+                _code("A1000911280000", "밀기울", use_yn="N"),
+                _code("E0000100000000", "폴리에틸렌", raw_material_large_class="위생용품(E코드)"),
+                _code("D0000100000000", "유리", raw_material_large_class="기구 및 용기포장(D코드)"),
+            ]
         )
-        row_id = created.id
+        await session.commit()
+
+    async with pinned() as session:
+        assert await FoodRawMaterialService(session).rebuild_raw_material(SYNCED_BY) == 2
 
     async with factory() as session:
-        stored = await FoodRawMaterialService(session).get_raw_material(row_id)
-        assert stored.representative_raw_material_name == "고춧가루"
-        assert to_read(stored).raw_material_code == RAW_MATERIAL_CODE
-
-    async with factory() as session:
-        rows = await FoodRawMaterialService(session).list_raw_materials()
-        assert len(to_read_list(rows)) == 1
-
-    async with factory() as session:
-        updated = await FoodRawMaterialService(session).update_raw_material(
-            row_id,
-            FoodRawMaterialUpdateRequest(representative_raw_material_name="건고추"),
-            updated_by="tester",
-        )
-        assert updated.representative_raw_material_name == "건고추"
-
-    async with factory() as session:
-        await FoodRawMaterialService(session).delete_raw_material(row_id)
-
-    async with factory() as session:
-        assert await FoodRawMaterialService(session).list_raw_materials() == []
-
-
-@pytest.mark.asyncio
-async def test_food_raw_material_service_missing_row_raises_not_found(factory) -> None:
-    """404 is the ledger's answer for an id it does not hold, on all three verbs."""
-    missing = uuid4()
-    async with factory() as session:
-        with pytest.raises(NotFoundError):
-            await FoodRawMaterialService(session).get_raw_material(missing)
-
-    async with factory() as session:
-        with pytest.raises(NotFoundError):
-            await FoodRawMaterialService(session).update_raw_material(
-                missing,
-                FoodRawMaterialUpdateRequest(representative_raw_material_name="x"),
-                updated_by="tester",
+        rows = (
+            (
+                await session.execute(
+                    select(FoodRawMaterial).order_by(FoodRawMaterial.raw_material_code)
+                )
             )
-
-    async with factory() as session:
-        with pytest.raises(NotFoundError):
-            await FoodRawMaterialService(session).delete_raw_material(missing)
-
-
-@pytest.mark.asyncio
-async def test_replace_raw_material_ledger_inserts_then_leaves_unchanged_rows_alone(
-    factory,
-    pinned,
-) -> None:
-    """A pass that re-sends a row unchanged must not rewrite it.
-
-    Every night reads the whole feed, so a merge that always wrote would bump
-    `version` and `updated_at` on every row of the ledger - and "this row
-    changed" would stop meaning anything.
-    """
-    async with pinned() as session:
-        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages([_record()]), SYNCED_BY
-        ) == (1, 1)
-
-    async with pinned() as session:
-        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages([_record()]), SYNCED_BY
-        ) == (1, 0)
-
-    async with factory() as session:
-        rows = await FoodRawMaterialService(session).list_raw_materials()
-        assert len(rows) == 1
-        assert rows[0].version == 1
-        assert rows[0].created_by == SYNCED_BY
-
-
-@pytest.mark.asyncio
-async def test_replace_raw_material_ledger_refreshes_a_changed_record(factory, pinned) -> None:
-    """A column the portal changed is what the ledger exists to carry forward."""
-    async with pinned() as session:
-        await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages([_record()]), SYNCED_BY
+            .scalars()
+            .all()
         )
-
-    async with pinned() as session:
-        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages([_record(use_yn="N", last_update_datetime="20240601")]), SYNCED_BY
-        ) == (1, 1)
-
-    async with factory() as session:
-        rows = await FoodRawMaterialService(session).list_raw_materials()
-        assert len(rows) == 1
-        assert rows[0].use_yn == "N"
-        assert rows[0].updated_by == SYNCED_BY
+    kept = [(r.raw_material_code, r.base_code, r.representative_raw_material_name) for r in rows]
+    assert kept == [
+        ("A1000911010001", "A1000911", "밀가루"),
+        ("A1000911280000", "A1000911", "밀기울"),
+    ]
 
 
-@pytest.mark.asyncio
-async def test_replace_raw_material_ledger_skips_records_without_a_code(factory, pinned) -> None:
-    """A record with no code cannot be matched again, so it must not be stored.
-
-    The portal leaves columns empty on sparse rows; storing one would insert a
-    duplicate on every later run and no query could ever find it.
-    """
-    async with pinned() as session:
-        assert await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages(
-                [
-                    _record(),
-                    _record(raw_material_code="   "),
-                    _record(raw_material_code=None),
-                    "not-a-record",
-                ]
-            ),
-            SYNCED_BY,
-        ) == (4, 1)
-
-    async with factory() as session:
-        assert len(await FoodRawMaterialService(session).list_raw_materials()) == 1
+def _material(code: str, name: str, **overrides: object) -> FoodRawMaterial:
+    """One derived row, the way the rebuild leaves it."""
+    fields: dict[str, object] = {
+        "use_yn": "Y",
+        "raw_material_large_class": "식품원료(A코드)",
+        "raw_material_medium_class": "식물",
+        "raw_material_status_code_name": "가루",
+    }
+    fields.update(overrides)
+    return FoodRawMaterial(
+        raw_material_code=code, base_code=code[:8], representative_raw_material_name=name, **fields
+    )
 
 
 @pytest.mark.asyncio
-async def test_replace_raw_material_ledger_keeps_a_record_with_an_unreadable_timestamp(
-    factory,
-    pinned,
-) -> None:
-    """An unparseable 최종수정일시 costs that column, never the record."""
-    async with pinned() as session:
-        await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages([_record(last_update_datetime="어제")]), SYNCED_BY
+async def test_list_and_count_narrow_together_by_fragment_and_by_whole_value(factory) -> None:
+    """Free text matches a fragment, a class matches whole; the total counts the same filter."""
+    async with factory() as session:
+        session.add_all(
+            [
+                _material("A1000911010001", "밀가루"),
+                _material("A1000911280000", "밀기울", raw_material_status_code_name="껍질"),
+                _material("A1000912010001", "밀배아", raw_material_medium_class="식물성유지"),
+                _material("B0100010000000", "구연산", raw_material_large_class="식품첨가물(B코드)"),
+            ]
         )
-
-    async with factory() as session:
-        rows = await FoodRawMaterialService(session).list_raw_materials()
-        assert len(rows) == 1
-        assert rows[0].source_updated_at is None
-
-
-@pytest.mark.asyncio
-async def test_list_and_count_agree_under_the_same_filters(factory, pinned) -> None:
-    """The page and its total are built from one predicate, so they cannot drift.
-
-    A total counted without the filter would make the grid say "1-2 of 3" over
-    two matching rows - the footer describing a different collection than the
-    one on screen.
-    """
-    async with pinned() as session:
-        await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages(
-                [
-                    _record(raw_material_code="A1", representative_raw_material_name="고추가루"),
-                    _record(raw_material_code="A2", representative_raw_material_name="마늘"),
-                    _record(raw_material_code="B1", representative_raw_material_name="고추장"),
-                ]
-            ),
-            SYNCED_BY,
-        )
+        await session.commit()
 
     async with factory() as session:
         service = FoodRawMaterialService(session)
-        assert await service.count_raw_materials() == 3
-        by_code = FoodRawMaterialFilter(raw_material_code="a")
-        assert await service.count_raw_materials(by_code) == 2
-        by_name = FoodRawMaterialFilter(representative_raw_material_name="고추")
-        rows = await service.list_raw_materials(filters=by_name)
-        assert [r.raw_material_code for r in rows] == ["A1", "B1"]
-        assert await service.count_raw_materials(by_name) == 2
+        by_name = FoodRawMaterialFilter(representative_raw_material_name="밀")
+        assert [r.raw_material_code for r in await service.list_raw_materials(0, 2, by_name)] == [
+            "A1000911010001",
+            "A1000911280000",
+        ]
+        assert await service.count_raw_materials(by_name) == 3
+        # Whole-value: 식물 does not reach 식물성유지, so 밀배아 is out and the other three in.
+        whole = FoodRawMaterialFilter(raw_material_medium_class="식물")
+        assert await service.count_raw_materials(whole) == 3
+        assert await service.count_raw_materials(None) == 4
 
 
 @pytest.mark.asyncio
-async def test_facets_are_the_ledgers_own_values_sorted_without_null(factory, pinned) -> None:
-    """A select can only offer what a row holds, and NULL is not a choice."""
-    async with pinned() as session:
-        await FoodRawMaterialService(session).replace_raw_material_ledger(
-            pages(
-                [
-                    _record(
-                        raw_material_code="A1",
-                        raw_material_large_class="식물",
-                        raw_material_medium_class="채소류",
-                    ),
-                    _record(
-                        raw_material_code="A2",
-                        raw_material_large_class="동물",
-                        raw_material_medium_class=None,
-                    ),
-                    _record(
-                        raw_material_code="A3",
-                        raw_material_large_class="식물",
-                        raw_material_medium_class="과일류",
-                    ),
-                ]
-            ),
-            SYNCED_BY,
+async def test_facets_are_the_rows_own_values_with_the_medium_class_under_its_large(
+    factory,
+) -> None:
+    """A select offers what a row can match: sorted, NULL left out, the child grouped by parent."""
+    async with factory() as session:
+        session.add_all(
+            [
+                _material("A1000911010001", "밀가루"),
+                _material("A1000912010001", "밀배아", raw_material_medium_class="식물성유지"),
+                _material(
+                    "B0100010000000",
+                    "구연산",
+                    raw_material_large_class="식품첨가물(B코드)",
+                    raw_material_medium_class=None,
+                    raw_material_status_code_name=None,
+                ),
+            ]
         )
+        await session.commit()
 
     async with factory() as session:
         facets = await FoodRawMaterialService(session).list_raw_material_facets()
-    assert facets.raw_material_large_class == ["동물", "식물"]
-    assert facets.raw_material_medium_class == ["과일류", "채소류"]
-    assert facets.raw_material_status_code_name == ["사용가능"]
-    # The child list per parent: 동물 has rows but none with a medium class, so it
-    # has no entry - a parent with no children offers no child, not an empty one.
-    assert facets.raw_material_medium_class_by_large == {"식물": ["과일류", "채소류"]}
+    assert facets.raw_material_large_class == ["식품원료(A코드)", "식품첨가물(B코드)"]
+    assert facets.raw_material_medium_class == ["식물", "식물성유지"]
+    assert facets.raw_material_medium_class_by_large == {"식품원료(A코드)": ["식물", "식물성유지"]}
+    assert facets.raw_material_status_code_name == ["가루"]
+
+
+@pytest.mark.asyncio
+async def test_get_loads_the_base_variants_and_a_missing_id_is_not_found(factory) -> None:
+    """One material comes with every code of its base, itself included, in code order."""
+    async with factory() as session:
+        session.add_all(
+            [
+                _material("A1000911280000", "밀기울"),
+                _material("A1000911010001", "밀가루"),
+                _material("A1000912010001", "밀배아"),
+            ]
+        )
+        await session.commit()
+        stored = await session.scalar(
+            select(FoodRawMaterial).where(FoodRawMaterial.raw_material_code == "A1000911280000")
+        )
+        assert stored is not None
+
+    async with factory() as session:
+        service = FoodRawMaterialService(session)
+        material = await service.get_raw_material(stored.id)
+        assert [v.raw_material_code for v in material.variants] == [
+            "A1000911010001",
+            "A1000911280000",
+        ]
+        with pytest.raises(NotFoundError):
+            await service.get_raw_material(uuid4())

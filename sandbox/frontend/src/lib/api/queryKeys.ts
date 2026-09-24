@@ -26,7 +26,10 @@ function createQueryKeys(scope: string): QueryKeyFactory {
 }
 
 export const userKeys = createQueryKeys('users')
+export const foodItemReportKeys = createQueryKeys('food-item-reports')
+export const foodSafetyRecordKeys = createQueryKeys('food-item-report-events')
 export const foodRawMaterialKeys = createQueryKeys('food-raw-materials')
+export const foodBusinessKeys = createQueryKeys('food-businesses')
 
 export const batchKeys = createQueryKeys('batches')
 
@@ -52,3 +55,11 @@ export const batchRunKeys = createQueryKeys('batch-runs')
 export const batchStepKeys = createQueryKeys('batch-steps')
 
 export const integrationKeys = createQueryKeys('integrations')
+
+/**
+ * A provider's call log — its own scope, for the reason `batchRunKeys` is one:
+ * the rows are written by whatever exercised the operation (a nightly sync job,
+ * outside any request of this client), so a provider's own writes must not mark
+ * them invalid, and a prefix relation would claim exactly that.
+ */
+export const integrationCallKeys = createQueryKeys('integration-calls')

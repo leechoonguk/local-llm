@@ -1,0 +1,176 @@
+### Integration · search-livestock-item-report-raw-material API — 외부 API 실행 (식품안전나라 OpenAPI C006)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           CALLER 소스 REQUEST 필드 6개를 블록 하나씩 전부 호출한다 — 필터는 한 블록에
+###           하나만 보낸다: 여러 개를 섞은 호출은 어느 필드가 걸렸는지 증명하지 못한다.
+###           range_start/range_end는 required CALLER다(RANGE 계열): 기본값이 없으므로
+###           모든 실행 블록이 창(window)을 명시한다 (116_seed_..._integration_field).
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(64_seed_food_safety_korea_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = 3c4802b0-06b3-5924-8d1a-14dbce279ca3
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. range_start/range_end — 200 (RANGE 계열: 행 구간이 창이다)
+# C002 와 같은 포털·같은 키·같은 창 — 서비스 id 와 필터 집합, 열 하나가 다르다.
+# 응답 계약 (115/116_seed_livestock_item_report_raw_material_…):
+#   → response_root=/C006/row — canonical_payload는 그 구간의 레코드 배열이다
+#   → RESPONSE 행 9개의 wire_path는 원소 기준 상대 포인터다 (/RAWMTRL_NM, /RAWMTRL_ORDNO …)
+#     C002 의 열 10개에서 ETQTY_XPORT_PRDLST_YN(내수/겸용)만 없다
+#   → ENVELOPE 행이 봉투를 계약한다: /C006/RESULT/CODE가 INFO-000|INFO-200이 아니면 거부.
+#     result_message/total_count는 metadata로 실린다 — 창을 어디까지 옮길지 알려준다
+#   → 필터 4개는 PATH_QUERY다 — 포털이 받는 요청인자가 넷뿐이다(PRDLST_REPORT_NO, CHNG_DT,
+#     PRMS_DT, LCNS_NO). 그 밖의 키(PRDLST_NM 등)는 [안내] 메시지와 함께 무시되고 전량이 답한다 (실측)
+#   → total_count 569,588 (2026-09-07): 축산물 품목제조보고 1건당 원재료 행 1건
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 3. range_start — 200 (창을 옮긴다: 같은 크기, 다른 레코드)
+# 1-2 → 199900307705 닭꼬치 노벨유통 포장육 … (실측 2026-09-07)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 4,
+    "range_end": 6
+  }
+}
+
+### 4. range_end — 200 (창의 크기가 관측된다: 구간 길이가 곧 레코드 수다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 10
+  }
+}
+
+### 5. item_report_no — 200 (CALLER 필터: 품목제조번호, wire PRDLST_REPORT_NO — total 1)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "item_report_no": "199900307705",
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 6. license_no — 200 (CALLER 필터: 인허가번호, wire LCNS_NO — 노벨유통 54건)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "license_no": "19990030770",
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 7. permit_date_from — 200 (CALLER 필터: 보고일자 하한, wire PRMS_DT)
+# 일치가 아니라 이후다 (실측): 20250101 → 104,556건, 20260901 → 670건
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "permit_date_from": "20260901",
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 8. change_date — 200 (CALLER 필터: 변경일자 이후 자료, wire CHNG_DT — 호출일 기준 7일 이내)
+# 7일보다 이전이면 ERROR-303, YYYYMMDD 가 아니면 ERROR-302 (실측)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "change_date": "{{$datetime 'YYYYMMDD' -1 d}}",
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 9. 외부 API 실행 — 200 (해당 데이터 없음 — INFO-200은 빈 페이지다)
+# 봉투 코드가 INFO-200이면 성공한 빈 결과다: metadata.result_message가 사유를 싣고
+# canonical_payload는 빈 배열이다. 없는 데이터를 502로 뒤집지 않는다.
+# (8자리 인허가번호는 어떤 레코드와도 맞지 않는다 — 실측 INFO-200)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "license_no": "20160189",
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 10. 외부 API 실행 — 502 (창이 뒤집혔다 — ERROR-334)
+# provider는 HTTP 200에 ERROR-334를 실어 보낸다. ENVELOPE 행이 없으면 이 응답은
+# "빈 페이지"와 구분되지 않는다 — 그래서 봉투 코드가 계약이다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 5,
+    "range_end": 1
+  }
+}
+
+### 11. 외부 API 실행 — 422 (창 누락 — 기본값이 없다)
+# range_start/range_end는 required CALLER이고 폴백이 없다: 필드의 값으로도,
+# provider 기본값으로도 대체되지 않는다 → integration_input_invalid.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "license_no": "19990030770"
+  }
+}
+
+### 12. 외부 API 실행 — 404 (없는 provider — operation 코드는 유효하다)
+POST {{base}}/integration/{{missingId}}/operations/search-livestock-item-report-raw-material/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}

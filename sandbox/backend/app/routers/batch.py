@@ -14,7 +14,13 @@ from app.core.scheduler import SCHEDULER_UNAVAILABLE_CODE, BatchScheduler
 from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
 from app.dependencies.core import CacheDep, SchedulerDep
-from app.dependencies.query import LimitQuery, OffsetQuery, TextFilterQuery
+from app.dependencies.query import (
+    BatchSortQuery,
+    LimitQuery,
+    OffsetQuery,
+    OrderQuery,
+    TextFilterQuery,
+)
 from app.dependencies.services import (
     BatchRunServiceDep,
     BatchScheduleServiceDep,
@@ -80,12 +86,16 @@ async def list_batches(
     scheduler: SchedulerDep,
     offset: OffsetQuery = 0,
     limit: LimitQuery = settings.items_per_user,
-    name: TextFilterQuery = None,
+    code: TextFilterQuery = None,
+    sort: BatchSortQuery = None,
+    order: OrderQuery = "asc",
 ) -> Page[BatchReadResponse]:
-    # The filter is part of the key, or the first filtered page would be served
-    # to every later caller as if it were the whole collection.
+    # The filter and the sort are part of the key, or the first filtered page
+    # would be served to every later caller as if it were the whole collection.
     cache_key = scoped_cache_key(
-        BATCH_CACHE_PREFIX, str(current_user.id), f"list:{offset}:{limit}:{name or ''}"
+        BATCH_CACHE_PREFIX,
+        str(current_user.id),
+        f"list:{offset}:{limit}:{code or ''}:{sort or ''}:{order}",
     )
     cached = await cache.get_json(cache_key) if cache is not None else None
     # The cached value is the whole answer, total included: caching the rows
@@ -94,8 +104,10 @@ async def list_batches(
         return _with_running(Page[BatchReadResponse].model_validate(cached), scheduler)
 
     response = Page(
-        items=to_read_list(await batch_schedule_service.list_batches(offset, limit, name)),
-        total=await batch_schedule_service.count_batches(name),
+        items=to_read_list(
+            await batch_schedule_service.list_batches(offset, limit, code, sort, order)
+        ),
+        total=await batch_schedule_service.count_batches(code),
     )
     if cache is not None:
         await cache.set_json(

@@ -22,22 +22,22 @@ async def test_batch_repository_crud(factory) -> None:
     async with factory() as session:
         repo = BatchScheduleRepository(session)
         created = await repo.create(
-            BatchCreateInternal(
-                code=JOB_CODE, name="A", description="d", cron=CRON, created_by="tester"
-            )
+            BatchCreateInternal(code=JOB_CODE, cron=CRON, created_by="tester")
         )
         await session.commit()
         item_id = created.id
-        assert created.name == "A"
+        assert created.code == JOB_CODE
 
         got = await repo.get(item_id)
         assert got is not None
         assert got.id == item_id
         assert len(await repo.list()) == 1
 
-        updated = await repo.update(item_id, BatchUpdateInternal(name="B", updated_by="tester"))
+        updated = await repo.update(
+            item_id, BatchUpdateInternal(cron="30 4 * * *", updated_by="tester")
+        )
         assert updated is not None
-        assert updated.name == "B"
+        assert updated.cron == "30 4 * * *"
 
         assert await repo.delete(item_id) is True
         await session.commit()
@@ -49,12 +49,12 @@ async def test_batch_repository_crud(factory) -> None:
 async def test_batch_repository_list_enabled(factory) -> None:
     """Only enabled rows come back — a disabled job that still schedules is the bug."""
     async with factory() as session:
-        session.add(BatchSchedule(code=JOB_CODE, name="on", cron=CRON, created_by="tester"))
+        session.add(BatchSchedule(code=JOB_CODE, cron=CRON, created_by="tester"))
         session.add(
-            BatchSchedule(code=JOB_CODE, name="off", cron=CRON, enabled=False, created_by="tester")
+            BatchSchedule(code=JOB_CODE, cron="0 5 * * *", enabled=False, created_by="tester")
         )
         await session.commit()
 
     async with factory() as session:
         enabled = await BatchScheduleRepository(session).list_enabled()
-        assert [batch.name for batch in enabled] == ["on"]
+        assert [batch.cron for batch in enabled] == [CRON]

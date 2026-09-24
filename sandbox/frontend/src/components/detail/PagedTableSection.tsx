@@ -11,6 +11,10 @@
  * Not a grid: `ServerDataGrid` owns server paging, sorting, density and column
  * visibility for a whole page. This is a nested collection already in hand, drawn
  * as a plain table so a dialog does not carry a grid's chrome.
+ *
+ * A collection nobody writes from this side - a derived table's edges, rebuilt
+ * nightly - passes no `onCreate` and no `actions`: the add button and the
+ * actions column are then not drawn, rather than drawn disabled.
  */
 
 import type { ReactNode } from 'react'
@@ -52,15 +56,15 @@ interface PagedTableSectionProps<T> {
   /** The section's icon, the same vocabulary the tab strip uses. */
   icon: ActionIcon
   title: string
-  onCreate: () => void
+  onCreate?: () => void
   columns: TableColumn[]
   /** The actions column's share, declared by the caller with the rest. */
-  actionsWidth: string
+  actionsWidth?: string
   paging: TablePaging<T>
   rowKey: (row: T) => string
   /** The cells before the action cell, in the columns' order. */
   renderCells: (row: T) => ReactNode
-  actions: (row: T) => RowAction[]
+  actions?: (row: T) => RowAction[]
 }
 
 export default function PagedTableSection<T>({
@@ -82,9 +86,11 @@ export default function PagedTableSection<T>({
       name={icon}
       title={title}
       action={
-        <Button size="small" startIcon={<Iconify name="add" />} onClick={onCreate}>
-          {tCommon('actions.add')}
-        </Button>
+        onCreate === undefined ? undefined : (
+          <Button size="small" startIcon={<Iconify name="add" />} onClick={onCreate}>
+            {tCommon('actions.add')}
+          </Button>
+        )
       }
     >
       {count === 0 ? (
@@ -114,16 +120,18 @@ export default function PagedTableSection<T>({
                   <ClippedText text={column.label} />
                 </TableCell>
               ))}
-              <TableCell align="right" sx={{ width: actionsWidth }} />
+              {actions !== undefined && <TableCell align="right" sx={{ width: actionsWidth }} />}
             </TableRow>
           </TableHead>
           <TableBody>
             {visible.map((row) => (
               <TableRow key={rowKey(row)} sx={{ height: ROW_HEIGHT }}>
                 {renderCells(row)}
-                <TableCell align="right">
-                  <RowActionButtons actions={actions(row)} />
-                </TableCell>
+                {actions !== undefined && (
+                  <TableCell align="right">
+                    <RowActionButtons actions={actions(row)} />
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>

@@ -1,0 +1,65 @@
+{
+  "why": "One measured page of the 푸드QR 식품표시정보 주의사항 service: inputs travel in the query string and `items` is a plain array, so an element is the record itself.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE."
+      },
+      "body": {
+        "pageNo": 1,
+        "numOfRows": 3,
+        "totalCount": 8134,
+        "items": [
+          {
+            "ELB_MNG_NO": "202410221000001856",
+            "FOOD_IDIF_DTL_SN": "1000000001645",
+            "PRDCT_NM": "전복삼계죽 420g",
+            "BRCD_NO": "08801007901244",
+            "VER_NO": "1",
+            "VLD_BGNG_YMD": "20241101",
+            "VLD_END_YMD": "99991231",
+            "ATENT_MTER_CN": "부정·불량식품신고는국번없이1399\n",
+            "LAST_MDFCN_DT": "2026-07-30 19:03:34"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/1471000/FoodQrInfoService02/getFoodQrIndctAttnInfo02",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1",
+      "numOfRows": "3",
+      "type": "json"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "label_no": "202410221000001856",
+        "detail_serial": "1000000001645",
+        "caution_text": "부정·불량식품신고는국번없이1399\n",
+        "product_name": "전복삼계죽 420g",
+        "barcode_no": "08801007901244",
+        "version_no": "1",
+        "valid_from": "20241101",
+        "valid_to": "99991231",
+        "source_updated_at": "2026-07-30 19:03:34"
+      }
+    ],
+    "metadata": {
+      "result_code": "00",
+      "result_message": "NORMAL SERVICE.",
+      "total_count": 8134
+    }
+  }
+}

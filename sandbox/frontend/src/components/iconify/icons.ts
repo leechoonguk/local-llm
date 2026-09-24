@@ -26,6 +26,7 @@ export const ACTION_ICONS = {
   run: 'eva:play-circle-fill',
   back: 'eva:arrow-back-fill',
   density: 'eva:menu-2-fill',
+  menu: 'eva:menu-fill',
   logout: 'eva:log-out-fill',
   expand: 'eva:arrow-ios-downward-fill',
   collapse: 'eva:arrow-ios-upward-fill',
@@ -34,12 +35,21 @@ export const ACTION_ICONS = {
   shield: 'eva:shield-fill',
   empty: 'eva:inbox-fill',
   check: 'eva:checkmark-fill',
+  success: 'eva:checkmark-circle-2-fill',
+  alert: 'eva:alert-triangle-fill',
   link: 'eva:link-2-fill',
   layers: 'eva:layers-fill',
   people: 'eva:people-fill',
   clock: 'eva:clock-fill',
   server: 'eva:hard-drive-fill',
   stop: 'eva:stop-circle-fill',
+  bell: 'eva:bell-fill',
+  fold: 'eva:arrow-ios-back-fill',
+  unfold: 'eva:arrow-ios-forward-fill',
+  settings: 'eva:settings-2-fill',
+  moon: 'eva:moon-fill',
+  sun: 'eva:sun-fill',
+  contrast: 'eva:color-palette-fill',
 } as const
 
 const NAV_ICON_ROOT = '/assets/icons/navbar'
@@ -49,7 +59,14 @@ export const NAV_ICONS = {
   user: `${NAV_ICON_ROOT}/ic_user.svg`,
   batch: `${NAV_ICON_ROOT}/ic_kanban.svg`,
   integration: `${NAV_ICON_ROOT}/ic_external.svg`,
-  food: `${NAV_ICON_ROOT}/ic_food.svg`,
+  // One glyph per destination. Four food screens shared `ic_food.svg`, so half
+  // the sidebar was the same drawing and the icon column said nothing about
+  // which row it was; the name stays with the screen it means.
+  food_chat: `${NAV_ICON_ROOT}/ic_chat.svg`,
+  food_item_report: `${NAV_ICON_ROOT}/ic_item_report.svg`,
+  food_event: `${NAV_ICON_ROOT}/ic_event.svg`,
+  food_raw_material: `${NAV_ICON_ROOT}/ic_food.svg`,
+  food_business: `${NAV_ICON_ROOT}/ic_business.svg`,
 } as const
 
 /** The brand mark, drawn like a nav glyph so it inherits the primary colour. */

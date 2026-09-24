@@ -4,17 +4,12 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from uuid import UUID
+from collections.abc import Sequence
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.food.product_classification import FoodProductClassification
-from app.schemas.food.product_classification import (
-    FoodProductClassificationCreateInternal,
-    FoodProductClassificationUpdateInternal,
-)
 
 
 # ============================================================
@@ -23,44 +18,51 @@ from app.schemas.food.product_classification import (
 
 
 class FoodProductClassificationRepository:
+    """Reads over the derived classification tree. Nothing here writes: the derive job does."""
+
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get(self, food_product_classification_id: UUID) -> FoodProductClassification | None:
-        return await self.session.get(FoodProductClassification, food_product_classification_id)
+    async def list_ancestor_paths(
+        self, product_codes: Sequence[str]
+    ) -> dict[str, list[FoodProductClassification]]:
+        """Each node's path from its root down to itself, root first.
 
-    async def list(self, offset: int = 0, limit: int = 100) -> list[FoodProductClassification]:
-        result = await self.session.execute(
-            select(FoodProductClassification).offset(offset).limit(limit)
+        The walk up `parent_product_code` is the one place in the food domain
+        a join is spelled by column rather than along an edge, and it is here
+        because it is recursive - an edge is one step, and a path is as many
+        as the tree is deep (five, measured 2026-09-08). One recursive CTE
+        for every code asked, so a report that names three types costs one
+        query and not three.
+        """
+        if not product_codes:
+            return {}
+        node = FoodProductClassification
+        seed = (
+            select(node.product_code.label("origin"), node.product_code, node.parent_product_code)
+            .where(node.product_code.in_(list(product_codes)))
+            .cte("ancestry", recursive=True)
         )
-        return list(result.scalars().all())
-
-    async def create(
-        self, data: FoodProductClassificationCreateInternal
-    ) -> FoodProductClassification:
-        node = FoodProductClassification(**data.model_dump())
-        self.session.add(node)
-        await self.session.flush()
-        return node
-
-    async def update(
-        self, food_product_classification_id: UUID, data: FoodProductClassificationUpdateInternal
-    ) -> FoodProductClassification | None:
-        node = await self.session.get(FoodProductClassification, food_product_classification_id)
-        if node is None:
-            return None
-        for field, value in data.model_dump(exclude_unset=True).items():
-            setattr(node, field, value)
-        # Set before the flush: the column's onupdate=func.now() is a SQL function
-        # whose lazy evaluation raises MissingGreenlet, and a post-flush assignment
-        # would cost a second UPDATE (and a second version bump).
-        node.updated_at = datetime.now(UTC)
-        await self.session.flush()
-        return node
-
-    async def delete(self, food_product_classification_id: UUID) -> bool:
-        node = await self.session.get(FoodProductClassification, food_product_classification_id)
-        if node is None:
-            return False
-        await self.session.delete(node)
-        return True
+        step = select(seed.c.origin, node.product_code, node.parent_product_code).join(
+            seed, seed.c.parent_product_code == node.product_code
+        )
+        ancestry = seed.union_all(step)
+        rows = (
+            await self.session.execute(
+                select(ancestry.c.origin, node).join(
+                    node, node.product_code == ancestry.c.product_code
+                )
+            )
+        ).all()
+        by_code = {row.product_code: row for _, row in rows}
+        paths: dict[str, list[FoodProductClassification]] = {}
+        for code in product_codes:
+            path: list[FoodProductClassification] = []
+            current = by_code.get(code)
+            while current is not None and current not in path:
+                path.append(current)
+                parent = current.parent_product_code
+                current = None if parent is None else by_code.get(parent)
+            path.reverse()
+            paths[code] = path
+        return paths

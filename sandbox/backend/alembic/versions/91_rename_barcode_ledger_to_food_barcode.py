@@ -33,6 +33,8 @@ NATURAL_KEY = ["barcode_no", "report_no"]
 def upgrade() -> None:
     """Upgrade schema."""
     op.rename_table("barcode", "food_barcode")
+    op.drop_constraint("barcode_pkey", "food_barcode", type_="primary")
+    op.create_primary_key("food_barcode_pkey", "food_barcode", ["id"])
     op.drop_constraint("uq_barcode_barcode_no_report_no", "food_barcode", type_="unique")
     op.create_unique_constraint(
         "uq_food_barcode_barcode_no_report_no", "food_barcode", NATURAL_KEY
@@ -52,3 +54,5 @@ def downgrade() -> None:
     op.drop_constraint("uq_food_barcode_barcode_no_report_no", "food_barcode", type_="unique")
     op.create_unique_constraint("uq_barcode_barcode_no_report_no", "food_barcode", NATURAL_KEY)
     op.rename_table("food_barcode", "barcode")
+    op.drop_constraint("food_barcode_pkey", "barcode", type_="primary")
+    op.create_primary_key("barcode_pkey", "barcode", ["id"])

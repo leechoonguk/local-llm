@@ -1,0 +1,89 @@
+{
+  "why": "One measured page of the 푸드QR 식품표시정보 service: every input travels in the query string, `items` is a plain array, and each element is the record itself.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE."
+      },
+      "body": {
+        "pageNo": 1,
+        "numOfRows": 3,
+        "totalCount": 2278,
+        "items": [
+          {
+            "ELB_MNG_NO": "202410221000001856",
+            "FOOD_IDIF_SN": "1000000001259",
+            "PRDT_NM": "전복삼계죽 420g",
+            "BRCD_NO": "08801007901244",
+            "VER_NO": "1",
+            "VLD_BGNG_YMD": "20241101",
+            "VLD_END_YMD": "99991231",
+            "FOOD_DIVS_NM": "가공식품",
+            "FOOD_TYPE_NM": "즉석조리식품",
+            "HSTT_YN": "N",
+            "EPFD_YN": "N",
+            "GTRFM_FOOD_YN": "N",
+            "IFTD_NSLI_YN": "N",
+            "HCL_MLN_FOOD_YN": "N",
+            "DSFCT_PRDT_YN": "N",
+            "STRLZ_PRDT_YN": "N",
+            "CTV": "420g (215kcal)",
+            "CPN_TERM_CN": "상부 표기일까지",
+            "REFRIG_FOOD_YN": "N",
+            "INTK_MTH_CONT": null,
+            "FHF_FTNLT_INFO_CN": null,
+            "MDFCN_DT": "2026-07-30"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/1471000/FoodQrInfoService02/getFoodQrIndctInfo02",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1",
+      "numOfRows": "3",
+      "type": "json"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "label_no": "202410221000001856",
+        "food_label_serial": "1000000001259",
+        "product_name": "전복삼계죽 420g",
+        "barcode_no": "08801007901244",
+        "version_no": "1",
+        "valid_from": "20241101",
+        "valid_to": "99991231",
+        "food_division_name": "가공식품",
+        "food_type_name": "즉석조리식품",
+        "history_tracked_yn": "N",
+        "irradiated_yn": "N",
+        "gmo_yn": "N",
+        "infant_sale_marked_yn": "N",
+        "high_calorie_low_nutrition_yn": "N",
+        "pasteurized_yn": "N",
+        "sterilized_yn": "N",
+        "refrigerated_yn": "N",
+        "content_amount_text": "420g (215kcal)",
+        "shelf_life_text": "상부 표기일까지",
+        "source_updated_at": "2026-07-30"
+      }
+    ],
+    "metadata": {
+      "result_code": "00",
+      "result_message": "NORMAL SERVICE.",
+      "total_count": 2278
+    }
+  }
+}

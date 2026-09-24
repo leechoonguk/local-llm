@@ -11,6 +11,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.sorting import ordered
 from app.models.integration.field import IntegrationField
 from app.models.integration.operation import IntegrationOperation
 from app.models.integration.provider import Integration
@@ -56,10 +57,18 @@ class IntegrationProviderRepository:
         limit: int = 100,
         code: str | None = None,
         display_name: str | None = None,
+        sort: str | None = None,
+        order: str = "asc",
     ) -> list[Integration]:
-        query = _apply_filters(select(Integration), code, display_name)
+        query = ordered(
+            _apply_filters(select(Integration), code, display_name),
+            Integration,
+            sort,
+            order,
+            Integration.code,
+        )
         result = await self.session.execute(
-            query.order_by(Integration.code).offset(offset).limit(limit).options(*self._options())
+            query.offset(offset).limit(limit).options(*self._options())
         )
         return list(result.scalars().unique().all())
 
@@ -80,6 +89,9 @@ class IntegrationProviderRepository:
             code=data.code,
             display_name=data.display_name,
             base_url=data.base_url,
+            transport=data.transport,
+            bootstrap_path=data.bootstrap_path,
+            min_interval_ms=data.min_interval_ms,
             enabled=data.enabled,
             created_by=data.created_by,
             updated_by=data.created_by,
@@ -141,6 +153,7 @@ class IntegrationProviderRepository:
             request_media_type=data.request_media_type,
             response_format=data.response_format,
             response_root=data.response_root,
+            page_size=data.page_size,
             connect_timeout_ms=data.connect_timeout_ms,
             read_timeout_ms=data.read_timeout_ms,
             max_retries=data.max_retries,

@@ -22,6 +22,10 @@ class BatchSchedule(Base, AuditMixin):
     The row owns the schedule; the repository's Python owns the work. `code`
     names a callable registered in `app.core.scheduler.BATCH_JOBS`, so a job is
     added by writing one function and one row — never by editing the lifespan.
+    It is also the row's only name: a `name` column stood here until
+    2026-09-22, and on all 33 rows it was the code restyled
+    (`sync_food_ledger_recall` → "Sync food_ledger_recall"), so it read like a
+    second identity while carrying no fact the code did not.
 
     `code` is deliberately **not** unique: the same job may be scheduled twice
     (a nightly full pass and a midday partial one), and the scheduler is keyed
@@ -39,7 +43,5 @@ class BatchSchedule(Base, AuditMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     code: Mapped[str] = mapped_column(String(64), index=True)
-    name: Mapped[str] = mapped_column(String(120), index=True)
-    description: Mapped[str | None] = mapped_column(String(512), default=None)
     cron: Mapped[str] = mapped_column(String(120))
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())

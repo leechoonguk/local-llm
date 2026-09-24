@@ -40,12 +40,13 @@ import IntegrationOperationPanel from '@/sections/integration/IntegrationOperati
 import IntegrationRunPanel from '@/sections/integration/IntegrationRunPanel'
 import IntegrationSecretDeletePanel from '@/sections/integration/IntegrationSecretDeletePanel'
 import IntegrationSecretPanel from '@/sections/integration/IntegrationSecretPanel'
+import IntegrationCallsTab from '@/sections/integration/detail/IntegrationCallsTab'
 import IntegrationOperationsTab from '@/sections/integration/detail/IntegrationOperationsTab'
 import IntegrationSecretsTab from '@/sections/integration/detail/IntegrationSecretsTab'
 import { formatDateTime } from '@/utils/formatTime'
 import type { IntegrationOperation, IntegrationSecret } from '@/types/integration'
 
-type DetailTab = 'operations' | 'secrets'
+type DetailTab = 'operations' | 'secrets' | 'calls'
 
 /**
  * What the dialog body shows: the tabs, or the one panel that replaced them.
@@ -68,9 +69,15 @@ type PanelMode =
 const TAB_ICONS: Record<DetailTab, ActionIcon> = {
   operations: 'link',
   secrets: 'lock',
+  calls: 'view',
 }
 
-const TAB_ORDER: DetailTab[] = ['operations', 'secrets']
+/**
+ * Configuration first, then evidence: the operations and the credentials are
+ * what a reader edits, and the call log is what says whether the edit worked
+ * (rule://product-areas, Pattern: operations).
+ */
+const TAB_ORDER: DetailTab[] = ['operations', 'secrets', 'calls']
 
 /** The dialog body's floor lives with the other record-surface metrics. */
 const BODY_MIN_HEIGHT = RECORD_SURFACE.BODY_MIN_HEIGHT
@@ -151,7 +158,7 @@ export default function IntegrationDetailDialog({
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="md"
+      maxWidth={RECORD_SURFACE.DIALOG_MAX_WIDTH}
       fullWidth
       slotProps={{ transition: { onExited: resetBody } }}
     >
@@ -209,79 +216,85 @@ export default function IntegrationDetailDialog({
       )}
 
       <DialogContent sx={{ minHeight: BODY_MIN_HEIGHT, bgcolor: 'background.neutral', p: 3 }}>
-        {query.isLoading && (
-          <Stack alignItems="center" sx={{ py: 6 }}>
-            <CircularProgress />
-          </Stack>
-        )}
+        {/* One gap between cards, whatever the tab draws: measured 2026-09-16,
+            the record tab stacked its cards at 0px while the standards tab
+            stood at 24px and two other tabs at 16px. */}
+        <Stack spacing={RECORD_SURFACE.SECTION_GAP}>
+          {query.isLoading && (
+            <Stack alignItems="center" sx={{ py: 6 }}>
+              <CircularProgress />
+            </Stack>
+          )}
 
-        {provider !== undefined && showsTabs && (
-          <Box>
-            {tab === 'operations' && (
-              <IntegrationOperationsTab
-                paging={operationPaging}
-                onCreate={() => setMode({ kind: 'create' })}
-                onSelect={(operation) =>
-                  setMode({ kind: 'operation', operationCode: operation.code })
-                }
-                onDelete={(operation) => setMode({ kind: 'delete', operation })}
-              />
-            )}
-            {tab === 'secrets' && (
-              <IntegrationSecretsTab
-                paging={secretPaging}
-                onCreate={() => setMode({ kind: 'secretCreate' })}
-                onSelect={(secret) => setMode({ kind: 'secret', secretName: secret.name })}
-                onDelete={(secret) => setMode({ kind: 'secretDelete', secret })}
-              />
-            )}
-          </Box>
-        )}
+          {provider !== undefined && showsTabs && (
+            <Box>
+              {tab === 'operations' && (
+                <IntegrationOperationsTab
+                  paging={operationPaging}
+                  onCreate={() => setMode({ kind: 'create' })}
+                  onSelect={(operation) =>
+                    setMode({ kind: 'operation', operationCode: operation.code })
+                  }
+                  onDelete={(operation) => setMode({ kind: 'delete', operation })}
+                />
+              )}
+              {tab === 'calls' && <IntegrationCallsTab integrationId={provider.id} />}
+              {tab === 'secrets' && (
+                <IntegrationSecretsTab
+                  paging={secretPaging}
+                  onCreate={() => setMode({ kind: 'secretCreate' })}
+                  onSelect={(secret) => setMode({ kind: 'secret', secretName: secret.name })}
+                  onDelete={(secret) => setMode({ kind: 'secretDelete', secret })}
+                />
+              )}
+            </Box>
+          )}
 
-        {provider !== undefined && (panel?.kind === 'create' || selected !== undefined) && (
-          <IntegrationOperationPanel
-            provider={provider}
-            operation={selected ?? null}
-            onRun={() => selected !== undefined && setMode({ kind: 'run', operation: selected })}
-            // Reading or editing, "back" is the table the record was opened from.
-            onBack={() => setMode({ kind: 'tabs' })}
-          />
-        )}
-
-        {provider !== undefined &&
-          (panel?.kind === 'secretCreate' || selectedSecret !== undefined) && (
-            <IntegrationSecretPanel
+          {provider !== undefined && (panel?.kind === 'create' || selected !== undefined) && (
+            <IntegrationOperationPanel
               provider={provider}
-              secret={selectedSecret ?? null}
+              operation={selected ?? null}
+              onRun={() => selected !== undefined && setMode({ kind: 'run', operation: selected })}
+              // Reading or editing, "back" is the table the record was opened from.
               onBack={() => setMode({ kind: 'tabs' })}
             />
           )}
 
-        {provider !== undefined && panel?.kind === 'run' && (
-          <IntegrationRunPanel
-            integrationId={provider.id}
-            operation={panel.operation}
-            onBack={() => setMode({ kind: 'operation', operationCode: panel.operation.code })}
-          />
-        )}
+          {provider !== undefined &&
+            (panel?.kind === 'secretCreate' || selectedSecret !== undefined) && (
+              <IntegrationSecretPanel
+                provider={provider}
+                secret={selectedSecret ?? null}
+                onBack={() => setMode({ kind: 'tabs' })}
+              />
+            )}
 
-        {provider !== undefined && panel?.kind === 'delete' && (
-          <IntegrationOperationDeletePanel
-            provider={provider}
-            operation={panel.operation}
-            // Cancelling returns to the record; a completed delete cannot, so the
-            // code resolves to nothing and the body falls back to the tab list.
-            onBack={() => setMode({ kind: 'operation', operationCode: panel.operation.code })}
-          />
-        )}
+          {provider !== undefined && panel?.kind === 'run' && (
+            <IntegrationRunPanel
+              integrationId={provider.id}
+              operation={panel.operation}
+              onBack={() => setMode({ kind: 'operation', operationCode: panel.operation.code })}
+            />
+          )}
 
-        {provider !== undefined && panel?.kind === 'secretDelete' && (
-          <IntegrationSecretDeletePanel
-            provider={provider}
-            secret={panel.secret}
-            onBack={() => setMode({ kind: 'tabs' })}
-          />
-        )}
+          {provider !== undefined && panel?.kind === 'delete' && (
+            <IntegrationOperationDeletePanel
+              provider={provider}
+              operation={panel.operation}
+              // Cancelling returns to the record; a completed delete cannot, so the
+              // code resolves to nothing and the body falls back to the tab list.
+              onBack={() => setMode({ kind: 'operation', operationCode: panel.operation.code })}
+            />
+          )}
+
+          {provider !== undefined && panel?.kind === 'secretDelete' && (
+            <IntegrationSecretDeletePanel
+              provider={provider}
+              secret={panel.secret}
+              onBack={() => setMode({ kind: 'tabs' })}
+            />
+          )}
+        </Stack>
       </DialogContent>
     </Dialog>
   )

@@ -20,13 +20,15 @@ import { useCallback, useMemo } from 'react'
 import type { RefObject } from 'react'
 import { alpha } from '@mui/material/styles'
 import type { Theme } from '@mui/material/styles'
-import { DataGrid, GridRowEditStopReasons } from '@mui/x-data-grid'
+import { DataGrid, GridRowEditStopReasons, GridRowModes } from '@mui/x-data-grid'
 import type { GridApiCommunity } from '@mui/x-data-grid/internals'
 import type {
   GridColDef,
+  GridRowParams,
   GridDensity,
   GridRenderCellParams,
   GridPaginationModel,
+  GridSortModel,
   GridRowModesModel,
   GridValidRowModel,
 } from '@mui/x-data-grid'
@@ -68,6 +70,13 @@ const BASE_SX = {
   '& .MuiDataGrid-columnHeader': { px: CELL_GUTTER, bgcolor: 'background.neutral' },
   '& .MuiDataGrid-columnHeaderTitle': { typography: 'subtitle2', color: 'text.secondary' },
   '& .MuiDataGrid-cell': { px: CELL_GUTTER, borderBottom: '1px solid', borderColor: 'divider' },
+  // MUI closes each row with an empty filler cell that holds no value and is
+  // meant to take whatever width is left - zero when the columns already fill
+  // the row. It is a `.MuiDataGrid-cell` too, so the gutter above gave it a
+  // 40px floor it could not shrink below, and every grid in the app reported
+  // 40px of content past its own width: a horizontal scrollbar offering empty
+  // space. Measured on /batch: virtualScroller 1,120 wide inside 1,080.
+  '& .MuiDataGrid-cellEmpty': { px: 0 },
   // MUI X rings the focused cell on `:focus-within`, so clicking a row's pencil
   // drew a second rectangle around the action buttons while the row already said
   // it was editing. The ring is kept for keyboards, where it is the only cue that
@@ -124,6 +133,21 @@ interface ServerDataGridProps<R extends GridValidRowModel> {
   localeText: Record<string, unknown>
   paginationModel: GridPaginationModel
   onPaginationModelChange: (model: GridPaginationModel) => void
+  /**
+   * The header's sort is the server's: one column at a time, sent as `sort`
+   * and `order`, and the page comes back already in that order. A grid that
+   * sorted the loaded page itself showed ten rows in order and called it the
+   * collection (measured on every list before the model was wired through).
+   */
+  sortModel: GridSortModel
+  onSortModelChange: (model: GridSortModel) => void
+  /**
+   * True while the page in flight has not landed. Paging and sorting both
+   * ask for a different page under the same filters - clicking either again
+   * before the first answer lands races two responses for the footer's total
+   * and the rows shown; `loading` already names that window, so it disables
+   * the pagination controls and the column headers' sort along with it.
+   */
   density: GridDensity
   columnVisibilityModel: Record<string, boolean>
   onColumnVisibilityModelChange: (model: Record<string, boolean>) => void
@@ -144,6 +168,13 @@ interface ServerDataGridProps<R extends GridValidRowModel> {
   apiRef?: RefObject<GridApiCommunity | null>
   processRowUpdate?: (updated: R, original: R) => Promise<R> | R
   onProcessRowUpdateError?: (error: unknown) => void
+  /**
+   * The row as a door. A derived list opens its record dialog from the row
+   * itself; a list that edits in place may carry one too, because the door is
+   * guarded here rather than by each screen — see `handleRowClick`. The pointer
+   * says so while the prop is set.
+   */
+  onRowClick?: (row: R) => void
 }
 
 export default function ServerDataGrid<R extends GridValidRowModel>({
@@ -155,6 +186,8 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
   localeText,
   paginationModel,
   onPaginationModelChange,
+  sortModel,
+  onSortModelChange,
   density,
   columnVisibilityModel,
   onColumnVisibilityModelChange,
@@ -163,6 +196,7 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
   apiRef,
   processRowUpdate,
   onProcessRowUpdateError,
+  onRowClick,
 }: ServerDataGridProps<R>) {
   const EmptyOverlay = useCallback(() => <DataGridEmptyOverlay title={emptyTitle} />, [emptyTitle])
 
@@ -201,12 +235,43 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
     [EmptyOverlay],
   )
 
+  /**
+   * A click lands on exactly one meaning.
+   *
+   * Two collisions make that a guard rather than a prop the screen passes
+   * through. A row being typed into must not answer a click with a dialog — the
+   * pointer is there to reach a cell — so a row in edit mode has no door. And a
+   * click inside the actions cell belongs to the button under it: MUI reports a
+   * row click for it too, so opening a record on the way to `삭제` would put a
+   * dialog over the confirm.
+   */
+  const handleRowClick = useCallback(
+    (params: GridRowParams<R>, event: { target: EventTarget | null }) => {
+      if (onRowClick === undefined) return
+      if (rowModesModel?.[params.id]?.mode === GridRowModes.Edit) return
+      const target = event.target instanceof Element ? event.target : null
+      if (target !== null && target.closest('[data-field="actions"]') !== null) return
+      onRowClick(params.row)
+    },
+    [onRowClick, rowModesModel],
+  )
+
+  const sx = useMemo(
+    () => (onRowClick === undefined ? BASE_SX : { ...BASE_SX, '& .MuiDataGrid-row': { cursor: 'pointer' } }),
+    [onRowClick],
+  )
+
   return (
     <DataGrid
       rows={rows}
       columns={titled}
       loading={loading}
       paginationMode="server"
+      sortingMode="server"
+      sortModel={sortModel}
+      onSortModelChange={onSortModelChange}
+      disableColumnSorting={loading}
+      slotProps={{ basePagination: { disabled: loading } }}
       rowCount={rowCount}
       paginationModel={paginationModel}
       onPaginationModelChange={onPaginationModelChange}
@@ -235,10 +300,20 @@ export default function ServerDataGrid<R extends GridValidRowModel>({
       processRowUpdate={processRowUpdate}
       onProcessRowUpdateError={onProcessRowUpdateError}
       slots={slots}
+      onRowClick={onRowClick === undefined ? undefined : handleRowClick}
+      /**
+       * Editing starts at the row's own button when the row is also a door.
+       * MUI's default opens an editor on cell double-click, and the first of
+       * those two clicks had already opened the dialog — so the second landed on
+       * a grid behind it.
+       */
+      onCellDoubleClick={(_params, event) => {
+        if (onRowClick !== undefined) event.defaultMuiPrevented = true
+      }}
       disableColumnFilter
       disableRowSelectionOnClick
       autoHeight
-      sx={BASE_SX}
+      sx={sx}
     />
   )
 }

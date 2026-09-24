@@ -6,7 +6,7 @@
  * the server answers 422 to.
  */
 
-import type { AuditedResource, IntegrationFilterParams, OffsetLimitParams } from '@/types/api'
+import type { AuditedResource, IntegrationFilterParams, PageParams } from '@/types/api'
 
 export type FieldDirection = 'REQUEST' | 'RESPONSE'
 
@@ -28,9 +28,42 @@ export type ValueType =
 
 export type HeaderMatchMode = 'IGNORE' | 'PRESENT' | 'EXACT' | 'ONE_OF'
 
-export type ResponseFormat = 'JSON' | 'XML'
+/** How a body is decoded: an API body, a screen, or a file read in chunks. */
+export type ResponseFormat = 'JSON' | 'XML' | 'HTML' | 'CSV'
+
+/** How a portal answers: an API with a JSON/XML body, or a screen behind a session. */
+export type Transport = 'HTTP_JSON' | 'HTML_FORM'
+
+/** How a RESPONSE row is read: a pointer into a body, or one of the HTML locators. */
+export type LocatorKind = 'POINTER' | 'CSS' | 'LABEL' | 'REGEX' | 'SECTION'
 
 export type HttpMethod = 'GET' | 'HEAD' | 'OPTIONS' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
+
+/** How a call ended — `ck_integration_call_outcome`, verbatim. */
+export type CallOutcome = 'SUCCESS' | 'REFUSED' | 'TIMEOUT' | 'UNREACHABLE' | 'RATE_LIMITED'
+
+/**
+ * One logged external call — mirror of `IntegrationCallReadResponse`.
+ *
+ * No bodies and no headers: they are stored, scrubbed, for an incident, and a
+ * page of twenty rows would otherwise carry twenty provider documents. What a
+ * log answers is which operation, when, how long, and whether it came back.
+ */
+export interface IntegrationCall extends AuditedResource {
+  operation_id: string | null
+  provider_code: string
+  operation_code: string
+  method: HttpMethod
+  url: string
+  status_code: number | null
+  outcome: CallOutcome
+  duration_ms: number
+  attempts: number
+  request_id: string | null
+  error_code: string | null
+  error_detail: string | null
+  secret_name: string | null
+}
 
 export interface IntegrationSecret extends AuditedResource {
   name: string
@@ -47,6 +80,7 @@ export interface IntegrationField extends AuditedResource {
   location: FieldLocation
   key: string
   wire_path: string
+  locator_kind: LocatorKind
   value_source: RequestValueSource | null
   value: unknown
   secret_name: string | null
@@ -68,6 +102,12 @@ export interface IntegrationOperation extends AuditedResource {
   request_media_type: string | null
   response_format: ResponseFormat
   response_root: string | null
+  /** Records one window of this operation asks for - the service's measured ceiling. */
+  page_size: number
+  /** Caller input this feed is addressed by, when the service publishes one set per coordinate. */
+  segment_key: string | null
+  /** Values that coordinate takes, listed on the row; seeded by migration, read-only here. */
+  segment_values: string[] | null
   connect_timeout_ms: number
   read_timeout_ms: number
   max_retries: number
@@ -85,6 +125,11 @@ export interface Integration extends AuditedResource {
   code: string
   display_name: string
   base_url: string
+  transport: Transport
+  /** The screen that mints the session cookie; only an `HTML_FORM` portal has one. */
+  bootstrap_path: string | null
+  /** Floor on the gap between two calls to this host, in ms; 0 for an API. */
+  min_interval_ms: number
   enabled: boolean
   secrets: IntegrationSecret[]
   operations: IntegrationOperation[]
@@ -119,6 +164,7 @@ export interface IntegrationFieldCreateRequest {
   location: FieldLocation
   key: string
   wire_path: string
+  locator_kind?: LocatorKind
   value_source?: RequestValueSource | null
   value?: unknown
   secret_name?: string | null
@@ -140,6 +186,7 @@ export interface IntegrationOperationCreateRequest {
   request_media_type?: string | null
   response_format?: ResponseFormat
   response_root?: string | null
+  page_size?: number
   connect_timeout_ms: number
   read_timeout_ms: number
   max_retries: number
@@ -156,6 +203,9 @@ export interface IntegrationCreateRequest {
   code: string
   display_name: string
   base_url: string
+  transport?: Transport
+  bootstrap_path?: string | null
+  min_interval_ms?: number
   enabled?: boolean
   secrets?: IntegrationSecretCreateRequest[]
   operations?: IntegrationOperationCreateRequest[]
@@ -164,6 +214,9 @@ export interface IntegrationCreateRequest {
 export interface IntegrationUpdateRequest {
   display_name?: string | null
   base_url?: string | null
+  transport?: Transport | null
+  bootstrap_path?: string | null
+  min_interval_ms?: number | null
   enabled?: boolean | null
   operations?: IntegrationOperationCreateRequest[] | null
 }
@@ -185,4 +238,4 @@ export interface IntegrationExecuteResponse {
  * The intersection lives with the domain rather than in the shared params type,
  * so an endpoint that takes no filter keeps a params type that matches it.
  */
-export type IntegrationListParams = OffsetLimitParams & IntegrationFilterParams
+export type IntegrationListParams = PageParams & IntegrationFilterParams

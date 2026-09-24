@@ -218,6 +218,35 @@ def test_create_user_rejects_values_only_the_form_used_to_refuse(client: TestCli
     assert accepted.status_code == 201
 
 
+def test_list_users_sorts_on_the_server_by_a_closed_set_of_columns(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """The grid's header sorts the collection, not the page; a column outside the set is a 422."""
+    for name in ("zed", "amy"):
+        client.post(
+            "/api/v1/user/",
+            json={"username": name, "email": f"{name}@example.com", "password": "secret-pass"},
+        )
+
+    ascending = client.get(
+        "/api/v1/user/", params={"sort": "username", "order": "asc"}, headers=auth_headers
+    )
+    assert ascending.status_code == 200
+    names = [u["username"] for u in ascending.json()["items"]]
+    assert names == sorted(names)
+    assert names[0] == "amy"
+
+    descending = client.get(
+        "/api/v1/user/", params={"sort": "username", "order": "desc"}, headers=auth_headers
+    )
+    assert [u["username"] for u in descending.json()["items"]] == list(reversed(names))
+
+    outside = client.get("/api/v1/user/", params={"sort": "password"}, headers=auth_headers)
+    assert outside.status_code == 422
+    sideways = client.get("/api/v1/user/", params={"order": "up"}, headers=auth_headers)
+    assert sideways.status_code == 422
+
+
 def test_list_users_reads_a_row_the_write_rules_would_now_reject(
     client: TestClient, auth_headers: dict[str, str]
 ) -> None:

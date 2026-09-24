@@ -149,16 +149,83 @@ class IntegrationOperationService:
                 return result, self._last_call_id
             attempt += 1
 
+    async def segment_total(
+        self,
+        provider_code: str,
+        operation_code: str,
+        segment: Mapping[str, object],
+        *,
+        actor: str,
+    ) -> int:
+        """How many records one coordinate of a feed holds - one window of one row.
+
+        `execute_operation` reads the configuration on the caller's session and
+        leaves that read open, which is why every caller of it owns a
+        transaction (`_walk_windows` opens one per window). A caller that did
+        not was measured 2026-09-16 07:02 KST: the segmented walk asked here for
+        a year's `total_count`, the autobegun read stayed open, and the walk's
+        own `begin()` raised "A transaction is already begun on this Session"
+        before the portal was called at all. The transaction belongs with the
+        read, so it lives here and not in the batch helper that asks.
+
+        The count is the portal's own `total_count`, trusted for this one
+        question and no other: it says whether a year holds anything, never how
+        many windows to walk - a walk ends on a short page.
+        """
+        async with self.session.begin():
+            result, _ = await self.execute_operation(
+                provider_code,
+                operation_code,
+                {"range_start": 1, "range_end": 1, **segment},
+                actor=actor,
+            )
+        return int(str(result.metadata.get("total_count") or 0))
+
+    async def segmentation_of(
+        self, provider_code: str, operation_code: str
+    ) -> tuple[str, list[str]] | None:
+        """The coordinate this operation is addressed by, or None for a flat feed.
+
+        Which caller input splits a feed, and which values it takes, are facts
+        about the service - the same kind as its window width and its quota
+        codes, and they live where those live, on the operation row. A caller
+        that walks a feed asks here rather than stating a coordinate of its own:
+        a job that knew one portal's coordinate would be the only place that
+        knew it, and every other job would carry the knowledge it does not use.
+
+        The values are listed, never derived. Code that generated them would
+        have to know what the coordinate *is* - that a 보고년도 counts upward and
+        a region code does not - which is the knowledge this move took out of
+        the walk.
+        """
+        async with self.session.begin():
+            operation = await self.get_operation(provider_code, operation_code)
+            segment_key = operation.segment_key
+            segment_values = operation.segment_values
+        # The column pair is constrained to be stated together; the check is what
+        # makes that readable here rather than an assumption two files apart.
+        if segment_key is None or segment_values is None:
+            return None
+        return segment_key, list(segment_values)
+
     async def walk_operation(
         self,
         provider_code: str,
         operation_code: str,
         *,
         actor: str,
-        page_size: int,
         end_codes: frozenset[str],
+        segment: Mapping[str, object] | None = None,
     ) -> AsyncIterator[IntegrationPage]:
         """Read a paging operation from its first window to its last, one page per yield.
+
+        `segment` rides on every window of the walk. It is not a filter: a
+        filter reads a subset and calls it the feed, while a segment is one
+        coordinate of a feed that is walked over *every* value of it - 생산실적
+        is published per 보고년도 and the years' counts sum to the whole
+        (2026-09-15), so the years are how the feed is addressed, not which
+        part of it is wanted. The positional walk inside one segment is
+        unchanged, and so is the end rule.
 
         One rule ends the walk, whatever the provider: **fewer records than
         the window asked for**. A window past the last record is that rule
@@ -168,8 +235,12 @@ class IntegrationOperationService:
         is not trusted (measured fixed at `1` on some operations), and there
         is no cursor to keep, because the caller reads the whole feed.
 
-        The family comes off the operation's own REQUEST fields, so the caller
-        states a width and nothing about the wire.
+        The family comes off the operation's own REQUEST fields and the width off
+        its `page_size`, so the caller states nothing about the wire. The width is
+        the service's ceiling, not the job's: one gateway's narrowest service was
+        making its widest walk five times the windows, and on a gateway whose
+        windows cost more the deeper they are that was 13 hours against 66
+        minutes (measured 2026-09-14).
 
         **A spent pool is a wait, not a failure.** When every key has answered
         a quota code the error names the moment the first comes back; the walk
@@ -181,23 +252,154 @@ class IntegrationOperationService:
         # left open here would be the idle transaction every window then holds.
         async with self.session.begin():
             operation = await self.get_operation(provider_code, operation_code)
+            page_size = operation.page_size
+            response_format = operation.response_format
             family = paging_family(
                 field.key for field in operation.fields if field.direction == "REQUEST"
             )
+        if response_format == "CSV":
+            # A file is the whole feed in one answer: the walk is the file read
+            # in chunks, and there is no family because there is no window.
+            logger.info(
+                "integration.walk.started",
+                provider=provider_code,
+                operation=operation_code,
+                family="FILE",
+                page_size=page_size,
+            )
+            async with httpx2.AsyncClient() as client:
+                async for page in self._walk_file(
+                    provider_code, operation_code, page_size, actor, client
+                ):
+                    yield page
+            return
         if family is None:
             raise IntegrationConfigurationError(
                 f"{provider_code}/{operation_code} declares no paging family and cannot be walked"
             )
+        # The width this pass will actually ask for, said once at the start. It is
+        # configuration read at run time, so a job that was started before a
+        # migration changed it walks at the old width - and without this line the
+        # only way to see which one was used is to join the step log to the call
+        # log and read `numOfRows` out of a URL (measured 2026-09-14, twice).
+        logger.info(
+            "integration.walk.started",
+            provider=provider_code,
+            operation=operation_code,
+            family=family,
+            page_size=page_size,
+        )
+        # One HTTP client for the whole pass. Two reasons, both measured on the
+        # screen provider: the session cookie lives on the client, so a client
+        # per window fetched the bootstrap screen again every window (109 calls
+        # became 218), and the host's minimum interval is only a rate when one
+        # client paces every call of the pass.
+        async with httpx2.AsyncClient() as client:
+            async for page in self._walk_windows(
+                provider_code,
+                operation_code,
+                family,
+                page_size,
+                end_codes,
+                actor,
+                client,
+                segment or {},
+            ):
+                yield page
+
+    async def _stream_operation(
+        self,
+        provider_code: str,
+        operation_code: str,
+        *,
+        actor: str,
+        client: httpx2.AsyncClient | None = None,
+    ) -> AsyncIterator[list[dict[str, object]]]:
+        """Read a file operation off the wire in chunks, and log the one call it made.
+
+        `execute_operation` with the answer arriving in pieces: the same pool
+        member choice, the same call log row written when the exchange is over -
+        which for a file is after the last chunk, not after the status. There is
+        no quota rotation here, because a file door states its refusals as HTTP
+        429 (measured 2026-09-19: "busy key" and "today's ten are spent" both),
+        which the client retries and then raises as `IntegrationRateLimitError`;
+        a nightly pass downloads once, and a second key for a second download
+        is not a case the ledger has.
+        """
+        self._last_call_id = None
+        pool = await self.secret_repository.list_pool(provider_code, datetime.now(UTC))
+        offset = next(_rotation_offset)
+        choice = {group: members[offset % len(members)] for group, members in pool.items()}
+        integration_client = await IntegrationClient.from_database(
+            session=self.session,
+            provider_code=provider_code,
+            operation_code=operation_code,
+            client=client,
+            secrets=choice,
+        )
+        try:
+            async for chunk in integration_client.stream({}):
+                yield chunk
+        finally:
+            self._last_call_id = await self._create_call_log(integration_client, actor)
+            await integration_client.aclose()
+
+    async def _walk_file(
+        self,
+        provider_code: str,
+        operation_code: str,
+        page_size: int,
+        actor: str,
+        client: httpx2.AsyncClient,
+    ) -> AsyncIterator[IntegrationPage]:
+        """The chunks of one file, as the pages a ledger stage and a step log read.
+
+        Each chunk is numbered as the row interval it holds, so the step log
+        speaks the same rows a windowed walk's does. A step points at no call:
+        the file is one exchange, and its log row is written when the last
+        chunk has been read - after every step that could have pointed at it.
+        The run's calls are still one query away, by operation and time.
+        """
+        index = 0
+        started = perf_counter()
+        # Its own transaction, as each window of a paged walk has: the
+        # configuration read would otherwise stay open for the whole file.
+        async with self.session.begin():
+            async for chunk in self._stream_operation(
+                provider_code, operation_code, actor=actor, client=client
+            ):
+                window: dict[str, object] = dict(paging_window("RANGE", index, page_size))
+                yield IntegrationPage(
+                    window=window,
+                    records=list(chunk),
+                    call_id=None,
+                    duration_ms=int((perf_counter() - started) * 1000),
+                )
+                started = perf_counter()
+                index += 1
+
+    async def _walk_windows(
+        self,
+        provider_code: str,
+        operation_code: str,
+        family: str,
+        page_size: int,
+        end_codes: frozenset[str],
+        actor: str,
+        client: httpx2.AsyncClient,
+        segment: Mapping[str, object],
+    ) -> AsyncIterator[IntegrationPage]:
+        """The windows of one walk, over a client the caller owns."""
         index = 0
         while True:
-            window = paging_window(family, index, page_size)
+            window = paging_window(family, index, page_size) | dict(segment)
             started = perf_counter()
             try:
                 # Each call is its own transaction: the configuration read
                 # would otherwise stay open as one idle transaction per window.
                 async with self.session.begin():
                     result, call_id = await self.execute_operation(
-                        provider_code, operation_code, window, actor=actor
+                        provider_code, operation_code, window, actor=actor, client=client
                     )
                 payload = result.canonical_payload
                 # An operation mapping absolute pointers hands back one record,

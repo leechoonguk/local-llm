@@ -6,7 +6,7 @@
  * request on purpose — the server refuses to repoint a schedule at another job.
  */
 
-import type { AuditedResource, BatchFilterParams, OffsetLimitParams } from '@/types/api'
+import type { AuditedResource, BatchFilterParams, PageParams } from '@/types/api'
 
 /**
  * A run's five endings — `ck_batch_run_status`, verbatim.
@@ -17,7 +17,13 @@ import type { AuditedResource, BatchFilterParams, OffsetLimitParams } from '@/ty
  * compiler owns exhaustiveness, so a sixth ending added to the constraint
  * fails the build instead of rendering as a grey badge nobody notices.
  */
-export type BatchRunStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'STOPPED' | 'INTERRUPTED'
+export type BatchRunStatus =
+  | 'RUNNING'
+  | 'SUCCEEDED'
+  | 'FAILED'
+  | 'STOPPED'
+  | 'INTERRUPTED'
+  | 'SKIPPED'
 
 /** What started a run — `ck_batch_run_trigger`, verbatim. */
 export type BatchTrigger = 'CRON' | 'MANUAL'
@@ -37,23 +43,17 @@ export interface Batch extends AuditedResource {
    */
   running: boolean
   code: string
-  name: string
-  description: string | null
   cron: string
   enabled: boolean
 }
 
 export interface BatchCreateRequest {
   code: string
-  name: string
-  description?: string | null
   cron: string
   enabled?: boolean
 }
 
 export interface BatchUpdateRequest {
-  name?: string | null
-  description?: string | null
   cron?: string | null
   enabled?: boolean | null
 }
@@ -105,4 +105,4 @@ export interface BatchStep extends AuditedResource {
  * The intersection lives with the domain rather than in the shared params type,
  * so an endpoint that takes no filter keeps a params type that matches it.
  */
-export type BatchListParams = OffsetLimitParams & BatchFilterParams
+export type BatchListParams = PageParams & BatchFilterParams

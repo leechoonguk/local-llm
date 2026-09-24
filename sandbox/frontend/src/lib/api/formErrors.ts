@@ -64,11 +64,24 @@ export function applyServerError<T extends FieldValues>(
  * runtime, comparing the answer with the key i18next echoes back when it misses.
  */
 export function serverErrorMessage(code: string, t: Translator): string {
+  return translatedErrorMessage(code, t) ?? t(FALLBACK_KEY)
+}
+
+/**
+ * The sentence for one server code, or `null` when no locale answers it.
+ *
+ * A read reports through this rather than through `serverErrorMessage`: a list
+ * that failed because the browser is offline carries `network_error`, which no
+ * locale answers, and the generic `errors.unknown` sentence says less than the
+ * screen's own "could not load the data". A 503 or a 404, on the other hand,
+ * names the cause — and the toast said the same thing for all three before.
+ */
+export function translatedErrorMessage(code: string, t: Translator): string | null {
   const key = `errors.${code}`
   // The one widening in the app, and the reason is above: this key is built
   // from a value the server chose, so it is not in the resource types by
   // construction. Everything else goes through the typed `t`.
   const message = (t as (runtimeKey: string) => string)(key)
 
-  return message === key ? t(FALLBACK_KEY) : message
+  return message === key ? null : message
 }

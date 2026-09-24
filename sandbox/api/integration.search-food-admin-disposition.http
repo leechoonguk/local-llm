@@ -1,0 +1,121 @@
+### Integration · search-food-admin-disposition API — 외부 API 실행 (식품안전나라 OpenAPI I0480)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           필터는 한 블록에 하나만 보낸다: 섞은 호출은 어느 필드가 걸렸는지 증명하지 못한다.
+###           range_start/range_end는 required CALLER다(RANGE 계열): 기본값이 없다.
+###           CALLER 필드 5개(range_start, range_end, license_no, decided_on, changed_from)를 블록 하나씩 전부 호출한다.
+###           이 피드는 업소 단위다 — 품목보고번호도 제품명도 응답에 없다(2026-09-18 실측).
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(64_seed_food_safety_korea_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = 3c4802b0-06b3-5924-8d1a-14dbce279ca3
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. range_start / range_end — 200 (창의 위치와 크기)
+# 측정(2026-09-18): 전체 251건, 처분확정일자 20241002~20260918, 행정처분전산키 251개 전부 유일.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3
+  }
+}
+
+### 3. range_start / range_end — 200 (창이 옮겨간다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 4,
+      "range_end": 6
+  }
+}
+
+### 4. license_no — 200 (CALLER 필드: 인허가번호 — 품목보고와 잇는 유일한 키)
+# 측정(2026-09-18): 경로 세그먼트로 보내면 total 1, 쿼리스트링으로 보내면 251(무시된다).
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3,
+      "license_no": "20140506502"
+  }
+}
+
+### 5. decided_on — 200 (CALLER 필드: 처분확정일자 완전일치)
+# 측정(2026-09-18): 20260918 → total 1.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3,
+      "decided_on": "20260918"
+  }
+}
+
+### 6. changed_from — 200 (CALLER 필드: 변경일자 이후 — 며칠까지만 닿는다)
+# 측정(2026-09-18): 20260901은 ERROR-303, 20991231은 INFO-200, 2026-09-01은 ERROR-302.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3,
+      "changed_from": "20260917"
+  }
+}
+
+### 7. 외부 API 실행 — 422 (창 누락 — RANGE 계열은 기본값이 없다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "license_no": "20140506502"
+  }
+}
+
+### 8. 외부 API 실행 — 404 (없는 provider)
+POST {{base}}/integration/{{missingId}}/operations/search-food-admin-disposition/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 9. 외부 API 실행 — 401 (토큰 없음)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-admin-disposition/execute
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}

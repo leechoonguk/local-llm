@@ -1,0 +1,80 @@
+{
+  "why": "One measured page of the 축산물품목제조보고(원재료) service (C006, window 1/2 on 2026-09-07): the key and the window travel in the path, the envelope states the real outcome, and the record is C002's minus the 내수/겸용 flag.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "C006": {
+        "total_count": "569588",
+        "row": [
+          {
+            "RAWMTRL_ORDNO": "1",
+            "PRDLST_REPORT_NO": "199900307705",
+            "PRMS_DT": "20040131",
+            "LCNS_NO": "19990030770",
+            "PRDLST_NM": "닭꼬치",
+            "BSSH_NM": "노벨유통",
+            "PRDLST_DCNM": "포장육",
+            "CHNG_DT": "20151102",
+            "RAWMTRL_NM": "닭고기"
+          },
+          {
+            "RAWMTRL_ORDNO": "1",
+            "PRDLST_REPORT_NO": "1999003077020",
+            "PRMS_DT": "20050124",
+            "LCNS_NO": "19990030770",
+            "PRDLST_NM": "닭날개",
+            "BSSH_NM": "노벨유통",
+            "PRDLST_DCNM": "포장육",
+            "CHNG_DT": "20151102",
+            "RAWMTRL_NM": "닭날개"
+          }
+        ],
+        "RESULT": {
+          "MSG": "정상처리되었습니다.",
+          "CODE": "INFO-000"
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/C006/json/1/2",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "license_no": "19990030770",
+        "business_name": "노벨유통",
+        "item_report_no": "199900307705",
+        "permit_date": "20040131",
+        "product_name": "닭꼬치",
+        "product_type_name": "포장육",
+        "raw_material_names": "닭고기",
+        "raw_material_ordinals": "1",
+        "changed_date": "20151102"
+      },
+      {
+        "license_no": "19990030770",
+        "business_name": "노벨유통",
+        "item_report_no": "1999003077020",
+        "permit_date": "20050124",
+        "product_name": "닭날개",
+        "product_type_name": "포장육",
+        "raw_material_names": "닭날개",
+        "raw_material_ordinals": "1",
+        "changed_date": "20151102"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "569588"
+    }
+  }
+}

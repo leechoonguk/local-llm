@@ -1,0 +1,134 @@
+### Integration · search-barcode-product-info API — 외부 API 실행 (식품안전나라 C005)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           CALLER 소스 REQUEST 필드 3개(range_start, range_end, changed_from)를
+###           블록 하나씩 전부 호출한다.
+###           range_start/range_end는 required CALLER다: 기본값이 없으므로 모든 실행
+###           블록이 창(window)을 명시한다 (164_seed_barcode_product_info_integration_field).
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(64_seed_food_safety_korea_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = 3c4802b0-06b3-5924-8d1a-14dbce279ca3
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. range_start / range_end — 200 (CALLER 필드: 창의 위치와 끝, wire startIdx/endIdx)
+# response_root=/C005/row — 매핑이 유일한 응답 계약이다 (163_seed_barcode_product_info_…_operation)
+#   → canonical_payload는 요청한 창 전체이고, 레코드마다 우리 키로 매핑된다
+#   → 각 행의 wire_path는 창 원소 기준 상대 포인터다 (/BAR_CD, /PRDLST_REPORT_NO …)
+#   → 키는 개념의 이름이다: BAR_CD → barcode_no, PRDLST_REPORT_NO → item_report_no
+#     (food_item_report 가 같은 번호를 부르는 이름)
+# 측정(2026-09-12): 1/3 → 좋은상품 유기농 부침가루 … , total_count 259,669
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 3. range_start — 200 (창을 옮긴다)
+# 같은 크기(3)로 위치만 옮기면 다른 레코드가 온다 (측정 2026-09-12):
+#   1/3 → 좋은상품 유기농 부침가루, 4/6 → 풍기홍삼愛홍삼정골드
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 4,
+    "range_end": 6
+  }
+}
+
+### 4. range_end — 200 (창의 크기가 보인다)
+# response_root=/C005/row 이므로 배열 길이가 곧 창의 크기다: 1/10 이면 10건.
+# 이 포털의 상한은 한 번에 1000건이다 (넘기면 ERROR-336).
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 10
+  }
+}
+
+### 5. changed_from — 200 (CALLER 필드: 변경일자, wire CHNG_DT — 경로 세그먼트로 전달)
+# 측정(2026-09-12): 20260908 → total_count 7. 이 포털의 필터는 진짜 경로 세그먼트다:
+# 쿼리 문자열로 보내면 받아들이고 무시한다 (I1250 실측, backend-integration-configuration.md).
+# 호출일 기준 7일보다 오래된 날짜는 ERROR-303, 8자리가 아니면 ERROR-302.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3,
+    "changed_from": "20260908"
+  }
+}
+
+### 6. 외부 API 실행 — 422 (paging 누락 — 기본값이 없다)
+# range_start/range_end는 required CALLER이고 폴백이 없다 → integration_input_invalid.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "changed_from": "20260908"
+  }
+}
+
+### 7. 외부 API 실행 — 200 (마지막 레코드 이후의 창 — 빈 페이지)
+# 측정(2026-09-12): 259670/259672 → INFO-200 해당하는 데이터가 없습니다.
+# ENVELOPE 가 INFO-200 을 성공 값으로 받아들이므로 빈 페이지이고, 걷기는 여기서 끝난다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 259670,
+    "range_end": 259672
+  }
+}
+
+### 8. 외부 API 실행 — 502 (창이 뒤집혔다 — provider 가 거부한다)
+# 측정(2026-09-12): 3/1 → ERROR-334 종료위치보다 시작위치가 더 큽니다.
+# ENVELOPE 의 허용 값이 아니므로 업스트림 거부로 올라온다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 3,
+    "range_end": 1
+  }
+}
+
+### 9. 외부 API 실행 — 404 (없는 provider — operation 코드는 유효하다)
+POST {{base}}/integration/{{missingId}}/operations/search-barcode-product-info/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}

@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 축산물 식육포장처리업 폐업정보 (I2825): one GET answers the whole feed as gzip CSV (9,869 rows, 0.2MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2825.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE4WOT0sCURTF94LfwaXCW9w3z5yZZc4sEnQU3yTUZr6K2BjZBDMFptEoSKQuDAb/kVT0febdR18hRiOCsHaHc8+55/fx8l42LO5YVVLk/MixKqRW56ZlJ6pkmcf2yc6rcMe0iVHmxdLpT9XgjmEmkXLVqDmHplknJYvbST+donpBB8pUgDwR/p3sLtEbyJsLQtAbYDiS/gyHjzjvi/EMe22yzaugEQWoBgw0Iv0Ae+2smAR4fpUjYt3EVhQvr7H3hF6YEa1pvJrtsZN9jQLTCnCQJ1l8eM0lkYmL4SiOmvFitZ9Do5QCSzgoKKB8cZA46uJ9IC83YuHiMMBNX/huJo66YtxBL/zvviViwKAAir4jEq2pWDflrfsHCwOV6kQBUIFS9Ztl/hY/R8l/6Xfk2WC7/9tLpz4B8uJaLeQBAAA="
+ },
+ "expect": {
+  "path": "/api/issued-key/I2825/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2825.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 329,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "19690137004",
+    "business_name": "동해식품",
+    "president_name": "",
+    "industry_name": "식육포장처리업",
+    "permit_date": "19690708",
+    "closed_date": "20180308",
+    "closure_kind": "폐업(말소)",
+    "district": "부산광역시 남구",
+    "institution_name": "부산광역시 남구"
+   },
+   {
+    "license_no": "19810386054",
+    "business_name": "(주)광진육가공",
+    "president_name": "",
+    "industry_name": "식육포장처리업",
+    "permit_date": "19811103",
+    "closed_date": "20110202",
+    "closure_kind": "폐업",
+    "district": "강원특별자치도 강릉시",
+    "institution_name": "강원특별자치도 강릉시"
+   },
+   {
+    "license_no": "19830306029",
+    "business_name": "(주)남부햄",
+    "president_name": "",
+    "industry_name": "식육포장처리업",
+    "permit_date": "19830719",
+    "closed_date": "20070117",
+    "closure_kind": "폐업",
+    "district": "경기도 평택시",
+    "institution_name": "경기도 평택시"
+   }
+  ]
+ }
+}

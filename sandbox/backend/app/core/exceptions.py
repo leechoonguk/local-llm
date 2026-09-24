@@ -114,6 +114,20 @@ class ServiceUnavailableError(Exception):
         self.detail = detail
 
 
+class BatchSkippedError(Exception):
+    """Raised by a job that stood down for this fire, with the reason it did.
+
+    Not a failure: the derive job runs every day and the ledgers it reads are
+    walked over several nights, so a fire that lands mid-walk has nothing to
+    rebuild against yet. The scheduler closes such a run `SKIPPED` and keeps
+    the reason, which is the difference between "nothing to do" and "it broke".
+    """
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 class IntegrationError(Exception):
     """Raised when an external API call fails (network error, non-2xx after retries).
 
@@ -223,7 +237,7 @@ class LedgerFloorError(ConflictError):
     a pass that lost most of the feed (a provider that silently answered empty
     pages, a filter it decided to apply) would replace 300k rows with a few
     hundred and call it a night. The floor is the ratio of staged to live rows
-    below which the merge refuses: the live rows stay as they were, and the
+    below which the overwrite refuses: the live rows stay as they were, and the
     run fails with both counts in the message.
 
     A conflict, because that is what it is: the pass disagrees with the state
@@ -271,6 +285,25 @@ def setup_exception_handler(app: FastAPI) -> None:  # noqa: C901
             content={
                 "detail": "Resource not found",
                 "code": "not_found",
+                REQUEST_ID_KEY: _request_id(request),
+            },
+        )
+
+    @app.exception_handler(BatchSkippedError)
+    async def _batch_skipped_handler(request: Request, exc: BatchSkippedError) -> JSONResponse:
+        """A job that stood down, answered to whoever asked for it by hand.
+
+        The scheduler catches this before it reaches HTTP - a skipped run is an
+        ending, not a response - so this handler is for the one caller that can
+        still meet it: an operator's `POST /batch/{id}/run` of a job whose
+        dependencies are walking. 409, because the request is fine and the
+        moment is not.
+        """
+        return JSONResponse(
+            status_code=409,
+            content={
+                "detail": exc.reason,
+                "code": "batch_skipped",
                 REQUEST_ID_KEY: _request_id(request),
             },
         )

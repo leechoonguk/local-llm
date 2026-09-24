@@ -18,6 +18,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 # children spells the same intent.
 CHILD_CASCADE = "all, delete-orphan"
 
+# How wide an actor's name may be. The widest writer is a batch job, which signs
+# its rows `batch:<job code>`, and a job is named after the ledger it fills:
+# `batch:sync_food_ledger_livestock_item_report_raw_material` is 57 characters.
+# Measured 2026-09-15 at 50: the first call log of that job and of two others
+# was refused mid-run (StringDataRightTruncationError) after the walk had
+# started - the portal was never called, and the run failed with no window.
+# 80 leaves room for a ledger name half as long again as today's longest;
+# `check-backend-batch` refuses a job code that would not fit.
+ACTOR_LENGTH = 80
+
 
 # ============================================================
 # Classes
@@ -29,8 +39,8 @@ class Base(DeclarativeBase):
 
 
 class AuditMixin:
-    created_by: Mapped[str | None] = mapped_column(String(50), default=None)
-    updated_by: Mapped[str | None] = mapped_column(String(50), default=None)
+    created_by: Mapped[str | None] = mapped_column(String(ACTOR_LENGTH), default=None)
+    updated_by: Mapped[str | None] = mapped_column(String(ACTOR_LENGTH), default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

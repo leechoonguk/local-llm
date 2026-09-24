@@ -9,8 +9,9 @@ fields for a request nobody sends.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
+from typing import Any
 from uuid import UUID
 
 import pytest
@@ -23,11 +24,12 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from app.core.integration import IntegrationPage, paging_window
+from app.core.integration import IntegrationExecutionResult, IntegrationPage, paging_window
 from app.models.base import Base
 from app.models.batch.step import BatchStep
 from app.services.batch.run import BatchRunService, current_run_id
 from app.services.integration.operation import IntegrationOperationService
+from tests.conftest import with_postgresql_functions
 
 
 @asynccontextmanager
@@ -38,6 +40,7 @@ async def swapped_engine(module) -> AsyncIterator[AsyncEngine]:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    with_postgresql_functions(engine)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     original = module.engine
@@ -52,19 +55,41 @@ async def swapped_engine(module) -> AsyncIterator[AsyncEngine]:
 def script_walk(
     monkeypatch: pytest.MonkeyPatch,
     family: str,
-    feeds: Mapping[str, Sequence[Sequence[object] | Exception]],
-) -> list[tuple[str, dict[str, int]]]:
+    feeds: Mapping[str, Any],
+    page_size: int = 100,
+    segmentation: tuple[str, list[str]] | None = None,
+) -> list[tuple[str, dict[str, object]]]:
     """Answer each feed's walk with its scripted pages; record every window asked.
 
     A feed's script is its pages in order; an exception in the sequence is
     raised where it stands, the way a refusal arrives mid-walk. The walk ends
     where the real one does - at the first page shorter than the window.
-    """
-    asked: list[tuple[str, dict[str, int]]] = []
 
-    async def _walk(self, provider_code, operation_code, *, actor, page_size, end_codes):
-        for index, answer in enumerate(feeds[operation_code]):
-            window = paging_window(family, index, page_size)
+    The width is the script's, standing in for the operation's own `page_size`:
+    the real walk reads it off the configuration, so a job never states one
+    (rule://backend-ledger).
+
+    `segmentation` stands in for the operation's `segment_key` /
+    `segment_values` the same way. It is configuration, not a job's fact, so
+    a test says it here rather than reaching into a `Feed`.
+    """
+    asked: list[tuple[str, dict[str, object]]] = []
+
+    async def _segmentation(self, provider_code, operation_code):
+        return segmentation
+
+    monkeypatch.setattr(IntegrationOperationService, "segmentation_of", _segmentation)
+
+    async def _walk(self, provider_code, operation_code, *, actor, end_codes, segment=None):
+        script = feeds[operation_code]
+        if segment:
+            # A segmented feed's script is keyed by the segment's value: the
+            # walk is one run of positions per value, and the test says what
+            # each value answers.
+            script = script[next(iter(segment.values()))]
+        for index, answer in enumerate(script):
+            window: dict[str, object] = dict(paging_window(family, index, page_size))
+            window.update(segment or {})
             asked.append((operation_code, window))
             if isinstance(answer, Exception):
                 raise answer
@@ -99,3 +124,27 @@ async def rows(engine: AsyncEngine, model) -> list:
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
         return list((await session.execute(select(model))).scalars().all())
+
+
+def script_segments(
+    monkeypatch: pytest.MonkeyPatch,
+    counts: Mapping[str, Mapping[str, int]],
+) -> None:
+    """Answer the segment discovery: how many rows each candidate value holds.
+
+    A segmented feed asks the provider for one row of each candidate value and
+    reads `total_count`; a value nothing answers for is not walked. The job
+    asks for years it may not know about yet, so a value missing here is zero.
+    """
+
+    async def _execute(self, provider_code, operation_code, inputs, *, actor, client=None):
+        value = str(inputs.get("report_year"))
+        total = counts.get(operation_code, {}).get(value, 0)
+        result = IntegrationExecutionResult(
+            canonical_payload=[],
+            metadata={"total_count": str(total)},
+            status_code=200,
+        )
+        return result, None
+
+    monkeypatch.setattr(IntegrationOperationService, "execute_operation", _execute)

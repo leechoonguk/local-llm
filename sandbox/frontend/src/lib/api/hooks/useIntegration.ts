@@ -9,8 +9,9 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { QUERY_STALE_TIME } from '@/lib/api/queryDefaults'
-import { integrationKeys } from '@/lib/api/queryKeys'
+import { integrationCallKeys, integrationKeys } from '@/lib/api/queryKeys'
 import { integrationService } from '@/lib/api/services/integration.service'
+import type { OffsetLimitParams } from '@/types/api'
 import type {
   IntegrationListParams,
   IntegrationCreateRequest,
@@ -34,6 +35,25 @@ export function useIntegration(id: string | null) {
     queryKey: integrationKeys.detail(id ?? ''),
     queryFn: () => integrationService.detail(id ?? ''),
     staleTime: QUERY_STALE_TIME.LONG,
+    enabled: id !== null,
+  })
+}
+
+/**
+ * One provider's call log, newest first.
+ *
+ * `REALTIME`, like a schedule's runs: the rows are written by whatever
+ * exercised the operation — a nightly sync job outside this client — so a long
+ * window would show last night's failure as the current state with no way to
+ * refresh it. The key is `integrationCallKeys`, a scope of its own, because a
+ * provider's own writes produce none of these rows.
+ */
+export function useIntegrationCallList(id: string | null, params: OffsetLimitParams) {
+  return useQuery({
+    queryKey: integrationCallKeys.list({ id, ...params }),
+    queryFn: () => integrationService.calls(id ?? '', params),
+    staleTime: QUERY_STALE_TIME.REALTIME,
+    placeholderData: (previous) => previous,
     enabled: id !== null,
   })
 }

@@ -23,7 +23,7 @@ from app.schemas.integration.field import (
 JsonObject = dict[str, object]
 
 
-ResponseFormat = Literal["JSON", "XML"]
+ResponseFormat = Literal["JSON", "XML", "HTML", "CSV"]
 
 
 class IntegrationOperationCreateRequest(BaseModel):
@@ -35,6 +35,7 @@ class IntegrationOperationCreateRequest(BaseModel):
     request_media_type: str | None = Field(default=None, max_length=120)
     response_format: ResponseFormat = "JSON"
     response_root: str | None = Field(default=None, max_length=512)
+    page_size: int = Field(default=100, gt=0)
     connect_timeout_ms: int = Field(gt=0)
     read_timeout_ms: int = Field(gt=0)
     max_retries: int = Field(ge=0)
@@ -60,6 +61,13 @@ class IntegrationOperationReadResponse(BaseModel):
     request_media_type: str | None = None
     response_format: ResponseFormat = "JSON"
     response_root: str | None = None
+    page_size: int = 100
+    # Readable, never writable through this API: the coordinate is seeded by a
+    # migration like the rest of a service's configuration, and a ledger is a
+    # whole pass either way - the coordinate only decides how the pass is
+    # addressed, never which part of the feed is read.
+    segment_key: str | None = None
+    segment_values: list[str] | None = None
     connect_timeout_ms: int
     read_timeout_ms: int
     max_retries: int

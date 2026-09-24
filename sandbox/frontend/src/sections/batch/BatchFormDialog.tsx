@@ -1,13 +1,15 @@
 /**
- * Batch create/edit dialog — the form-dialog template for a job schedule.
+ * Batch create dialog — the form-dialog template for a new job schedule.
  *
- * `description` is nullable on the wire, so an empty input is sent as `null`
- * rather than `""`: the column means "no description", and two spellings of
- * absent is how a filter on it starts missing rows.
+ * It creates and never edits. A schedule's editable values are `cron` and
+ * `enabled`, and both are columns the row types into
+ * (rule://frontend-screens, Editing In Place): a dialog for them would be a
+ * second surface asking for what the row already shows. The create stays here
+ * because `code` is chosen once and never again — the server refuses to repoint
+ * an existing schedule at another job, so the field exists only while creating.
  *
- * `code` is only editable while creating. The server refuses to repoint an
- * existing schedule at another job, so an editable field here would offer a
- * change that always answers 422.
+ * The length limits are exported: the row editor judges the same value, and a
+ * second copy of 120 is how a cell starts accepting what the dialog refuses.
  */
 
 import { useEffect, useMemo } from 'react'
@@ -20,32 +22,32 @@ import FormProvider from '@/components/hook-form/FormProvider'
 import FormDialogHeader from '@/components/dialog/FormDialogHeader'
 import RHFSwitch from '@/components/hook-form/RHFSwitch'
 import RHFTextField from '@/components/hook-form/RHFTextField'
-import { useCreateBatch, useUpdateBatch } from '@/lib/api/hooks/useBatch'
+import { useCreateBatch } from '@/lib/api/hooks/useBatch'
 import { useToast } from '@/hooks/useToast'
 import { applyServerError } from '@/lib/api/formErrors'
-import type { Batch } from '@/types/batch'
 
 /** Lengths mirror `BatchBase` on the server. */
-const NAME_MAX_LENGTH = 120
+export const CODE_MAX_LENGTH = 64
 
-const DESCRIPTION_MAX_LENGTH = 512
+export const CRON_MAX_LENGTH = 120
 
-const CODE_MAX_LENGTH = 64
-
-const CRON_MAX_LENGTH = 120
+/**
+ * Five whitespace-separated fields — the shape `validated_cron` parses.
+ *
+ * A shape, not a grammar: the server owns which values a field may hold and
+ * answers 422 for the rest. What this catches is the mistake a cell invites —
+ * a half-typed expression committed by Enter — before it becomes a round trip.
+ */
+export const CRON_FIELD_PATTERN = /^\S+(?:\s+\S+){4}$/
 
 interface BatchFormValues {
   code: string
-  name: string
-  description: string
   cron: string
   enabled: boolean
 }
 
 const EMPTY_VALUES: BatchFormValues = {
   code: '',
-  name: '',
-  description: '',
   cron: '0 3 * * *',
   enabled: true,
 }
@@ -53,17 +55,14 @@ const EMPTY_VALUES: BatchFormValues = {
 interface BatchFormDialogProps {
   open: boolean
   onClose: () => void
-  batch: Batch | null
 }
 
-export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialogProps) {
+export default function BatchFormDialog({ open, onClose }: BatchFormDialogProps) {
   const { t } = useTranslation('batch')
   const { t: tCommon } = useTranslation('common')
   const toast = useToast()
 
   const createMutation = useCreateBatch()
-  const updateMutation = useUpdateBatch()
-  const isEdit = batch !== null
 
   const schema = useMemo(
     () =>
@@ -72,24 +71,14 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
           .string()
           .required(tCommon('validation.required'))
           .max(CODE_MAX_LENGTH, tCommon('validation.max_length', { count: CODE_MAX_LENGTH })),
-        name: yup
-          .string()
-          .required(tCommon('validation.required'))
-          .max(NAME_MAX_LENGTH, tCommon('validation.max_length', { count: NAME_MAX_LENGTH })),
-        description: yup
-          .string()
-          .max(
-            DESCRIPTION_MAX_LENGTH,
-            tCommon('validation.max_length', { count: DESCRIPTION_MAX_LENGTH }),
-          )
-          .defined(),
         cron: yup
           .string()
           .required(tCommon('validation.required'))
-          .max(CRON_MAX_LENGTH, tCommon('validation.max_length', { count: CRON_MAX_LENGTH })),
+          .max(CRON_MAX_LENGTH, tCommon('validation.max_length', { count: CRON_MAX_LENGTH }))
+          .matches(CRON_FIELD_PATTERN, t('validation.cron_invalid')),
         enabled: yup.boolean().defined(),
       }),
-    [tCommon],
+    [t, tCommon],
   )
 
   const methods = useForm<BatchFormValues>({
@@ -99,34 +88,18 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
 
   useEffect(() => {
     if (!open) return
-    methods.reset(
-      batch === null
-        ? EMPTY_VALUES
-        : {
-            code: batch.code,
-            name: batch.name,
-            description: batch.description ?? '',
-            cron: batch.cron,
-            enabled: batch.enabled,
-          },
-    )
-  }, [open, batch, methods])
+    methods.reset(EMPTY_VALUES)
+  }, [open, methods])
 
   const onSubmit = async (values: BatchFormValues) => {
     const payload = {
-      name: values.name,
-      description: values.description === '' ? null : values.description,
+      code: values.code,
       cron: values.cron,
       enabled: values.enabled,
     }
     try {
-      if (batch === null) {
-        await createMutation.mutateAsync({ ...payload, code: values.code })
-        toast.success(tCommon('messages.created'))
-      } else {
-        await updateMutation.mutateAsync({ id: batch.id, data: payload })
-        toast.success(tCommon('messages.updated'))
-      }
+      await createMutation.mutateAsync(payload)
+      toast.success(tCommon('messages.created'))
       onClose()
     } catch (error) {
       applyServerError(error, {
@@ -135,34 +108,21 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
         toastError: toast.error,
         // No field mapping: a batch conflict is `already running`, `unregistered
         // job` or `no scheduler`, none of which is about a value in this form.
-        // `conflict: 'name'` put those sentences on the name input.
+        // `conflict: 'code'` would put those sentences on the code input, which
+        // is not what any of them is about.
       })
     }
   }
 
-  const pending = createMutation.isPending || updateMutation.isPending
-
   return (
     <Dialog open={open} onClose={onClose}>
       <FormProvider methods={methods} onSubmit={methods.handleSubmit(onSubmit)}>
-        <FormDialogHeader
-          name={isEdit ? 'edit' : 'layers'}
-          title={isEdit ? t('edit_title') : t('create_title')}
-          caption={batch?.name}
-          onClose={onClose}
-        />
+        <FormDialogHeader name="layers" title={t('create_title')} onClose={onClose} />
 
         <DialogContent sx={{ p: 2 }}>
           <Stack spacing={2} sx={{ pt: 1 }}>
-            <RHFTextField
-              name="code"
-              label={t('form.code')}
-              disabled={isEdit}
-              helperText={t('form.code_helper')}
-            />
-            <RHFTextField name="name" label={t('form.name')} />
+            <RHFTextField name="code" label={t('form.code')} helperText={t('form.code_helper')} />
             <RHFTextField name="cron" label={t('form.cron')} helperText={t('form.cron_helper')} />
-            <RHFTextField name="description" label={t('form.description')} multiline minRows={3} />
             <RHFSwitch name="enabled" label={t('form.enabled')} />
           </Stack>
         </DialogContent>
@@ -171,7 +131,7 @@ export default function BatchFormDialog({ open, onClose, batch }: BatchFormDialo
           <Button color="inherit" onClick={onClose}>
             {tCommon('actions.cancel')}
           </Button>
-          <Button type="submit" variant="contained" disabled={pending}>
+          <Button type="submit" variant="contained" disabled={createMutation.isPending}>
             {tCommon('actions.save')}
           </Button>
         </DialogActions>

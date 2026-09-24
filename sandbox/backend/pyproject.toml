@@ -2,6 +2,11 @@
 name = "backend"
 version = "0.1.0"
 description = "FastAPI standard backend"
+# The floor, not the choice: `.python-version` pins 3.14, which is what the
+# venv - here and in CI - is built with. Measured on the first CI gate run:
+# uv picked 3.13.5 there against 3.14.7 locally, the same 582 tests passed on
+# both, and coverage read 99.22% against 100% - a gate that depends on which
+# interpreter the machine happened to have is not a gate.
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.115",
@@ -18,19 +23,25 @@ dependencies = [
     "structlog>=25.5.0",
     "python-multipart>=0.0.32",
     "redis>=6.4",
-    "httpx2>=2.9.1",
+    "httpx2>=2.12.0",
     "defusedxml>=0.7.1",
     "jsonschema>=4.26.0",
+    "selectolax>=0.4.11",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
     "ruff>=0.16",
-    "pyright>=1.1",
+    # Pinned: a type checker that moves is a gate that disagrees with itself.
+    # Measured - 1.1.411 locally and 1.1.414 in CI reported different results on
+    # the same commit, and the newer one was right (a shadowed `list`).
+    "pyright==1.1.414",
     "aiosqlite>=0.22.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.6.0",
+    "pytest-env>=1.1",
 ]
 
 [tool.ruff]
@@ -99,6 +110,34 @@ venv = ".venv"
 testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "--cov=app --cov-report=term-missing --cov-fail-under=100"
+# What `Settings()` needs at import time - `app.main` constructs it when the
+# conftest imports the app, before any fixture runs. Declared here so the suite
+# is a function of the checkout alone: without it a fresh clone (and the CI
+# gate, which clones like one) fails on twelve missing fields, because the file
+# Settings reads is gitignored. pytest-env sets these before conftests load;
+# `isolate_settings_environment` then clears every Settings field per test, so
+# a test that asserts on configuration still sees only what it set itself.
+# Every value is a test fixture, not a secret, and every one is forced: a value
+# the shell happens to export must not change what the suite constructs, which
+# is the same leak `isolate_settings_environment` closes per test.
+env = [
+    "APP_NAME=Awesome API",
+    "ADMIN_EMAIL=admin@example.com",
+    "ITEMS_PER_USER=50",
+    "ENV=local",
+    "DATABASE_URL=sqlite+aiosqlite://",
+    "SECRET_KEY=test-only-secret-key-of-thirty-two-bytes-or-more",
+    "ALLOWED_HOSTS=[\"localhost\", \"127.0.0.1\", \"testserver\"]",
+    "INTEGRATION_TIMEOUT_SECONDS=30.0",
+    "INTEGRATION_CONNECT_TIMEOUT_SECONDS=5.0",
+    "INTEGRATION_MAX_RETRIES=3",
+    "INTEGRATION_RETRY_BASE_SECONDS=0.5",
+    "INTEGRATION_RETRY_MAX_SECONDS=8.0",
+    "SCHEDULER_TIMEZONE=Asia/Seoul",
+    # TestClient speaks http, so a Secure cookie is never sent back: the two
+    # refresh-cookie tests only ever passed because the local .env said this.
+    "COOKIE_SECURE=false",
+]
 
 [tool.coverage.run]
 # app/ only — exclude generated/entrypoint files with no testable logic.

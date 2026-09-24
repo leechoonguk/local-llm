@@ -19,6 +19,10 @@ export const PATHS = {
   batch: '/batch',
   integration: '/integration',
   food: {
+    itemReport: '/food/item-report',
+    safetyRecord: '/food/safety-record',
     rawMaterial: '/food/raw-material',
+    business: '/food/business',
+    chat: '/food/chat',
   },
 } as const

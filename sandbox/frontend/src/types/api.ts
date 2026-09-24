@@ -65,6 +65,16 @@ export interface OffsetLimitParams {
 }
 
 /**
+ * The page plus the one sorted column: `sort` is a column the router's
+ * `<Domain>SortQuery` Literal closes, `order` the `OrderQuery` pair. Both
+ * omitted on an unsorted grid, so the endpoint pages by its own order.
+ */
+export interface PageParams extends OffsetLimitParams {
+  sort?: string
+  order?: 'asc' | 'desc'
+}
+
+/**
  * A list's field filters, one interface per domain, kept apart from
  * `OffsetLimitParams` on purpose.
  *
@@ -96,6 +106,17 @@ export interface IntegrationFilterParams {
   display_name?: string
 }
 
+export interface FoodItemReportFilterParams {
+  report_kind?: string
+  item_report_no?: string
+  license_no?: string
+  business_name?: string
+  product_name?: string
+  product_type_name?: string
+  /** Only the products something was published about - 161 of 1.07M domestic rows. */
+  has_events?: string
+}
+
 export interface FoodRawMaterialFilterParams {
   raw_material_code?: string
   representative_raw_material_name?: string
@@ -103,6 +124,16 @@ export interface FoodRawMaterialFilterParams {
   raw_material_large_class?: string
   raw_material_medium_class?: string
   raw_material_status_code_name?: string
+  use_yn?: string
+}
+
+export interface FoodBusinessFilterParams {
+  business_name?: string
+  license_no?: string
+  district?: string
+  industry_name?: string
+  /** Which ledger the row came from - `ACTIVE` master, `CLOSED` closure feed. */
+  status?: string
 }
 
 /** `DELETE` endpoints answer `{"ok": true}` rather than 204. */

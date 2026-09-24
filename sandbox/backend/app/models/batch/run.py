@@ -58,7 +58,7 @@ class BatchRun(Base, AuditMixin):
     __table_args__ = (
         Index("ix_batch_run_code_started_at", "code", "started_at"),
         CheckConstraint(
-            "status IN ('RUNNING', 'SUCCEEDED', 'FAILED', 'STOPPED', 'INTERRUPTED')",
+            "status IN ('RUNNING', 'SUCCEEDED', 'FAILED', 'STOPPED', 'INTERRUPTED', 'SKIPPED')",
             name="ck_batch_run_status",
         ),
         CheckConstraint("trigger IN ('CRON', 'MANUAL')", name="ck_batch_run_trigger"),

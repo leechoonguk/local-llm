@@ -1,18 +1,23 @@
 """BatchScheduler tests — the running schedule follows the row, or it is not a schedule."""
 
 import asyncio
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
+import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-from app.core.exceptions import ConflictError
+from app.core.exceptions import BatchSkippedError, ConflictError
 from app.core.scheduler import BATCH_JOBS, BatchScheduler, validated_cron
+from app.core.settings import settings
 from app.models.base import Base
 from app.models.batch.run import BatchRun
 from app.models.batch.schedule import BatchSchedule
+from app.schemas.batch.run import ERROR_DETAIL_MAX_LENGTH
 
 
 @pytest.fixture(autouse=True)
@@ -89,6 +94,25 @@ def test_sync_schedules_an_enabled_row() -> None:
     scheduler.sync(batch_id, JOB_CODE, CRON, enabled=True)
 
     assert [job.id for job in scheduler._scheduler.get_jobs()] == [str(batch_id)]
+
+
+def test_a_cron_row_fires_on_the_configured_wall_clock(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`0 4 * * *` means 04:00 where the deployment says, not where the process runs.
+
+    A scheduler built with no timezone takes the process's — UTC in a
+    container, Seoul on a developer's machine — so this asks for a zone that
+    is neither, and the assertion is the wall clock the row would fire on.
+    """
+    monkeypatch.setattr(settings, "scheduler_timezone", "America/New_York")
+    scheduler = _scheduler()
+    batch_id = uuid4()
+
+    scheduler.sync(batch_id, JOB_CODE, "0 4 * * *", enabled=True)
+
+    trigger = scheduler._scheduler.get_jobs()[0].trigger
+    fire = trigger.get_next_fire_time(None, datetime(2026, 9, 22, 12, 0, tzinfo=UTC))
+    assert fire.hour == 4
+    assert fire.tzinfo == ZoneInfo("America/New_York")
 
 
 @pytest.mark.asyncio
@@ -195,6 +219,48 @@ async def test_run_now_refuses_a_second_concurrent_run() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_cron_fire_during_a_manual_run_is_skipped() -> None:
+    """The two carry different job ids, so APScheduler's own guard does not see them."""
+    release = asyncio.Event()
+    scheduler = _blocking_scheduler(release)
+    batch_id = uuid4()
+    scheduler.start()
+
+    scheduler.run_now(batch_id, JOB_CODE)
+    await _until(lambda: scheduler.is_running(batch_id))
+    running = scheduler._running[batch_id]
+
+    await scheduler._run(batch_id, JOB_CODE, scheduler._jobs[JOB_CODE])
+
+    assert scheduler._running[batch_id] is running
+    release.set()
+    await _until(lambda: not scheduler.is_running(batch_id))
+    scheduler.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_a_run_carries_its_own_context_and_not_the_request_that_woke_it() -> None:
+    """The job's task inherits the waking request's contextvars; the run must not."""
+    seen: dict[str, object] = {}
+
+    async def _job() -> int:
+        seen.update(structlog.contextvars.get_contextvars())
+        return 0
+
+    scheduler = BatchScheduler(jobs={JOB_CODE: _job})
+    batch_id = uuid4()
+    structlog.contextvars.bind_contextvars(request_id="stale", path="/api/v1/batch")
+    try:
+        await scheduler._run(batch_id, JOB_CODE, _job)
+    finally:
+        structlog.contextvars.clear_contextvars()
+
+    assert "request_id" not in seen and "path" not in seen
+    assert seen["batch_id"] == str(batch_id) and seen["code"] == JOB_CODE
+    assert seen["trigger"] == "CRON" and UUID(str(seen["run_id"]))
+
+
+@pytest.mark.asyncio
 async def test_stop_cancels_the_execution_in_flight() -> None:
     """Stopping is cancelling the coroutine — unscheduling would leave it running."""
     release = asyncio.Event()
@@ -262,7 +328,7 @@ async def _scheduled_row(engine) -> tuple[UUID, async_sessionmaker[AsyncSession]
     """A real schedule row, because `batch_run.batch_id` is a foreign key."""
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with factory() as session:
-        row = BatchSchedule(code=JOB_CODE, name="probe", cron=CRON, created_by="tester")
+        row = BatchSchedule(code=JOB_CODE, cron=CRON, created_by="tester")
         session.add(row)
         await session.commit()
         return row.id, factory
@@ -334,6 +400,35 @@ async def test_a_failed_run_keeps_the_exception_that_ended_it(run_log_engine) ->
     assert [run.status for run in runs] == ["FAILED"]
     assert runs[0].error_code == "RuntimeError"
     assert runs[0].error_detail == "provider refused"
+
+
+@pytest.mark.asyncio
+async def test_a_run_ends_even_when_the_exception_is_longer_than_the_row(run_log_engine) -> None:
+    """A message too long for the column must not cost the ending.
+
+    Measured 2026-09-14: a derive job died on asyncpg's
+    StringDataRightTruncationError, which prints the offending value - the
+    ending was refused for its own length, and the run sat RUNNING until it
+    was closed by hand. The message is cut; the run still ends FAILED.
+    """
+    batch_id, factory = await _scheduled_row(run_log_engine)
+    release = asyncio.Event()
+
+    async def _boom() -> int:
+        await release.wait()
+        raise RuntimeError("x" * 4000)
+
+    scheduler = BatchScheduler(jobs={JOB_CODE: _boom})
+    scheduler.start()
+    scheduler.run_now(batch_id, JOB_CODE, "tester")
+    await _observe_run(scheduler, batch_id, release)
+    scheduler.shutdown()
+
+    runs = await _runs(factory)
+    assert [run.status for run in runs] == ["FAILED"]
+    assert runs[0].finished_at is not None
+    assert runs[0].error_detail is not None
+    assert len(runs[0].error_detail) == ERROR_DETAIL_MAX_LENGTH
 
 
 @pytest.mark.asyncio
@@ -422,3 +517,102 @@ async def test_an_unwritable_ending_leaves_the_run_open(
 
     runs = await _runs(factory)
     assert [run.status for run in runs] == ["RUNNING"]
+
+
+@pytest.mark.asyncio
+async def test_two_jobs_of_one_provider_take_turns() -> None:
+    """Two ledgers of one portal share a host, a key pool and a night.
+
+    They are separate jobs with separate crons, so nothing stops two firing at
+    once - and two walks of one portal spend the same quota to go slower. The
+    scheduler holds one lock per provider across the whole walk, so the second
+    starts when the first ends.
+    """
+    started: list[str] = []
+    release = asyncio.Event()
+
+    async def _first() -> int:
+        started.append("first")
+        await release.wait()
+        return 1
+
+    async def _second() -> int:
+        started.append("second")
+        return 2
+
+    scheduler = BatchScheduler(
+        jobs={"first": _first, "second": _second},
+        providers={"first": "one-portal", "second": "one-portal"},
+    )
+
+    running = asyncio.gather(
+        scheduler._run(uuid4(), "first", _first),
+        scheduler._run(uuid4(), "second", _second),
+    )
+    await _until(lambda: started == ["first"])
+    await asyncio.sleep(POLL_SECONDS * 5)
+    assert started == ["first"]
+
+    release.set()
+    await running
+    assert started == ["first", "second"]
+
+
+@pytest.mark.asyncio
+async def test_two_jobs_of_different_providers_overlap() -> None:
+    """Different portals share nothing, so waiting would only lengthen the night."""
+    started: list[str] = []
+    release = asyncio.Event()
+
+    async def _mfds() -> int:
+        started.append("mfds")
+        await release.wait()
+        return 1
+
+    async def _gateway() -> int:
+        started.append("gateway")
+        return 2
+
+    scheduler = BatchScheduler(
+        jobs={"mfds": _mfds, "gateway": _gateway},
+        providers={"mfds": "mfds-food-safety-korea", "gateway": "data-go-kr"},
+    )
+
+    running = asyncio.gather(
+        scheduler._run(uuid4(), "mfds", _mfds),
+        scheduler._run(uuid4(), "gateway", _gateway),
+    )
+    await _until(lambda: started == ["mfds", "gateway"])
+
+    release.set()
+    await running
+
+
+@pytest.mark.asyncio
+async def test_a_job_that_stands_down_is_recorded_as_skipped(run_log_engine) -> None:
+    """A skipped fire is an ending of its own, with the reason the job gave.
+
+    The derive job fires daily and the ledgers it reads are walked over several
+    nights: a fire that lands mid-walk has nothing to rebuild against, and
+    SUCCEEDED with zero rows would read as a rebuild that found nothing.
+    """
+
+    async def _job() -> int:
+        raise BatchSkippedError("ledger jobs are still walking: sync_food_ledger_recall")
+
+    scheduler = BatchScheduler(jobs={JOB_CODE: _job}, providers={})
+    batch_id = uuid4()
+
+    await scheduler._run(batch_id, JOB_CODE, _job)
+
+    factory = async_sessionmaker(run_log_engine, class_=AsyncSession, expire_on_commit=False)
+    async with factory() as session:
+        run = (await session.execute(select(BatchRun))).scalars().one()
+    assert run.status == "SKIPPED"
+    # Closed, not merely labelled: measured 2026-09-15 against the database,
+    # SKIPPED was outside `ck_batch_run_status` and the ending was refused, so
+    # two derive runs sat RUNNING for ever and the next fire found itself
+    # blocked by its own ghost.
+    assert run.finished_at is not None
+    assert run.error_detail is not None
+    assert "sync_food_ledger_recall" in run.error_detail

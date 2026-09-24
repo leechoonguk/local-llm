@@ -12,6 +12,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { SnackbarProvider } from 'notistack'
 import type { ReactNode } from 'react'
 import AuthProvider from '@/auth/AuthProvider'
+import Toast from '@/components/snackbar/Toast'
 import ThemeProvider from '@/theme/index'
 import {
   QUERY_GC_TIME,
@@ -47,6 +48,17 @@ export default function Providers({ children }: { children: ReactNode }) {
           maxSnack={3}
           autoHideDuration={SNACKBAR_AUTO_HIDE_MS}
           anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+          Components={{ success: Toast, error: Toast }}
+          /**
+           * One toast per sentence while it is on screen.
+           *
+           * A record dialog fires five reads at once (the 품목제조보고 dialog does),
+           * so a backend that is down answered with five stacked copies of the
+           * same sentence — three shown, two queued behind them, and the reader
+           * had to dismiss a wall to reach the screen. Identical text is one
+           * event to a reader, whatever the request count was.
+           */
+          preventDuplicate
           /**
            * The countdown runs whether or not the window is focused.
            *

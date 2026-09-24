@@ -6,7 +6,7 @@
  * backend schema, so a field added on the server fails the build here.
  */
 
-import type { AuditedResource, OffsetLimitParams, UserFilterParams } from '@/types/api'
+import type { AuditedResource, PageParams, UserFilterParams } from '@/types/api'
 
 export interface User extends AuditedResource {
   username: string
@@ -33,4 +33,4 @@ export interface UserUpdateRequest {
  * filters declares its own, and one that never does keeps a params type that
  * matches its endpoint.
  */
-export type UserListParams = OffsetLimitParams & UserFilterParams
+export type UserListParams = PageParams & UserFilterParams

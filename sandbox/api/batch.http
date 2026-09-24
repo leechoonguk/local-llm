@@ -29,8 +29,6 @@ Content-Type: application/json
 
 {
   "code": "{{jobCode}}",
-  "name": "batch-{{$timestamp}}",
-  "description": "created by api/batch.http",
   "cron": "0 3 * * *"
 }
 
@@ -39,12 +37,12 @@ Content-Type: application/json
 GET {{base}}/batch/?offset=0&limit=100
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 4. 배치잡 목록 필터 — 200 (name 부분일치 — 2번이 만든 항목만 남는다)
-GET {{base}}/batch/?offset=0&limit=100&name={{createBatch.response.body.name}}
+### 4. 배치잡 목록 필터 — 200 (code 부분일치 — 2번이 만든 항목만 남는다)
+GET {{base}}/batch/?offset=0&limit=100&code={{createBatch.response.body.code}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 5. 배치잡 목록 필터 — 422 (name=빈 문자열 — 필터 없음은 파라미터 생략으로 표현한다)
-GET {{base}}/batch/?offset=0&limit=100&name=
+### 5. 배치잡 목록 필터 — 422 (code=빈 문자열 — 필터 없음은 파라미터 생략으로 표현한다)
+GET {{base}}/batch/?offset=0&limit=100&code=
 Authorization: Bearer {{login.response.body.access_token}}
 
 ### 6. 배치잡 단건 조회 — 200 (version=1)
@@ -57,8 +55,7 @@ Authorization: Bearer {{login.response.body.access_token}}
 Content-Type: application/json
 
 {
-  "cron": "30 4 * * *",
-  "description": "updated by api/batch.http"
+  "cron": "30 4 * * *"
 }
 
 ### 8. 즉시 실행 — 200 (running=true — cron과 무관하게 한 번 실행한다)
@@ -143,7 +140,6 @@ Content-Type: application/json
 
 {
   "code": "job_from_the_future",
-  "name": "ghost",
   "cron": "0 3 * * *"
 }
 
@@ -154,7 +150,6 @@ Content-Type: application/json
 
 {
   "code": "{{jobCode}}",
-  "name": "ghost",
   "cron": "every tuesday"
 }
 

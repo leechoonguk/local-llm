@@ -1,0 +1,57 @@
+{
+ "why": "The file door of 인허가 업소 정보 (I2500): one GET answers the whole feed as gzip CSV (1,548,814 rows, 30.1MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2500.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAEzXO0UrCcBQG8Pugd/ABzsXRKc7LckGBTnHroqs9y+a/i5zghLQtXSwSLPBiKoXSpPfZ/xu9Qmyjq3M48P3O9/v902nrhqX36EbXbs07q61ZepcuDeM6n/2BoelmvplXHb1H/UHXsDSTLjRtcH5WVdUaK6wyVwluiOcPzBOE42zsyfUKT/eUBY8Q2/JKREVA5Tqlu1N6iOVEVLLJQzYM4S4LTuF6s+SiZbpPEHnw7RzCaopZIOevWE9LSGGFG4RIyC87Gx3lXuDFw9HPUUQCbwncZQWBgBOnn5uCb3GjVWNWCGEiYx/hOK8deQR/IZ1IuiuMNukhzoaz8kmLm1zN22JoS+e9sOMTFl5hi+2//QeJ/zJdSAEAAA=="
+ },
+ "expect": {
+  "path": "/api/issued-key/I2500/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2500.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 289,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "18820308001",
+    "industry_name": "식용얼음판매업",
+    "business_name": "화성얼음",
+    "president_name": "",
+    "telephone": "",
+    "permit_date": "18820804",
+    "district": "경기도 평택시"
+   },
+   {
+    "license_no": "18830478001",
+    "industry_name": "제과점영업",
+    "business_name": "중앙떡집",
+    "president_name": "",
+    "telephone": "",
+    "permit_date": "18830305",
+    "district": "전북특별자치도 전주시 완산구"
+   },
+   {
+    "license_no": "18890592003",
+    "industry_name": "일반음식점",
+    "business_name": "옛날다슬기탕",
+    "president_name": "",
+    "telephone": "",
+    "permit_date": "18890701",
+    "district": "경상남도 창원시 성산구"
+   }
+  ]
+ }
+}

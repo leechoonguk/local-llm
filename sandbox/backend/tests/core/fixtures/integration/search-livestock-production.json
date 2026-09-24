@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 축산물 생산실적: one GET answers the whole feed as gzip CSV (3,397,141 records, 41.8 MB, measured 2026-09-20) where the paged walk left 99.1 % unread - the ledger held 29,345 rows of 2016 alone against 3,398 windows it could never finish. Three of its rows as the file carries them, header in the portal's order, BOM and CRLF.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I1420.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE3u/e79TcLBHvJ+vTkCQi09wCIjlHuoU6qfjEe8Z4uoL4vs4+wXH+/nruIb5xEcGwRQGuQb4B4WAxN0iXYPiA4JcnEP84h2dgkLiAyN1oNzASF4ujTeL92i+WdT9Zm7Dm21T3zRt0HkzZ+GbWRtebeh4vbNF59WGhlebt77pnvt2UofO2/41b+YtfTNnocabth5NHSMDQ2MDA2MzSxNTENsMWcDEWMfYRM9Yx8hSz9jYEo81mzrf7JzxennHm6YtZFtmaaFjaWShZ65jaWCEx6o9a14vW/N6w4xXm1eQ7y9LHTNjAx0zI1NeLgCsLoLEnwEAAA=="
+ },
+ "expect": {
+  "path": "/api/issued-key/I1420/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I1420.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 253,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "item_report_no": "2013003694543",
+    "report_year": "2016",
+    "product_name": "육우갈비",
+    "business_name": "(주)좋은축산",
+    "license_no": "20130036945",
+    "product_type_name": "포장육(소)",
+    "production_qty": "29.339",
+    "annual_capacity_qty": "34.3",
+    "product_kind_name": "가공식품"
+   },
+   {
+    "item_report_no": "2013003694598",
+    "report_year": "2016",
+    "product_name": "육우겉치마살",
+    "business_name": "(주)좋은축산",
+    "license_no": "20130036945",
+    "product_type_name": "포장육(소)",
+    "production_qty": "902",
+    "annual_capacity_qty": "928.7",
+    "product_kind_name": "가공식품"
+   },
+   {
+    "item_report_no": "2013003694549",
+    "report_year": "2016",
+    "product_name": "육우꼬리반골",
+    "business_name": "(주)좋은축산",
+    "license_no": "20130036945",
+    "product_type_name": "포장육(소)",
+    "production_qty": "625",
+    "annual_capacity_qty": "630",
+    "product_kind_name": "가공식품"
+   }
+  ]
+ }
+}

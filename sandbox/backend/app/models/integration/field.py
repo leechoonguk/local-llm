@@ -99,6 +99,15 @@ class IntegrationField(Base, AuditMixin):
             "match_mode IS NULL OR match_mode IN ('IGNORE', 'PRESENT', 'EXACT', 'ONE_OF')",
             name="ck_integration_field_match_mode",
         ),
+        CheckConstraint(
+            "locator_kind IN ('POINTER', 'CSS', 'LABEL', 'REGEX', 'SECTION')",
+            name="ck_integration_field_locator_kind",
+        ),
+        # An outbound row has no locator to read: `wire_path` is the wire name.
+        CheckConstraint(
+            "direction = 'RESPONSE' OR locator_kind = 'POINTER'",
+            name="ck_integration_field_locator_direction",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
@@ -109,6 +118,20 @@ class IntegrationField(Base, AuditMixin):
     location: Mapped[str] = mapped_column(String(10))
     key: Mapped[str] = mapped_column(String(128))
     wire_path: Mapped[str] = mapped_column(String(512))
+    # How `wire_path` is read out of the answer. `POINTER` is RFC 6901 into the
+    # decoded body — every JSON and XML row. The other three are the HTML screen,
+    # where there is no pointer to write: `CSS` selects within the row element
+    # (`td:nth-child(3)`), `LABEL` finds the `th` with that text and takes its `td`
+    # (measured 2026-09-13: the detail screen's `th` order moves when a record
+    # carries 부적합/회수 blocks, so a positional locator reads the wrong cell), and
+    # `REGEX` reads the first group out of the document's text, which is where a
+    # screen states its total (`총 213,690건`). `SECTION` is `<heading>|<selector>`:
+    # the selector is applied inside the block a heading introduces, because a
+    # detail screen's repeating groups are tables sharing one class in anonymous
+    # divs and only their `h3` tells them apart.
+    locator_kind: Mapped[str] = mapped_column(
+        String(16), default="POINTER", server_default="POINTER"
+    )
     value_source: Mapped[str | None] = mapped_column(String(16), default=None)
     value: Mapped[Any | None] = mapped_column(JSON(none_as_null=True), default=None)
     secret_id: Mapped[uuid.UUID | None] = mapped_column(

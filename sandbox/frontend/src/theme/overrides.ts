@@ -9,7 +9,7 @@
 
 import { alpha } from '@mui/material/styles'
 import type { Theme, Components } from '@mui/material/styles'
-import { customShadows } from '@/theme/shadows'
+import { SELECT_MENU_MAX_HEIGHT } from '@/config'
 import { GREY } from '@/theme/palette'
 
 /** The base radius; a card doubles it, matching the reference application. */
@@ -31,7 +31,7 @@ export function componentOverrides(theme: Theme): Components<Theme> {
       styleOverrides: {
         root: {
           position: 'relative',
-          boxShadow: customShadows.card,
+          boxShadow: theme.customShadows.card,
           borderRadius: BORDER_RADIUS * 2,
           zIndex: 0,
         },
@@ -52,11 +52,21 @@ export function componentOverrides(theme: Theme): Components<Theme> {
       styleOverrides: {
         root: { borderRadius: BORDER_RADIUS },
         sizeLarge: { height: 48 },
-        containedInherit: {
-          color: theme.palette.common.white,
-          backgroundColor: theme.palette.grey[800],
-          '&:hover': { backgroundColor: theme.palette.grey[700] },
-        },
+        // The neutral button inverts with the mode: near-black on white in light,
+        // white on near-black in dark. `grey[800]` is the dark mode's card
+        // surface, so a button that kept it would be the card's colour on the card.
+        containedInherit:
+          theme.palette.mode === 'dark'
+            ? {
+                color: theme.palette.grey[800],
+                backgroundColor: theme.palette.common.white,
+                '&:hover': { backgroundColor: theme.palette.grey[400] },
+              }
+            : {
+                color: theme.palette.common.white,
+                backgroundColor: theme.palette.grey[800],
+                '&:hover': { backgroundColor: theme.palette.grey[700] },
+              },
       },
     },
     MuiOutlinedInput: {
@@ -78,7 +88,7 @@ export function componentOverrides(theme: Theme): Components<Theme> {
       defaultProps: { fullWidth: true, maxWidth: 'sm' },
       styleOverrides: {
         paper: {
-          boxShadow: customShadows.dialog,
+          boxShadow: theme.customShadows.dialog,
           borderRadius: BORDER_RADIUS * 2,
           '&.MuiDialog-paperFullScreen': { borderRadius: 0 },
         },
@@ -93,9 +103,12 @@ export function componentOverrides(theme: Theme): Components<Theme> {
     MuiDialogActions: {
       styleOverrides: { root: { padding: theme.spacing(3) } },
     },
+    // No scroll arrows: MUI shows them when the first or last tab is under 99%
+    // inside the scroller, and a dialog re-centred on a fractional height put a
+    // four-tab strip half a pixel off - both arrows lit over nothing to scroll.
+    // A strip that does overflow (a phone) still scrolls by swipe.
     MuiTabs: {
-      defaultProps: { textColor: 'inherit', variant: 'scrollable' },
-      styleOverrides: { scrollButtons: { width: 48, borderRadius: '50%' } },
+      defaultProps: { textColor: 'inherit', variant: 'scrollable', scrollButtons: false },
     },
     MuiTab: {
       defaultProps: { disableRipple: true, iconPosition: 'start' },
@@ -133,6 +146,14 @@ export function componentOverrides(theme: Theme): Components<Theme> {
     },
     MuiDrawer: {
       styleOverrides: { paper: { borderRight: `1px dashed ${theme.palette.divider}` } },
+    },
+    MuiAutocomplete: {
+      // The same bound as a select's menu: 40vh is a different height per screen.
+      styleOverrides: { listbox: { maxHeight: SELECT_MENU_MAX_HEIGHT } },
+    },
+    MuiSelect: {
+      // Bounded, or a long vocabulary takes the viewport and leaves its box.
+      defaultProps: { MenuProps: { PaperProps: { sx: { maxHeight: SELECT_MENU_MAX_HEIGHT } } } },
     },
     MuiPopover: {
       styleOverrides: {

@@ -1,15 +1,19 @@
 /**
  * One state machine for a screen's create/edit/delete dialogs.
  *
- * Four booleans and a selected row is the shape every list screen kept
+ * Three booleans and a selected row is the shape every list screen kept
  * re-inventing, and the versions drifted: some closed by clearing the row,
  * others by flipping a flag, so a closing dialog flashed empty fields. A single
  * `mode` cannot be in two states at once.
+ *
+ * There is no `edit` mode: every screen that edits a record now does it in the
+ * row (rule://frontend-screens, Editing In Place), so a mode nothing opens is a
+ * state a reader has to rule out.
  */
 
 import { useCallback, useMemo, useState } from 'react'
 
-export type CrudMode = 'create' | 'edit' | 'delete' | 'view' | null
+export type CrudMode = 'create' | 'delete' | 'view' | null
 
 export function useCrudDialog<T>() {
   const [mode, setMode] = useState<CrudMode>(null)
@@ -18,11 +22,6 @@ export function useCrudDialog<T>() {
   const openCreate = useCallback(() => {
     setSelected(null)
     setMode('create')
-  }, [])
-
-  const openEdit = useCallback((item: T) => {
-    setSelected(item)
-    setMode('edit')
   }, [])
 
   const openDelete = useCallback((item: T) => {
@@ -43,15 +42,13 @@ export function useCrudDialog<T>() {
       mode,
       selected,
       isCreateOpen: mode === 'create',
-      isEditOpen: mode === 'edit',
       isDeleteOpen: mode === 'delete',
       isViewOpen: mode === 'view',
       openCreate,
-      openEdit,
       openDelete,
       openView,
       close,
     }),
-    [mode, selected, openCreate, openEdit, openDelete, openView, close],
+    [mode, selected, openCreate, openDelete, openView, close],
   )
 }

@@ -10,9 +10,10 @@ from decimal import Decimal
 from uuid import uuid4
 
 from sqlalchemy import DateTime, Index, Numeric, String, Text, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, foreign, mapped_column, relationship
 
 from app.models.base import AuditMixin, Base
+from app.models.food.item_report import FoodItemReport
 
 
 # ============================================================
@@ -29,6 +30,9 @@ CODE_LENGTH = 32
 # the reason is beside those columns.
 NAME_LENGTH = 120
 
+# `health_functional` (17) is the widest kind `food_item_report` keys by.
+KIND_LENGTH = 32
+
 # `2025-01-23`, with room for the undashed form the publisher's other services
 # answer with for the same concept.
 DATE_LENGTH = 20
@@ -41,6 +45,11 @@ AMOUNT_PRECISION = 18
 
 AMOUNT_SCALE = 6
 
+# What identifies a row across passes, and the columns the derivation fills
+# beside it - the ledger's own, one for one. Listed on the model because nothing
+# but the derive job writes this table.
+NATURAL_KEY = ("food_code",)
+
 
 # ============================================================
 # Classes
@@ -48,30 +57,25 @@ AMOUNT_SCALE = 6
 
 
 class FoodNutrition(Base, AuditMixin):
-    """식품 영양성분 원장 - our own copy of the I2790 records, one row per food.
+    """One 영양성분 record - a food's measured nutrients, the I2790 row as it stands.
 
-    **Wide on purpose, and this is the one place the 1NF rule is argued rather
-    than followed.** The provider numbers its measurements (`AMT_NUM1..157`),
-    which reads like the repeating group `backend-table-design.md` sends to a
-    child table. Two things decide against it here:
+    Derived, not fed: no portal operation answers this table. The derive job
+    rebuilds it off the I2790 ledger whole - the width is the ledger's, argued
+    there. The table exists so that the edge to the report it names can be
+    declared on it and not on the ledger (rule://backend-relations).
 
-    - Each column is a *different* quantity with its own unit - `energy_kcal`,
-      `protein_g`, `calcium_mg` - not one meaning repeated. The numbering is the
-      wire's, and the operation's field seed already gives every one of them a
-      name; the ledger stores the names.
-    - Measured (2026-09-05): 319,060 foods, ~70 measurements filled each. As
-      rows that is ~22M records, upserted one by one through a `SELECT` per
-      record on every nightly pass. The ledger's whole increment - match on the
-      natural key, compare, leave unchanged rows alone - stops being affordable.
+    Measured 2026-09-09 over 319,060 rows: 172,476 (54.1 %) name a report in
+    `food_item_report` - 149,666 food, 22,810 livestock, none both. The rest
+    are 65,883 수입신고 numbers (`20IT02X00D9`, not a report), 55,158 numbers
+    re-issued since (`20170275036137` -> `202600540541`), and 25,543 with no
+    number at all (음식, 원재료성 - no report exists for them).
 
-    155 of the 157 are ever filled, and the fill rate spans four orders of
-    magnitude (`energy_kcal` 318,957, `choline_mg` 29), so most cells are NULL -
-    which costs a bit in the null bitmap and nothing in a row.
-
-    `food_code` is the natural key: unique across all 319,060 records, with zero
-    duplicates in the measured feed. `row_no` is deliberately **not** stored -
-    it is the position inside the page the record arrived in, so keeping it would
-    make every re-read compare unequal the moment the feed shifts by one row.
+    **The columns here are I2790's own reading of the food.** 식품명, 업체명 and
+    the amounts are what the 영양성분 database published for the sample it
+    measured, and the product row a record names may spell them otherwise: this
+    registry analysed a food, the other registered a report. `report_kind` is
+    not published at all - it is resolved at derive time from the number, so the
+    edge to a product can carry both of the product's key columns.
     """
 
     __tablename__ = "food_nutrition"
@@ -102,7 +106,11 @@ class FoodNutrition(Base, AuditMixin):
     nutrient_reference_serving: Mapped[str | None] = mapped_column(Text, default=None)
     food_weight: Mapped[str | None] = mapped_column(Text, default=None)
     dish_reference_serving: Mapped[str | None] = mapped_column(Text, default=None)
-    item_report_no: Mapped[str | None] = mapped_column(Text, default=None)
+    # Which registry the number belongs to, resolved at derive time against the
+    # numbered report ledgers - NULL when none carries it. I2790 publishes the
+    # 품목제조보고번호 and never says whose it is.
+    report_kind: Mapped[str | None] = mapped_column(String(KIND_LENGTH), default=None, index=True)
+    item_report_no: Mapped[str | None] = mapped_column(Text, default=None, index=True)
     maker_name: Mapped[str | None] = mapped_column(Text, default=None)
     importer_name: Mapped[str | None] = mapped_column(Text, default=None)
     seller_name: Mapped[str | None] = mapped_column(Text, default=None)
@@ -587,8 +595,24 @@ class FoodNutrition(Base, AuditMixin):
         Numeric(AMOUNT_PRECISION, AMOUNT_SCALE), default=None
     )
 
-    # The publisher's own `update_date`, parsed - this is what makes the table
-    # its own sync cursor, the same way the sibling ledgers are.
+    # The publisher's own `update_date`, parsed - a reading of when the
+    # publisher last touched the row; the pass walks the whole feed.
     source_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), default=None
+    )
+    # The report this record names: 149,666 + 22,810 of 319,060 (2026-09-09).
+    # Seen from the report: 13.95 % of food and 4.01 % of livestock reports
+    # carry one - 4-7 % of those permitted before 2023, 32-34 % of 2024-2025,
+    # which is the nutrition database's reach, not a key problem.
+    #
+    # Both columns, because that is the product's key: I2790 publishes the
+    # number and not the registry, so `report_kind` is resolved at derive time
+    # (rule://backend-relations).
+    item_report: Mapped[FoodItemReport | None] = relationship(
+        primaryjoin=lambda: (
+            (foreign(FoodNutrition.report_kind) == FoodItemReport.report_kind)
+            & (foreign(FoodNutrition.item_report_no) == FoodItemReport.item_report_no)
+        ),
+        viewonly=True,
+        lazy="raise_on_sql",
     )

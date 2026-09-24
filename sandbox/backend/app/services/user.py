@@ -73,8 +73,10 @@ class UserService:
         limit: int = 100,
         username: str | None = None,
         email: str | None = None,
+        sort: str | None = None,
+        order: str = "asc",
     ) -> list[User]:
-        return await self.user_repository.list(offset, limit, username, email)
+        return await self.user_repository.list(offset, limit, username, email, sort, order)
 
     async def count_users(self, username: str | None = None, email: str | None = None) -> int:
         """The collection's size under the filters the caller just applied."""

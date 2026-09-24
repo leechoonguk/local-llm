@@ -9,6 +9,8 @@ import sys
 
 import structlog
 
+from app.core.integration import TRANSPORT_LOGGERS
+
 
 # ============================================================
 # Functions
@@ -23,6 +25,10 @@ def configure_logging(environment: str) -> None:
         level=logging.INFO,
         force=True,
     )
+    # The transport's loggers print the URL, and the key is in the URL
+    # (`TRANSPORT_LOGGERS`, beside the transport).
+    for name in TRANSPORT_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
     renderer: structlog.types.Processor = (
         structlog.processors.JSONRenderer()
         if environment == "production"

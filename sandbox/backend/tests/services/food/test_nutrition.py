@@ -1,205 +1,118 @@
-"""FoodNutritionService tests — CRUD contracts and the ledger upsert the batch runs."""
-
-from decimal import Decimal
-from uuid import uuid4
+"""FoodNutritionService tests — the rebuild off I2790, and the edge to the report it names."""
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.orm import joinedload
 
-from app.core.exceptions import NotFoundError
-from app.schemas.food.nutrition import (
-    FoodNutritionCreateRequest,
-    FoodNutritionUpdateRequest,
-    to_read,
-    to_read_list,
-)
+from app.models.food.item_report import FoodItemReport
+from app.models.food.ledger_nutrition import FoodLedgerNutrition
+from app.models.food.nutrition import FoodNutrition
 from app.services.food.nutrition import FoodNutritionService
-from tests.services.food.helpers import pages
 
 
-FOOD_CODE = "D101-004160000-0001"
-
-SYNCED_BY = "batch:sync_food_nutrition_ledger"
-
-
-def _record(**overrides: object) -> dict[str, object]:
-    """One canonical I2790 record, in the keys the operation's fields map to."""
-    record: dict[str, object] = {
-        "row_no": "1",
-        "food_code": FOOD_CODE,
-        "food_name": "국밥_돼지머리",
-        "data_group_code": "D",
-        "data_group_name": "음식",
-        "category_major_name": "밥류",
-        "nutrient_basis_amount": "100g",
-        "energy_kcal": "137.000",
-        "protein_g": "6.70",
-        "sodium_mg": "1,000.000",
-        "update_date": "2025-01-23",
-    }
-    record.update(overrides)
-    return record
+SYNCED_BY = "batch:derive_food_tables"
 
 
 @pytest.mark.asyncio
-async def test_food_nutrition_service_crud(factory) -> None:
-    """Each step runs in its own session, as the request lifecycle does."""
+async def test_rebuild_copies_the_ledger_whole_and_a_rerun_replaces(factory, pinned) -> None:
+    """Every ledger record is a derived record, nutrients included; a rerun writes the same."""
     async with factory() as session:
-        created = await FoodNutritionService(session).create_nutrition(
-            FoodNutritionCreateRequest(food_code=FOOD_CODE, food_name="국밥"),
-            created_by="tester",
+        session.add_all(
+            [
+                FoodLedgerNutrition(
+                    food_code="D101-004160000-0001",
+                    food_name="찐빵",
+                    item_report_no="1",
+                    energy_kcal=250,
+                ),
+                FoodLedgerNutrition(food_code="R2-0001", food_name="쌀_백미_생것"),
+            ]
         )
-        row_id = created.id
+        await session.commit()
+
+    async with pinned() as session:
+        service = FoodNutritionService(session)
+        assert await service.rebuild_nutrition(SYNCED_BY) == 2
+        assert await service.rebuild_nutrition(SYNCED_BY) == 2
 
     async with factory() as session:
-        stored = await FoodNutritionService(session).get_nutrition(row_id)
-        assert stored.food_name == "국밥"
-        assert to_read(stored).food_code == FOOD_CODE
-
-    async with factory() as session:
-        rows = await FoodNutritionService(session).list_nutritions()
-        assert len(to_read_list(rows)) == 1
-
-    async with factory() as session:
-        updated = await FoodNutritionService(session).update_nutrition(
-            row_id, FoodNutritionUpdateRequest(food_name="돼지국밥"), updated_by="tester"
+        rows = (
+            (await session.execute(select(FoodNutrition).order_by(FoodNutrition.food_code)))
+            .scalars()
+            .all()
         )
-        assert updated.food_name == "돼지국밥"
-
-    async with factory() as session:
-        await FoodNutritionService(session).delete_nutrition(row_id)
-
-    async with factory() as session:
-        assert await FoodNutritionService(session).list_nutritions() == []
+    assert [(r.food_code, r.item_report_no, r.energy_kcal, r.created_by) for r in rows] == [
+        ("D101-004160000-0001", "1", 250, SYNCED_BY),
+        ("R2-0001", None, None, SYNCED_BY),
+    ]
 
 
 @pytest.mark.asyncio
-async def test_food_nutrition_service_missing_row_raises_not_found(factory) -> None:
-    """404 is the ledger's answer for an id it does not hold, on all three verbs."""
-    missing = uuid4()
+async def test_a_report_lists_its_nutrition_records_and_a_record_names_its_report(
+    factory,
+) -> None:
+    """The edge runs both ways on (report_kind, item_report_no); an unknown pair dangles.
+
+    The number alone is not the product: three registries number in their own
+    spaces, so the kind the derivation resolved is half of every join.
+    """
     async with factory() as session:
-        with pytest.raises(NotFoundError):
-            await FoodNutritionService(session).get_nutrition(missing)
+        session.add_all(
+            [
+                FoodItemReport(report_kind="domestic", item_report_no="1", product_name="찐빵"),
+                FoodItemReport(report_kind="livestock", item_report_no="2", product_name="소시지"),
+                FoodNutrition(
+                    food_code="N1", food_name="찐빵", report_kind="domestic", item_report_no="1"
+                ),
+                FoodNutrition(
+                    food_code="N2",
+                    food_name="찐빵 (재측정)",
+                    report_kind="domestic",
+                    item_report_no="1",
+                ),
+                FoodNutrition(
+                    food_code="N3",
+                    food_name="솔트",
+                    report_kind="domestic",
+                    item_report_no="20IT02X00D9",
+                ),
+                FoodNutrition(food_code="N4", food_name="쌀_백미_생것"),
+            ]
+        )
+        await session.commit()
 
     async with factory() as session:
-        with pytest.raises(NotFoundError):
-            await FoodNutritionService(session).update_nutrition(
-                missing, FoodNutritionUpdateRequest(food_name="x"), updated_by="tester"
+        reports = (
+            (
+                await session.execute(
+                    select(FoodItemReport)
+                    .options(joinedload(FoodItemReport.nutritions))
+                    .order_by(FoodItemReport.item_report_no)
+                )
             )
+            .unique()
+            .scalars()
+            .all()
+        )
+        records = (
+            (
+                await session.execute(
+                    select(FoodNutrition)
+                    .options(joinedload(FoodNutrition.item_report))
+                    .order_by(FoodNutrition.food_code)
+                )
+            )
+            .scalars()
+            .all()
+        )
 
-    async with factory() as session:
-        with pytest.raises(NotFoundError):
-            await FoodNutritionService(session).delete_nutrition(missing)
-
-
-@pytest.mark.asyncio
-async def test_replace_nutrition_ledger_reads_a_thousands_separator(factory, pinned) -> None:
-    """The portal writes `1,000.000` into a numeric field.
-
-    Measured on the whole feed (2026-09-05): the comma form appears in the
-    amounts, 451 times on the single most common value alone. A bare
-    `Decimal(text)` raises `InvalidOperation` on it, and the raise would take
-    down the page the record arrived in — 500 foods refused for one comma.
-    """
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record()]), SYNCED_BY
-        ) == (1, 1)
-
-    async with factory() as session:
-        rows = await FoodNutritionService(session).list_nutritions()
-        assert rows[0].sodium_mg == Decimal("1000.000")
-        assert rows[0].energy_kcal == Decimal("137.000")
-
-
-@pytest.mark.asyncio
-async def test_replace_nutrition_ledger_keeps_a_food_whose_amount_is_unreadable(
-    factory, pinned
-) -> None:
-    """An amount nobody can parse costs that measurement, never the food.
-
-    The row still carries its other 156 columns, and a nutrient absent is
-    honest where a fabricated `0` would be a number somebody could quote.
-    """
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record(energy_kcal="측정불가")]), SYNCED_BY
-        ) == (1, 1)
-
-    async with factory() as session:
-        rows = await FoodNutritionService(session).list_nutritions()
-        assert len(rows) == 1
-        assert rows[0].energy_kcal is None
-        assert rows[0].protein_g == Decimal("6.70")
-
-
-@pytest.mark.asyncio
-async def test_replace_nutrition_ledger_inserts_then_leaves_unchanged_rows_alone(
-    factory, pinned
-) -> None:
-    """A pass that re-sends a row unchanged must not rewrite it.
-
-    Every night reads the whole feed, so a merge that always wrote would bump
-    `version` and `updated_at` on every row of the ledger - and "this row
-    changed" would stop meaning anything.
-    """
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record()]), SYNCED_BY
-        ) == (1, 1)
-
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record()]), SYNCED_BY
-        ) == (1, 0)
-
-    async with factory() as session:
-        rows = await FoodNutritionService(session).list_nutritions()
-        assert len(rows) == 1
-        assert rows[0].version == 1
-        assert rows[0].created_by == SYNCED_BY
-
-
-@pytest.mark.asyncio
-async def test_replace_nutrition_ledger_refreshes_a_changed_record(factory, pinned) -> None:
-    """A measurement the portal revised is what the ledger exists to carry."""
-    async with pinned() as session:
-        await FoodNutritionService(session).replace_nutrition_ledger(pages([_record()]), SYNCED_BY)
-
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record(energy_kcal="141.000", update_date="2025-06-01")]), SYNCED_BY
-        ) == (1, 1)
-
-    async with factory() as session:
-        rows = await FoodNutritionService(session).list_nutritions()
-        assert rows[0].energy_kcal == Decimal("141.000")
-        assert rows[0].updated_by == SYNCED_BY
-
-
-@pytest.mark.asyncio
-async def test_replace_nutrition_ledger_skips_records_without_a_food_code(factory, pinned) -> None:
-    """A record with no key cannot be matched again, so it must not be stored."""
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record(), _record(food_code="   "), _record(food_code=None), "not-a-record"]),
-            SYNCED_BY,
-        ) == (4, 1)
-
-    async with factory() as session:
-        assert len(await FoodNutritionService(session).list_nutritions()) == 1
-
-
-@pytest.mark.asyncio
-async def test_replace_nutrition_ledger_ignores_the_page_position(pinned) -> None:
-    """`row_no` is where the record sat in its page, not a fact about the food.
-
-    Stored, it would differ the moment the feed shifts by one row and every
-    later run would rewrite the whole ledger to record a new position.
-    """
-    async with pinned() as session:
-        await FoodNutritionService(session).replace_nutrition_ledger(pages([_record()]), SYNCED_BY)
-
-    async with pinned() as session:
-        assert await FoodNutritionService(session).replace_nutrition_ledger(
-            pages([_record(row_no="947")]), SYNCED_BY
-        ) == (1, 0)
+    assert [(r.item_report_no, sorted(n.food_code for n in r.nutritions)) for r in reports] == [
+        ("1", ["N1", "N2"]),
+        ("2", []),
+    ]
+    assert [(n.food_code, n.item_report and n.item_report.product_name) for n in records] == [
+        ("N1", "찐빵"),
+        ("N2", "찐빵"),
+        ("N3", None),
+        ("N4", None),
+    ]

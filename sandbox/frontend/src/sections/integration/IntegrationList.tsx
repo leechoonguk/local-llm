@@ -2,20 +2,23 @@
  * Integration provider list — the list template, editing in place.
  *
  * A provider is configuration, not a record: its interesting content is the
- * operations and fields underneath it, so the row carries a detail button. It is
- * a button and not the row click because the row is editable — the same click
- * would have meant "open this" in one mode and "type here" in the other.
+ * operations, the credentials and the call log underneath it, so **the row is
+ * the door** to them — the same shape the batch list carries
+ * (rule://product-areas, Pattern: operations). The door is safe beside the
+ * editors because `ServerDataGrid` guards it: a row in edit mode has no door,
+ * and a click inside the actions cell belongs to its button. No detail button
+ * stands beside it — one intent, one control.
  * Its own columns are three scalars, which is exactly what a row editor holds —
  * a dialog for them would be a second surface asking for what the row already
  * shows. `code` is not among them: the server has no rename, so the column stays
  * read-only rather than accepting a value the API would ignore.
  */
 
-import { useMemo, useState } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Card, Switch } from '@mui/material'
-import { GridRowModes, useGridApiRef } from '@mui/x-data-grid'
-import type { GridColDef, GridRowId, GridRowModesModel } from '@mui/x-data-grid'
+import { useGridApiRef } from '@mui/x-data-grid'
+import type { GridColDef } from '@mui/x-data-grid'
 import ConfirmDialog from '@/components/confirm-dialog/ConfirmDialog'
 import ListCardHead from '@/components/data-grid/ListCardHead'
 import ListFilters from '@/components/data-grid/ListFilters'
@@ -32,6 +35,8 @@ import { useCrudDialog } from '@/hooks/useCrudDialog'
 import { useDataGridState } from '@/hooks/useDataGridState'
 import { useListFilters } from '@/hooks/useListFilters'
 import { useQueryErrorToast } from '@/hooks/useQueryErrorToast'
+import { useRowEditor } from '@/hooks/useRowEditor'
+import type { RowRefusal } from '@/hooks/useRowEditor'
 import {
   useDeleteIntegration,
   useIntegrationList,
@@ -51,7 +56,33 @@ import type { Integration, IntegrationListParams } from '@/types/integration'
  */
 const FILTER_FIELDS = ['code', 'display_name'] as const
 
+const FILTER_LABEL_KEYS = {
+  code: 'filter.code',
+  display_name: 'filter.display_name',
+} as const
+
 type FilterField = (typeof FILTER_FIELDS)[number]
+
+/**
+ * Every column has a **floor** and a **share** (rule://frontend-screens, Column
+ * Width). Floors are the widest measured value: a 22-character provider code
+ * (`mfds-food-safety-korea`), a 34-character base URL, a one-word badge, a
+ * two-digit count; the URL earns the most attention, the name next.
+ */
+const COLUMN: Record<string, { floor: number; share: number }> = {
+  code: { floor: 200, share: 0.8 },
+  display_name: { floor: 160, share: 1 },
+  base_url: { floor: 260, share: 1.5 },
+  enabled: { floor: 110, share: 0.4 },
+  operations: { floor: 148, share: 0.4 },
+}
+
+/** The grid props a column's floor and share become. */
+const sized = (field: keyof typeof COLUMN) => ({
+  field,
+  flex: COLUMN[field].share,
+  minWidth: COLUMN[field].floor,
+})
 
 /** The columns a row edits, and what each can be wrong about. */
 const EDITABLE_FIELDS = ['display_name', 'base_url'] as const
@@ -67,10 +98,6 @@ interface FieldProblem {
     | 'validation.base_url_invalid'
   count?: number
 }
-
-const STATE_COLUMN_WIDTH = 110
-
-const COUNT_COLUMN_WIDTH = 130
 
 export default function IntegrationList() {
   const { t } = useTranslation('integration')
@@ -90,66 +117,34 @@ export default function IntegrationList() {
   const dialog = useCrudDialog<Integration>()
   const deleteMutation = useDeleteIntegration()
   const updateMutation = useUpdateIntegration()
-  const [rowModes, setRowModes] = useState<GridRowModesModel>({})
 
   useQueryErrorToast(query, tCommon('messages.load_failed'))
 
-  const startEdit = (id: GridRowId) =>
-    setRowModes((previous) => ({ ...previous, [id]: { mode: GridRowModes.Edit } }))
   /**
    * Why a row cannot be saved, in the words the reader gets — or `null`.
    *
-   * One place, because the save button is not the only way out: pressing Enter
-   * commits through the grid, and a rule enforced on the button alone would let
-   * the keyboard past it into a 422 the server has to explain.
+   * The screen owns this and `problemOf`; `useRowEditor` owns what is done with
+   * the answer, which is the same on every screen that edits in place.
    */
-  const refusal = (row: Integration): { field: EditableField; sentence: string } | null => {
-    for (const field of EDITABLE_FIELDS) {
-      const problem = problemOf(field, String(row[field] ?? ''))
-      if (problem === null) continue
-      return { field, sentence: t(problem.key, { count: problem.count ?? 0 }) }
-    }
-    return null
-  }
-
-  /**
-   * Refusing a save says which cell refused, and puts the caret in it.
-   *
-   * The grid's own answer to an invalid row is to stay open, silently, so the
-   * save button reads as broken. The focus move is deferred because the button
-   * that was clicked takes focus back on its own mouse event.
-   */
-  const reportRefusal = (id: GridRowId, problem: { field: EditableField; sentence: string }) => {
-    toast.error(problem.sentence)
-    queueMicrotask(() => {
-      apiRef.current?.setCellFocus(id, problem.field)
-      apiRef.current?.getCellElement(id, problem.field)?.querySelector('input')?.focus()
-    })
-  }
-
-  const commitEdit = (id: GridRowId) => {
-    const row = apiRef.current?.getRowWithUpdatedValues(id, '') as Integration | undefined
-    const problem = row === undefined ? null : refusal(row)
-    if (problem !== null) {
-      reportRefusal(id, problem)
-      return
-    }
-    setRowModes((previous) => ({ ...previous, [id]: { mode: GridRowModes.View } }))
-  }
-  const cancelEdit = (id: GridRowId) =>
-    setRowModes((previous) => ({
-      ...previous,
-      [id]: { mode: GridRowModes.View, ignoreModifications: true },
-    }))
+  const refusal = useCallback(
+    (row: Integration): RowRefusal<EditableField> | null => {
+      for (const field of EDITABLE_FIELDS) {
+        const problem = problemOf(field, String(row[field] ?? ''))
+        if (problem === null) continue
+        return { field, sentence: t(problem.key, { count: problem.count ?? 0 }) }
+      }
+      return null
+    },
+    [t],
+  )
+  const editor = useRowEditor<Integration, EditableField>({ apiRef, refusal })
 
   const columns = useMemo<GridColDef<Integration>[]>(
     () => [
-      { field: 'code', headerName: t('table.code'), width: 160 },
+      { ...sized('code'), headerName: t('table.code') },
       {
-        field: 'display_name',
+        ...sized('display_name'),
         headerName: t('table.display_name'),
-        flex: 1,
-        minWidth: 160,
         editable: true,
         // The same rule the blocked save states in words, so a red cell and the
         // sentence can never disagree.
@@ -159,10 +154,8 @@ export default function IntegrationList() {
         }),
       },
       {
-        field: 'base_url',
+        ...sized('base_url'),
         headerName: t('table.base_url'),
-        flex: 1.5,
-        minWidth: 220,
         editable: true,
         preProcessEditCellProps: (params) => ({
           ...params.props,
@@ -170,9 +163,8 @@ export default function IntegrationList() {
         }),
       },
       {
-        field: 'enabled',
+        ...sized('enabled'),
         headerName: t('table.enabled'),
-        width: STATE_COLUMN_WIDTH,
         align: 'center',
         headerAlign: 'center',
         type: 'boolean',
@@ -199,41 +191,35 @@ export default function IntegrationList() {
         ),
       },
       {
-        field: 'operations',
+        ...sized('operations'),
         headerName: t('table.operations'),
-        width: COUNT_COLUMN_WIDTH,
         align: 'center',
         headerAlign: 'center',
         sortable: false,
         renderCell: ({ row }) => row.operations.length,
       },
       rowActionsColumn<Integration>({
-        count: 3,
+        count: 2,
         actions: ({ id, row }) =>
-          rowModes[id]?.mode === GridRowModes.Edit
+          editor.isEditing(id)
             ? [
                 {
                   label: tCommon('actions.save'),
                   icon: 'check',
                   tone: 'primary',
-                  onClick: () => commitEdit(id),
+                  onClick: () => editor.commitEdit(id),
                 },
                 {
                   label: tCommon('actions.cancel'),
                   icon: 'close',
-                  onClick: () => cancelEdit(id),
+                  onClick: () => editor.cancelEdit(id),
                 },
               ]
             : [
                 {
-                  label: tCommon('actions.view'),
-                  icon: 'view',
-                  onClick: () => dialog.openView(row),
-                },
-                {
                   label: tCommon('actions.edit'),
                   icon: 'edit',
-                  onClick: () => startEdit(id),
+                  onClick: () => editor.startEdit(id),
                 },
                 {
                   label: tCommon('actions.delete'),
@@ -244,8 +230,7 @@ export default function IntegrationList() {
               ],
       }),
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, tCommon, dialog, rowModes],
+    [t, tCommon, dialog, editor],
   )
 
   /**
@@ -254,15 +239,7 @@ export default function IntegrationList() {
    * new `version` in the grid; throwing is what makes the grid revert the cells
    * and keep the row open.
    */
-  const handleRowUpdate = async (updated: Integration, original: Integration) => {
-    const problem = refusal(updated)
-    if (problem !== null) {
-      reportRefusal(updated.id, problem)
-      // Thrown so the grid keeps the row open; flagged so the error handler does
-      // not say a second, vaguer thing about a failure already named.
-      throw Object.assign(new Error(problem.sentence), { reported: true })
-    }
-
+  const handleRowUpdate = editor.guardRowUpdate(async (updated: Integration, original: Integration) => {
     const unchanged =
       updated.display_name === original.display_name &&
       updated.base_url === original.base_url &&
@@ -279,7 +256,7 @@ export default function IntegrationList() {
     })
     toast.success(tCommon('messages.saved'))
     return saved
-  }
+  })
 
   const handleDelete = async () => {
     if (dialog.selected === null) return
@@ -298,6 +275,11 @@ export default function IntegrationList() {
         <ListCardHead
           title={t('list_title')}
           count={rowCount}
+          reset={{
+            label: tCommon('actions.reset'),
+            onReset: filters.reset,
+            disabled: !filters.isFiltered,
+          }}
           add={{ label: tCommon('actions.add'), onAdd: dialog.openCreate }}
           refreshLabel={tCommon('actions.retry')}
           onRefresh={() => void query.refetch()}
@@ -306,13 +288,10 @@ export default function IntegrationList() {
             <ListFilters
               fields={FILTER_FIELDS.map((field) => ({
                 name: field,
-                label: field === 'code' ? t('filter.code') : t('filter.display_name'),
+                label: t(FILTER_LABEL_KEYS[field]),
               }))}
               values={filters.inputs}
               onChange={(name, value) => filters.setInput(name as FilterField, value)}
-              isFiltered={filters.isFiltered}
-              onReset={filters.reset}
-              resetLabel={tCommon('actions.reset')}
             />
           }
         />
@@ -322,21 +301,23 @@ export default function IntegrationList() {
           columns={columns}
           rowCount={rowCount}
           emptyTitle={tCommon('messages.no_data')}
-          loading={query.isLoading}
+          loading={query.isFetching}
           paginationModel={grid.paginationModel}
           onPaginationModelChange={grid.setPaginationModel}
+        sortModel={grid.sortModel}
+        onSortModelChange={grid.setSortModel}
           density={grid.density}
           columnVisibilityModel={grid.columnVisibilityModel}
           onColumnVisibilityModelChange={grid.setColumnVisibilityModel}
           localeText={grid.localeText}
-          rowModesModel={rowModes}
-          onRowModesModelChange={setRowModes}
+          onRowClick={(row) => dialog.openView(row)}
+          rowModesModel={editor.rowModes}
+          onRowModesModelChange={editor.setRowModes}
           processRowUpdate={handleRowUpdate}
           apiRef={apiRef}
-          onProcessRowUpdateError={(error) => {
-            if ((error as { reported?: boolean }).reported === true) return
-            toast.error(serverErrorMessage(toApiError(error).code, tCommon))
-          }}
+          onProcessRowUpdateError={(error) =>
+            editor.rowUpdateError(error, (failure) => serverErrorMessage(toApiError(failure).code, tCommon))
+          }
         />
       </Card>
 

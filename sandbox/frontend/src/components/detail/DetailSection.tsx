@@ -15,6 +15,15 @@ import { RECORD_SURFACE } from '@/config'
 interface DetailSectionProps {
   name: ActionIcon
   title: string
+  /**
+   * What the section's rows add up to, beside the title.
+   *
+   * A table of twelve rows does not say "one of them was 부적합", and on a
+   * paged table the reader can only see the window in front of them. The line
+   * belongs in the header because that is where a reader looks before deciding
+   * to read the rows at all.
+   */
+  subtitle?: string
   /** One action for the whole section — the header is where a reader looks for it. */
   action?: ReactNode
   children: ReactNode
@@ -28,7 +37,13 @@ interface DetailSectionProps {
  */
 const HEADER_HEIGHT = RECORD_SURFACE.SECTION_HEADER_HEIGHT
 
-export default function DetailSection({ name, title, action, children }: DetailSectionProps) {
+export default function DetailSection({
+  name,
+  title,
+  subtitle,
+  action,
+  children,
+}: DetailSectionProps) {
   // No bottom margin: a gap below the last card would not match the body's own
   // padding above the first one. Stacking two sections is the parent's job -
   // `<Stack spacing={3}>` - because the gap belongs between them, not on one.
@@ -41,9 +56,14 @@ export default function DetailSection({ name, title, action, children }: DetailS
         sx={{ px: 2.5, minHeight: HEADER_HEIGHT }}
       >
         <Iconify name={name} sx={{ color: 'text.secondary' }} />
-        <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
-          {title}
-        </Typography>
+        <Stack sx={{ flexGrow: 1 }}>
+          <Typography variant="subtitle2">{title}</Typography>
+          {subtitle !== undefined && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              {subtitle}
+            </Typography>
+          )}
+        </Stack>
         {action}
       </Stack>
 

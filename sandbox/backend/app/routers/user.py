@@ -10,7 +10,13 @@ from fastapi import APIRouter, status
 
 from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
-from app.dependencies.query import LimitQuery, OffsetQuery, TextFilterQuery
+from app.dependencies.query import (
+    LimitQuery,
+    OffsetQuery,
+    OrderQuery,
+    TextFilterQuery,
+    UserSortQuery,
+)
 from app.dependencies.services import UserServiceDep
 from app.schemas.page import Page
 from app.schemas.user import (
@@ -47,9 +53,13 @@ async def list_users(
     limit: LimitQuery = settings.items_per_user,
     username: TextFilterQuery = None,
     email: TextFilterQuery = None,
+    sort: UserSortQuery = None,
+    order: OrderQuery = "asc",
 ) -> Page[UserReadResponse]:
     return Page(
-        items=to_read_list(await user_service.list_users(offset, limit, username, email)),
+        items=to_read_list(
+            await user_service.list_users(offset, limit, username, email, sort, order)
+        ),
         total=await user_service.count_users(username, email),
     )
 

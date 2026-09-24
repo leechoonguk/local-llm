@@ -1,0 +1,149 @@
+### Integration · search-common-standard-exclusion API — 외부 API 실행 (식품안전나라 OpenAPI I2610)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           provider와 인증키는 64/65번 시드를 재사용한다 — 포털 하나에 자격증명 하나
+###           range_start/range_end는 required CALLER다(RANGE 계열): 기본값이 없으므로
+###           모든 실행 블록이 창(window)을 명시한다 (126_seed_…_integration_field).
+###           provider는 09~19시에 ERROR-503으로 거부한다 — 그 시간대에는 2번 이후 블록이
+###           전부 502가 된다.
+#           실측 2026-09-07 19:36~20:38 KST(프로브로 provider 직접 호출 — 아래 수치·봉투 코드는
+#           그 실측값이고, 125번 시드 docstring 의 표와 같다). total_count 21.
+#           LAST_UPDT_DTM 은 호출일 기준 7일 이내만 받는다(더 오래되면 ERROR-303) — 그래서
+#           날짜 블록은 상대 날짜를 쓴다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(64_seed_food_safety_korea_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = 3c4802b0-06b3-5924-8d1a-14dbce279ca3
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. range_start/range_end — 200 (RANGE 계열: 행 구간이 창이다)
+# 응답 계약 (125/126_seed_…_integration_…):
+#     → response_root=/I2610/row — canonical_payload는 그 구간의 공통기준제외 레코드 배열이다
+#     → RESPONSE 행 6개의 wire_path는 원소 기준 상대 포인터다 (/CMMN_SPEC_CD, /PRDLST_CD, /TESTITM_CD …)
+#     → ENVELOPE 행이 봉투를 계약한다: /I2610/RESULT/CODE가 INFO-000|INFO-200이 아니면 거부
+#     → 필터는 PATH_QUERY다: 쿼리스트링으로 보내면 provider가 조용히 무시한다 (I2530 실측)
+# 실측: INFO-000, total_count 21, 행 3
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 1,
+       "range_end": 3
+    }
+}
+
+### 3. range_start — 200 (창을 옮긴다: 같은 크기, 다른 레코드)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 4,
+       "range_end": 6
+    }
+}
+
+### 4. range_end — 200 (창의 크기가 관측된다: 구간 길이가 곧 레코드 수다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 1,
+       "range_end": 10
+    }
+}
+
+### 5. last_updated_from — 200 (CALLER 필터: 최종수정일, wire LAST_UPDT_DTM)
+# 실측: 하한(이상)이다 — I2580 에서 20260904 → 7 = 그 날 이후로 찍힌 행수. 호출일 기준 7일보다
+# 오래된 날짜는 ERROR-303("최대 7일까지 증분 데이터만")이라 어제를 보낸다. 이 주에 갱신이
+# 없으면 INFO-200(빈 페이지)이고 그것도 정상이다
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "last_updated_from": "{{$datetime 'YYYYMMDD' -1 d}}",
+       "range_start": 1,
+       "range_end": 3
+    }
+}
+
+### 6. 외부 API 실행 — 200 (해당 데이터 없음 — INFO-200은 빈 페이지다)
+# 미래 날짜를 하한으로 주면 맞는 행이 없다. 봉투 코드가 INFO-200이므로 성공한 빈 결과다
+# 실측: INFO-200 "해당하는 데이터가 없습니다" — 총수 다음 창(예: 창 22/23)도 같은 코드다
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "last_updated_from": "20991231",
+       "range_start": 1,
+       "range_end": 3
+    }
+}
+
+### 7. 외부 API 실행 — 502 (날짜 형식 오류 — ERROR-302, YYYYMMDD 8자리가 아니다)
+# 실측: ERROR-302 "날짜조건은 YYYYMMDD 8자리 단일값으로 입력하십시오" (I1250 은 ERROR-601 —
+# 봉투 코드는 operation마다 다르다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "last_updated_from": "2020-03-18",
+       "range_start": 1,
+       "range_end": 3
+    }
+}
+
+### 8. 외부 API 실행 — 502 (창이 뒤집혔다 — ERROR-334)
+# 실측: ERROR-334 "종료위치보다 시작위치가 더 큽니다"
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 9,
+       "range_end": 2
+    }
+}
+
+### 9. 외부 API 실행 — 422 (창 누락 — 기본값이 없다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "last_updated_from": "{{$datetime 'YYYYMMDD' -1 d}}"
+    }
+}
+
+### 10. 외부 API 실행 — 404 (없는 provider — operation 코드는 유효하다)
+POST {{base}}/integration/{{missingId}}/operations/search-common-standard-exclusion/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+    "inputs": {
+       "range_start": 1,
+       "range_end": 3
+    }
+}

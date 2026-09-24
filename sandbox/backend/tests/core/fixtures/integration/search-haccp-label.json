@@ -1,0 +1,68 @@
+{
+  "why": "One measured page of the HACCP 표기정보 service: this gateway wraps each record in its own `item` node, and answers `OK`/`success` where the 1471000 services answer `00`.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "OK",
+        "resultMessage": "success"
+      },
+      "body": {
+        "pageNo": 1,
+        "numOfRows": 3,
+        "totalCount": 14664,
+        "items": [
+          {
+            "item": {
+              "prdkindstate": "낱개 및 세트박스 포장",
+              "manufacture": "남원혼불부각",
+              "rnum": "1",
+              "prdkind": "과자",
+              "rawmtrl": "찹쌀,김,참깨,옥수수기름(옥배유),양파,무,대파,천일염,마늘,새우,멸치,다시마,건표고버섯,둥굴레,감초,정제수",
+              "prdlstNm": "설화눈꽃팝김부각스낵",
+              "imgurl2": "http://www.haccp.or.kr/fresh/prdimg/2019/201904962715/201904962715-2.jpg",
+              "imgurl1": "http://www.haccp.or.kr/fresh/prdimg/2019/201904962715/201904962715-1.jpg",
+              "productGb": "식품",
+              "prdlstReportNo": "201904962715",
+              "allergy": "없음"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/B553748/CertImgListServiceV3/getCertImgListServiceV3",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1",
+      "numOfRows": "3",
+      "returnType": "json"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "item_report_no": "201904962715",
+        "product_kind_division": "식품",
+        "product_name": "설화눈꽃팝김부각스낵",
+        "raw_material_names": "찹쌀,김,참깨,옥수수기름(옥배유),양파,무,대파,천일염,마늘,새우,멸치,다시마,건표고버섯,둥굴레,감초,정제수",
+        "allergy_names": "없음",
+        "product_type_name": "과자",
+        "product_type_state": "낱개 및 세트박스 포장",
+        "maker_name": "남원혼불부각"
+      }
+    ],
+    "metadata": {
+      "result_code": "OK",
+      "result_message": "success",
+      "total_count": 14664
+    }
+  }
+}

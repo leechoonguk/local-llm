@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, Index, String, Text, Uuid
+from sqlalchemy import DateTime, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import AuditMixin, Base
@@ -31,6 +31,11 @@ NAME_LENGTH = 120
 # `Y`/`N`.
 FLAG_LENGTH = 4
 
+# What identifies a row across passes, and the columns the derivation fills
+# beside it - the ledger's own, one for one. Listed on the model because nothing
+# but the derive job writes this table.
+NATURAL_KEY = ("test_item_code",)
+
 
 # ============================================================
 # Classes
@@ -38,24 +43,15 @@ FLAG_LENGTH = 4
 
 
 class FoodTestItem(Base, AuditMixin):
-    """시험항목 정보 원장 - our own copy of the I2530 records.
+    """One 시험항목 - what a clause of either standard measures.
 
-    One row per test item, keyed by `test_item_code`. The major and middle
-    class of an item arrive as code, sequence and name on every record and
-    are stored that way, on the row: the feed has no class operation to
-    normalise them against, and a pass replaces the ledger as a set. A
-    classification table is a derived one for the day a screen groups by it.
-
-    The smallest feed of the portal (3,393 rows, four windows, ~1.5 s
-    measured 2026-09-06), so the first the provider job walks.
-    `source_updated_at` is the provider's `LAST_UPDT_DTM`
-    (`2020-03-18 08:53:50.199009`), read as KST. `korean_name` is empty on
-    132 records where `test_item_name` is not; both are kept as the wire
-    sends them.
+    Derived, not fed: no portal operation answers this table. The derive job
+    rebuilds it off the I2570 ledger whole. Measured 2026-09-08: 3,393 items,
+    and every `test_item_code` a standard names is here - 1,034 of 1,034 on the
+    개별 side, 830 of 830 on the 공통 side.
     """
 
     __tablename__ = "food_test_item"
-    __table_args__ = (Index("ix_food_test_item_source_updated_at", "source_updated_at"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
     test_item_code: Mapped[str] = mapped_column(String(CODE_LENGTH), unique=True, index=True)

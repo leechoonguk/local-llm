@@ -1,5 +1,6 @@
 """Engine construction, and the registry the running app depends on."""
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,9 @@ def test_database_engine_uses_configured_url_and_pre_ping() -> None:
     assert engine.pool._pre_ping is True
 
 
-def test_app_import_graph_registers_every_mapper() -> None:
+def test_app_import_graph_registers_every_mapper(
+    isolate_settings_environment: dict[str, str],
+) -> None:
     """The running app must configure its mappers, not just the test suite.
 
     A `relationship("IntegrationCall")` is resolved by name against the registry
@@ -29,7 +32,9 @@ def test_app_import_graph_registers_every_mapper() -> None:
     is every request.
 
     Run in a subprocess with only `app.main` imported: this suite's `conftest`
-    imports every model, which is exactly what hid the gap.
+    imports every model, which is exactly what hid the gap. The subprocess is
+    given the suite's declared Settings environment - the autouse fixture hid it
+    from this process, and a clone has no `.env` for the child to fall back on.
     """
     probe = "import app.main; from sqlalchemy.orm import configure_mappers; configure_mappers()"
     result = subprocess.run(
@@ -37,6 +42,7 @@ def test_app_import_graph_registers_every_mapper() -> None:
         capture_output=True,
         text=True,
         cwd=Path(__file__).resolve().parents[2],
+        env={**os.environ, **isolate_settings_environment},
         check=False,
     )
     assert result.returncode == 0, result.stderr[-2000:]

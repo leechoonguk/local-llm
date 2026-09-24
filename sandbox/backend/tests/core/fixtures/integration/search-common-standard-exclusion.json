@@ -1,0 +1,68 @@
+{
+  "why": "Two measured rows of the 공통기준제외 service (I2610), no filter sent: the whole feed is 21 (group, 품목, 시험항목) triples (total_count 21, read 2026-09-07 after 19:00 KST - the service answers ERROR-503 from 09:00 to 19:00). The two rows share group and 품목 and differ in 시험항목 - the triple is the key.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I2610": {
+        "total_count": "21",
+        "row": [
+          {
+            "PRDLST_CD": "C0120010000000",
+            "LAST_UPDT_DTM": "2020-12-04 10:45:52.703674",
+            "SPEC_NM": "(2) 그 외의 가공식품",
+            "KOR_NM": "메주",
+            "CMMN_SPEC_CD": "000008",
+            "TESTITM_CD": "C20004"
+          },
+          {
+            "PRDLST_CD": "C0120010000000",
+            "LAST_UPDT_DTM": "2020-12-04 10:45:52.703674",
+            "SPEC_NM": "(2) 그 외의 가공식품",
+            "KOR_NM": "메주",
+            "CMMN_SPEC_CD": "000008",
+            "TESTITM_CD": "C20011"
+          }
+        ],
+        "RESULT": {
+          "MSG": "정상처리되었습니다.",
+          "CODE": "INFO-000"
+        }
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I2610/json/1/2",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "common_standard_type_code": "000008",
+        "standard_name": "(2) 그 외의 가공식품",
+        "product_code": "C0120010000000",
+        "product_name": "메주",
+        "test_item_code": "C20004",
+        "last_updated_at": "2020-12-04 10:45:52.703674"
+      },
+      {
+        "common_standard_type_code": "000008",
+        "standard_name": "(2) 그 외의 가공식품",
+        "product_code": "C0120010000000",
+        "product_name": "메주",
+        "test_item_code": "C20011",
+        "last_updated_at": "2020-12-04 10:45:52.703674"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "21"
+    }
+  }
+}

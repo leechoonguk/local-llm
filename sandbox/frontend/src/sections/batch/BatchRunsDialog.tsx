@@ -22,9 +22,10 @@
 
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Dialog, DialogContent, DialogTitle, LinearProgress, TableCell, Typography } from '@mui/material'
+import { Dialog, DialogContent, DialogTitle, TableCell, Typography } from '@mui/material'
 import type { ComponentProps } from 'react'
 import ClippedText from '@/components/detail/ClippedText'
+import { RECORD_SURFACE } from '@/config'
 import Label from '@/components/label/Label'
 import ServerPagedTable from '@/components/detail/ServerPagedTable'
 import type { TableColumn } from '@/components/detail/PagedTableSection'
@@ -50,6 +51,7 @@ const STATUS_COLORS: Record<BatchRunStatus, LabelColor> = {
   FAILED: 'error',
   STOPPED: 'warning',
   INTERRUPTED: 'default',
+  SKIPPED: 'default',
 }
 
 /**
@@ -125,17 +127,16 @@ export default function BatchRunsDialog({ open, batch, onClose }: BatchRunsDialo
   ]
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
-      <DialogTitle>{t('runs.title', { name: batch?.name ?? '' })}</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth={RECORD_SURFACE.DIALOG_MAX_WIDTH} fullWidth>
+      <DialogTitle>{t('runs.title', { code: batch?.code ?? '' })}</DialogTitle>
       <DialogContent>
-        {(runsQuery.isLoading || stepsQuery.isLoading) && <LinearProgress />}
-
         <ServerPagedTable
           columns={runColumns}
           rows={runs.rows}
           rowKey={(run) => run.id}
           pagination={runs.pagination}
           empty={t('runs.empty')}
+          loading={runsQuery.isFetching}
           expanded={(run) => selectedRun?.id === run.id}
           onRowClick={handleSelect}
           renderCells={(run) => (
@@ -182,6 +183,7 @@ export default function BatchRunsDialog({ open, batch, onClose }: BatchRunsDialo
               rowKey={(step) => step.id}
               pagination={steps.pagination}
               empty={t('runs.steps_empty')}
+              loading={stepsQuery.isFetching}
               renderCells={(step) => (
                 <>
                   <TableCell>

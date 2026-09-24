@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 식품제조가공업 폐업정보 (I2811): one GET answers the whole feed as gzip CSV (62,745 rows, 1.3MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2811.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE3WQ30oCURDG7wXfwUuFczGj6/65zN2LBF3FswV1s68iskakoAVl2CaKZAYGm2YYrfQ+e2bpFeJoFxHt3fB9M/P9Zr4+PiumzV27xkqcH7p2ldUb3LIdWZVt68g52WtV7loOMyu8VD79XR1z17RkS6Vm1t0Dy2qwss0dOZ9Ooa6poKgIgCxL0zBHrVDMtnQXREGTbud0cxmt1jR6YIw69/HVOY19mkhTyoM2Q0NToZhHlgfQAAvA4l6fBu0sjfr06OUYvT3R8lm05qLnZejao1ZAHT9BlkC6AgWtKIHI82ka0jAgf0yDBU1D0W2K2YLG/WQcXQEdNYaGoQGi+hcnWm6jTbAL3W2ULP9oEsQwAFEBUJlYvZL3sk9MTNYNA/MFkI9AQNB/kndXDDfxxbtYedTxM3Q2ibvdaL1IdtKpbyZeYfv2AQAA"
+ },
+ "expect": {
+  "path": "/api/issued-key/I2811/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2811.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 336,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "18760461001",
+    "business_name": "(주)삼립웰가온양공장",
+    "president_name": "",
+    "industry_name": "식품제조가공업",
+    "permit_date": "19760521",
+    "closed_date": "20070130",
+    "closure_kind": "폐업(자진)",
+    "district": "충청남도 아산시",
+    "institution_name": "충청남도 아산시"
+   },
+   {
+    "license_no": "18840375001",
+    "business_name": "서주우유여주대리점",
+    "president_name": "",
+    "industry_name": "식품제조가공업",
+    "permit_date": "19840817",
+    "closed_date": "19970116",
+    "closure_kind": "폐업(자진)",
+    "district": "경기도 여주시",
+    "institution_name": "경기도 여주시"
+   },
+   {
+    "license_no": "18990114006",
+    "business_name": "보성식품",
+    "president_name": "",
+    "industry_name": "식품제조가공업",
+    "permit_date": "18991230",
+    "closed_date": "20010108",
+    "closure_kind": "폐업",
+    "district": "서울특별시 송파구",
+    "institution_name": "서울특별시 송파구"
+   }
+  ]
+ }
+}

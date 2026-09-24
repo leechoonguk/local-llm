@@ -18,10 +18,6 @@ from app.models.batch.schedule import BatchSchedule
 
 NAME_MIN_LENGTH = 1
 
-NAME_MAX_LENGTH = 120
-
-DESCRIPTION_MAX_LENGTH = 512
-
 CODE_MAX_LENGTH = 64
 
 CRON_MAX_LENGTH = 120
@@ -45,21 +41,17 @@ class BatchBase(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     code: str
-    name: str
-    description: str | None = None
     cron: str
     enabled: bool = True
 
 
 class BatchCreateRequest(BatchBase):
-    """What a client may send. Lengths mirror the columns (`String(120)` /
-    `String(512)`), and both `code` and `cron` are checked against the runtime
+    """What a client may send. Lengths mirror the columns (`String(64)` /
+    `String(120)`), and both `code` and `cron` are checked against the runtime
     that will have to honour them.
     """
 
     code: str = Field(min_length=NAME_MIN_LENGTH, max_length=CODE_MAX_LENGTH)
-    name: str = Field(min_length=NAME_MIN_LENGTH, max_length=NAME_MAX_LENGTH)
-    description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_LENGTH)
     cron: str = Field(min_length=NAME_MIN_LENGTH, max_length=CRON_MAX_LENGTH)
 
     @field_validator("code")
@@ -106,18 +98,12 @@ class BatchUpdateRequest(BaseModel):
     """Every field optional, except the one that is missing entirely: `code`.
 
     A schedule's code is its identity — repointing a row at another job would
-    silently change what runs tonight under a name the operator recognises.
+    silently change what runs tonight under the row the operator recognises.
     Delete the row and write the one you mean.
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    name: str | None = Field(
-        default=None,
-        min_length=NAME_MIN_LENGTH,
-        max_length=NAME_MAX_LENGTH,
-    )
-    description: str | None = Field(default=None, max_length=DESCRIPTION_MAX_LENGTH)
     cron: str | None = Field(default=None, max_length=CRON_MAX_LENGTH)
     enabled: bool | None = None
 

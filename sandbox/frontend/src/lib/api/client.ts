@@ -5,12 +5,19 @@
  * 401 clears the session, and every failure becomes an `ApiError`. A screen
  * that builds its own `axios.create()` (or calls `fetch`) skips all three, so
  * `check-frontend-api-layer` forbids it.
+ *
+ * `api.stream` is the one verb axios cannot serve: XHR hands over a response
+ * only when it is complete, so a server-sent stream would arrive as one lump
+ * after the last event. It is `fetch` with the same token and the same error
+ * mapping - the reason the ban is on raw `fetch` in a screen, not on `fetch`
+ * here.
  */
 
 import axios from 'axios'
 import type { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios'
 import { API_BASE_URL, API_TIMEOUT_MS } from '@/config'
-import { toApiError } from '@/lib/api/errors'
+import type { ApiErrorBody } from '@/types/api'
+import { ApiError, toApiError } from '@/lib/api/errors'
 import { emitSessionExpired, getAccessToken, setAccessToken } from '@/lib/api/token'
 
 /**
@@ -120,4 +127,84 @@ export const api = {
 
   delete: <T>(url: string, config?: AxiosRequestConfig) =>
     apiClient.delete<T>(url, config).then((res) => res.data),
+
+  /**
+   * A server-sent stream, event by event, until the server ends it or the
+   * caller's signal aborts it.
+   *
+   * Yields the frames as the network delivers them: a chunk can split an
+   * event in half and can carry three, so the buffer keeps what is left over
+   * rather than assuming a chunk is a frame. A non-2xx is an `ApiError`
+   * before the first frame, the same shape a failed `get` throws.
+   */
+  stream: async function* (
+    url: string,
+    body: unknown,
+    signal?: AbortSignal,
+  ): AsyncGenerator<ServerSentEvent> {
+    const token = getAccessToken()
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        ...(token === null ? {} : { Authorization: `Bearer ${token}` }),
+      },
+      body: JSON.stringify(body),
+      credentials: 'include',
+      signal,
+    })
+    if (!response.ok || response.body === null) {
+      // The same body every failure has, read here because there is no
+      // interceptor on this path (`ApiErrorBody`).
+      const body = (await response.json().catch(() => null)) as ApiErrorBody | null
+      throw new ApiError(
+        response.status,
+        body?.code ?? 'unknown_error',
+        body?.detail ?? response.statusText,
+        body?.request_id ?? null,
+      )
+    }
+    const reader = response.body.pipeThrough(new TextDecoderStream()).getReader()
+    let buffer = ''
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += value
+        let boundary = buffer.indexOf('\n\n')
+        while (boundary !== -1) {
+          const frame = parseServerSentEvent(buffer.slice(0, boundary))
+          buffer = buffer.slice(boundary + 2)
+          if (frame !== null) yield frame
+          boundary = buffer.indexOf('\n\n')
+        }
+      }
+    } finally {
+      // The generator's caller may stop early; the socket must not stay open.
+      await reader.cancel().catch(() => undefined)
+    }
+  },
+}
+
+export interface ServerSentEvent {
+  /** The event's name, as the server wrote it (`token`, `end`, `error`). */
+  event: string
+  /** Its `data` line, parsed - the server sends one JSON object per event. */
+  data: unknown
+}
+
+/**
+ * One frame's `event:` and `data:` lines. A keep-alive is a comment line and
+ * carries neither, so it is dropped rather than delivered as an empty event.
+ */
+function parseServerSentEvent(frame: string): ServerSentEvent | null {
+  let event = 'message'
+  const data: string[] = []
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) event = line.slice('event:'.length).trim()
+    if (line.startsWith('data:')) data.push(line.slice('data:'.length).trim())
+  }
+  if (data.length === 0) return null
+  return { event, data: JSON.parse(data.join('\n')) }
 }

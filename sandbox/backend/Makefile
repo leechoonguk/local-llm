@@ -33,8 +33,8 @@ migrate-gen: ## Generate a new migration from model changes (usage: make migrate
 
 verify: lint typecheck test ## Run lint, typecheck, and test (fail-fast)
 
-test: ## Run tests (pytest)
-	.venv/bin/pytest -q
+test: ## Run tests (pytest, xdist 워커 병렬 — 스위트 전체는 병렬이 모두 이득이다)
+	.venv/bin/pytest -q -n auto
 
 test-fast: ## Run tests without the coverage gate (usage: make test-fast t="tests/api/test_x.py")
 	.venv/bin/pytest -q --no-cov $(t)

@@ -1,0 +1,128 @@
+{
+  "why": "One measured page of the 푸드QR 영양표시정보 service: the printed panel arrives already split - 기준량, 함량, 단위 and 1일 기준치 비율 each in their own column.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE."
+      },
+      "body": {
+        "pageNo": 1,
+        "numOfRows": 3,
+        "totalCount": 25663,
+        "items": [
+          {
+            "ELB_MNG_NO": "202410221000001856",
+            "IMRPT_SN": "1000000001855",
+            "NTRTN_INDCT_SN": "1000000001060",
+            "NTRTN_IDTL_SN": "462",
+            "BRCD_NO": "08801007901244",
+            "PRDCT_NM": "전복삼계죽 420g",
+            "VER_NO": "1",
+            "VLD_BGNG_YMD": "20241101",
+            "VLD_END_YMD": "99991231",
+            "BUES_NM": "씨제이제일제당(주) 진천 BLOSSOM CAMPUS 3동",
+            "IMRPT_NO": "20190450208110",
+            "NTRTN_INDCT_CD": "총 내용량당",
+            "NTRTN_INDCT_TCT": "420.000",
+            "NTRTN_INDCT_TCD": "g",
+            "NTRTN_ICUT_CTV": "0.000",
+            "NTRTN_ICUT_CVUCD": null,
+            "NTRTN_IDRM_CN": "1일 영양성분 기준치에 대한 비율(%)은 2,000kcal 기준이므로 개인의 필요 열량에 따라 다를 수 있습니다.",
+            "NTRTN_IDTM_CD": "기본형",
+            "INDCT_GROUP_NM": "전복삼계죽 420g",
+            "UCVI_NM": null,
+            "UCVI_CTA_CD": null,
+            "TPCI_NM": null,
+            "ORD1_ADD_IDAT_NM": null,
+            "ORD2_ADD_IDAT_NM": null,
+            "ORD3_ADD_IDAT_NM": null,
+            "ORD4_ADD_IDAT_NM": null,
+            "ORD5_ADD_IDAT_NM": null,
+            "ADD_IDAT_SE_NM": null,
+            "NTRTN_IGRD_SE_CD": "필수영양성분",
+            "NIRWMT_NM": "열량",
+            "NIRWMT_SEQ": "1",
+            "NTRTN_RT": null,
+            "CTA": "215.000",
+            "IGRD_UCD": "kcal",
+            "IGRD_UNIT_ETCD": null,
+            "ORD1_ADD_IDAT_RT": null,
+            "ORD2_ADD_IDAT_RT": null,
+            "ORD3_ADD_IDAT_RT": null,
+            "ORD4_ADD_IDAT_RT": null,
+            "ORD5_ADD_IDAT_RT": null,
+            "ADD_IDAT_SE_YN": null,
+            "ORD1_ADD_IDAT_CTA": null,
+            "ORD2_ADD_IDAT_CTA": null,
+            "ORD3_ADD_IDAT_CTA": null,
+            "ORD4_ADD_IDAT_CTA": null,
+            "ORD5_ADD_IDAT_CTA": null,
+            "ORD1_IGRD_UNIT_ETCD": null,
+            "ORD2_IGRD_UNIT_ETCD": null,
+            "ORD3_IGRD_UNIT_ETCD": null,
+            "ORD4_IGRD_UNIT_ETCD": null,
+            "ORD5_IGRD_UNIT_ETCD": null,
+            "DRSSN_AOI_SE_CD": null,
+            "DRSSN_AOI": null,
+            "DRSSN_WGT": null,
+            "DRSSN_AOI_UCD": null,
+            "DRSSN_WGT_UCD": null,
+            "LAST_MDFCN_DT": "2026-07-30 19:03:34"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/1471000/FoodQrInfoService02/getFoodQrProdNsd02",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1",
+      "numOfRows": "3",
+      "type": "json"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "label_no": "202410221000001856",
+        "item_report_serial": "1000000001855",
+        "item_report_no": "20190450208110",
+        "nutrition_label_serial": "1000000001060",
+        "nutrition_detail_serial": "462",
+        "barcode_no": "08801007901244",
+        "product_name": "전복삼계죽 420g",
+        "business_name": "씨제이제일제당(주) 진천 BLOSSOM CAMPUS 3동",
+        "version_no": "1",
+        "valid_from": "20241101",
+        "valid_to": "99991231",
+        "basis_name": "총 내용량당",
+        "total_content_amount": "420.000",
+        "total_content_unit": "g",
+        "unit_content_amount": "0.000",
+        "remark_text": "1일 영양성분 기준치에 대한 비율(%)은 2,000kcal 기준이므로 개인의 필요 열량에 따라 다를 수 있습니다.",
+        "format_name": "기본형",
+        "label_group_name": "전복삼계죽 420g",
+        "nutrient_kind_name": "필수영양성분",
+        "nutrient_name": "열량",
+        "nutrient_sequence": "1",
+        "amount": "215.000",
+        "amount_unit": "kcal",
+        "source_updated_at": "2026-07-30 19:03:34"
+      }
+    ],
+    "metadata": {
+      "result_code": "00",
+      "result_message": "NORMAL SERVICE.",
+      "total_count": 25663
+    }
+  }
+}

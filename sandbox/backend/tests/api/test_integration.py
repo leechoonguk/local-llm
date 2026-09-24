@@ -571,8 +571,22 @@ def test_integration_update_replaces_operations(
 
 
 def _as_operation_request(operation: dict[str, object]) -> dict[str, object]:
-    """The read model minus the columns the server owns."""
-    server_owned = {"id", "created_at", "updated_at", "created_by", "updated_by", "version"}
+    """The read model minus the columns no request may carry.
+
+    Two kinds are dropped: what the database writes (ids, audit, version), and
+    what only a migration writes - a feed's coordinate is seeded, never sent, so
+    the create request has no field for it and `extra="forbid"` refuses one.
+    """
+    server_owned = {
+        "id",
+        "created_at",
+        "updated_at",
+        "created_by",
+        "updated_by",
+        "version",
+        "segment_key",
+        "segment_values",
+    }
     request = {key: value for key, value in operation.items() if key not in server_owned}
     fields = request.get("fields")
     if isinstance(fields, list):
@@ -601,3 +615,61 @@ def test_driver_constraint_violation_is_a_conflict(
     response = client.post("/api/v1/integration/", json=integration_payload(), headers=auth_headers)
     assert response.status_code == 409
     assert response.json()["code"] == "conflict"
+
+
+def test_integration_calls_endpoint_lists_what_was_executed(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """Executing an operation leaves a row the provider's log surface can read.
+
+    This is the leg the configuration screens were missing: the call log was
+    written on every exchange and no endpoint read it, so the product could not
+    answer what it had sent. The assertion is therefore the round trip —
+    execute, then read the log through the API — not the row.
+    """
+    created = client.post("/api/v1/integration/", json=integration_payload(), headers=auth_headers)
+    assert created.status_code == 201
+    integration_id = created.json()["id"]
+
+    app = cast(FastAPI, client.app)
+    app.state.integration_http_client._transport = httpx2.MockTransport(
+        lambda request: httpx2.Response(
+            200,
+            headers={"x-rate-limit-remaining": "41"},
+            json={"data": {"id": "item-1", "name": "Tea", "price": 3.5, "available": True}},
+        )
+    )
+    executed = client.post(
+        f"/api/v1/integration/{integration_id}/operations/lookup-menu-item/execute",
+        json={
+            "inputs": {
+                "menu_id": "menu-1",
+                "menu_item_id": "item-1",
+                "include_unavailable": False,
+            }
+        },
+        headers=auth_headers,
+    )
+    assert executed.status_code == 200
+
+    logged = client.get(f"/api/v1/integration/{integration_id}/calls", headers=auth_headers)
+    assert logged.status_code == 200
+    body = logged.json()
+    assert body["total"] == 1
+    entry = body["items"][0]
+    assert entry["operation_code"] == "lookup-menu-item"
+    assert (entry["method"], entry["status_code"], entry["outcome"]) == ("GET", 200, "SUCCESS")
+    assert entry["secret_name"] == "partner-api-key"
+    # The bodies stay out of the page: a list of twenty would otherwise carry
+    # twenty provider documents.
+    assert "response_body" not in entry
+
+
+def test_integration_calls_endpoint_unknown_provider(
+    client: TestClient, auth_headers: dict[str, str]
+) -> None:
+    """An unknown id is 404, never an empty log that reads as "never called"."""
+    response = client.get(
+        "/api/v1/integration/00000000-0000-0000-0000-000000000000/calls", headers=auth_headers
+    )
+    assert response.status_code == 404

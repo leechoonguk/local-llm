@@ -1,0 +1,118 @@
+### Integration · search-food-inspection-failure API — 외부 API 실행 (식품안전나라 OpenAPI I2620)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           필터는 한 블록에 하나만 보낸다: 섞은 호출은 어느 필드가 걸렸는지 증명하지 못한다.
+###           range_start/range_end는 required CALLER다(RANGE 계열): 기본값이 없다.
+###           CALLER 필드 5개(range_start, range_end, item_report_no, product_name, changed_from)를 블록 하나씩 전부 호출한다.
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(64_seed_food_safety_korea_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = 3c4802b0-06b3-5924-8d1a-14dbce279ca3
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. range_start / range_end — 200 (창의 위치와 크기)
+# 측정(2026-09-14): 전체 572건, 회수폐기 일련번호는 479개뿐 — 한 처분에 부적합항목이 여럿이다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3
+  }
+}
+
+### 3. range_start / range_end — 200 (창이 옮겨간다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 4,
+      "range_end": 6
+  }
+}
+
+### 4. product_name — 200 (CALLER 필드: 제품명 완전 일치)
+# 측정(2026-09-14): 경로 세그먼트로 보내면 total 1, 쿼리스트링으로 보내면 572(무시된다).
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3,
+      "product_name": "부추(L23)"
+  }
+}
+
+### 5. item_report_no — 200 (CALLER 필드: 품목제조보고번호 — 572건 중 84건에만 있다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3,
+      "item_report_no": "20130368349343"
+  }
+}
+
+### 6. changed_from — 200 (CALLER 필드: 변경일자 이후 — 7일까지만 닿는다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "range_start": 1,
+      "range_end": 3,
+      "changed_from": "20260912"
+  }
+}
+
+### 7. 외부 API 실행 — 422 (창 누락 — RANGE 계열은 기본값이 없다)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+      "product_name": "부추(L23)"
+  }
+}
+
+### 8. 외부 API 실행 — 404 (없는 provider)
+POST {{base}}/integration/{{missingId}}/operations/search-food-inspection-failure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}
+
+### 9. 외부 API 실행 — 401 (토큰 없음)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-inspection-failure/execute
+Content-Type: application/json
+
+{
+  "inputs": {
+    "range_start": 1,
+    "range_end": 3
+  }
+}

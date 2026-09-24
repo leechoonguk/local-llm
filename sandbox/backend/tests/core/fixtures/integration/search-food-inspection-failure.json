@@ -1,0 +1,116 @@
+{
+  "why": "One 검사부적합 window: three failed test items, two of them sharing a disposal serial, which is why the key is (일련번호, 부적합항목, 기준규격).",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I2620": {
+        "total_count": "572",
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        },
+        "row": [
+          {
+            "FRMLCUNIT": "",
+            "PRDLST_REPORT_NO": "",
+            "CRET_DTM": "2026.03.11",
+            "LCNS_NO": "",
+            "DISTBTMLMT": "",
+            "REGSTR_TELNO": "",
+            "STDR_STND": "5.0 mg/kg 이하",
+            "ADDR": "울산광역시 울주군",
+            "BRCDNO": "21000309959510025009",
+            "MNFDT": "20260309",
+            "TEST_ITMNM": "프로사이미돈",
+            "INSTT_NM": "울산광역시 보건환경연구원 보건연구부 농수산물검사소",
+            "PRDTNM": "부추(L23)",
+            "PRDLST_CD_NM": "부추",
+            "TESTANALS_RSLT": "20.2 mg/kg",
+            "BSSHNM": "전*복",
+            "REPORTR_TELNO": "",
+            "RTRVLDSUSE_SEQ": "3000222960"
+          },
+          {
+            "FRMLCUNIT": "",
+            "PRDLST_REPORT_NO": "",
+            "CRET_DTM": "2026.03.18",
+            "LCNS_NO": "",
+            "DISTBTMLMT": "2026.03.18.(수거일)",
+            "REGSTR_TELNO": "",
+            "STDR_STND": "0.7 mg/kg 이하",
+            "ADDR": "경남",
+            "BRCDNO": "",
+            "MNFDT": "데이터없음",
+            "TEST_ITMNM": "디클로르보스",
+            "INSTT_NM": "서울특별시 보건환경연구원 강남농수산물검사소",
+            "PRDTNM": "깻잎",
+            "PRDLST_CD_NM": "들깻잎",
+            "TESTANALS_RSLT": "1.0 mg/kg",
+            "BSSHNM": "민*희",
+            "REPORTR_TELNO": "",
+            "RTRVLDSUSE_SEQ": "3000223315"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I2620/json/1/2",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "disposal_seq": "3000222960",
+        "test_item_name": "프로사이미돈",
+        "standard_text": "5.0 mg/kg 이하",
+        "test_result_text": "20.2 mg/kg",
+        "institution_name": "울산광역시 보건환경연구원 보건연구부 농수산물검사소",
+        "item_report_no": "",
+        "license_no": "",
+        "product_name": "부추(L23)",
+        "business_name": "전*복",
+        "address": "울산광역시 울주군",
+        "barcode_no": "21000309959510025009",
+        "packaging_unit": "",
+        "manufactured_text": "20260309",
+        "shelf_life_text": "",
+        "product_type_name": "부추",
+        "registered_on": "2026.03.11",
+        "registrar_telephone": "",
+        "reporter_telephone": ""
+      },
+      {
+        "disposal_seq": "3000223315",
+        "test_item_name": "디클로르보스",
+        "standard_text": "0.7 mg/kg 이하",
+        "test_result_text": "1.0 mg/kg",
+        "institution_name": "서울특별시 보건환경연구원 강남농수산물검사소",
+        "item_report_no": "",
+        "license_no": "",
+        "product_name": "깻잎",
+        "business_name": "민*희",
+        "address": "경남",
+        "barcode_no": "",
+        "packaging_unit": "",
+        "manufactured_text": "데이터없음",
+        "shelf_life_text": "2026.03.18.(수거일)",
+        "product_type_name": "들깻잎",
+        "registered_on": "2026.03.18",
+        "registrar_telephone": "",
+        "reporter_telephone": ""
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "572"
+    }
+  }
+}

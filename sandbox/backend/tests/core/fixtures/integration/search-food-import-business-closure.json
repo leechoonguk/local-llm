@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 수입식품업 폐업정보 (I2821): one GET answers the whole feed as gzip CSV (161,045 rows, 2.8MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2821.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE42PwUrDQBCG74W+Qx9gDrNZm+4ebXKwkKalGwW95F0klWILRkWUkkqFYhAU2tRCRcX3yU7wFWQbERGE3mb+f/75+D9fPzzHV6HfgaZSe6Hfhm5PuX5gppbv7geHpdZWoRuA46lm6+j3dKBCxzUnXsfphruu24OWrwKTr1aYkBKRc0QO+WKu798omRYnKwAa3NBtn4aT4mKgLxe1ci9GsU5ndN0Hk2QWR7AQd7DO6lCcxcagKKHxujh90cuIhkmNxg90PM9Xj98OZU/VCpO2QGQNRAY6HenliqZXlNzRNN4CbcJ1zgy6gcyyf9CTNWVJjWbnBpdn7xthgxOIKAVaNtB4TmlUft+GJRBtFMCkFAw5/lszSuh58KfmF/PDRnm9AQAA"
+ },
+ "expect": {
+  "path": "/api/issued-key/I2821/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2821.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 300,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "18990033003",
+    "business_name": "거림유통",
+    "president_name": "",
+    "industry_name": "수입식품등 수입판매업",
+    "permit_date": "18991230",
+    "closed_date": "20040515",
+    "closure_kind": "폐업",
+    "district": "서울특별시 용산구",
+    "institution_name": "서울청"
+   },
+   {
+    "license_no": "19680017001",
+    "business_name": "만복정육점",
+    "president_name": "",
+    "industry_name": "수입식품등 수입판매업",
+    "permit_date": "19680531",
+    "closed_date": "20070126",
+    "closure_kind": "폐업",
+    "district": "인천 중구",
+    "institution_name": "경인청"
+   },
+   {
+    "license_no": "19800098026",
+    "business_name": "우진식품",
+    "president_name": "",
+    "industry_name": "수입식품등 수입판매업",
+    "permit_date": "19800608",
+    "closed_date": "19981030",
+    "closure_kind": "폐업",
+    "district": "서울특별시 서초구",
+    "institution_name": "서울청"
+   }
+  ]
+ }
+}

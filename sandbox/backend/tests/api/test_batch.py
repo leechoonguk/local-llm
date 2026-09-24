@@ -12,6 +12,8 @@ CRON = "0 3 * * *"
 
 JOB_CODE = "purge_expired_refreshes"
 
+OTHER_JOB_CODE = "purge_old_batch_runs"
+
 
 class BatchCache:
     """A cache that records what it was asked to store and invalidate.
@@ -47,13 +49,12 @@ def test_create_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """A 201 carries the id later calls address the row by."""
     response = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Batch 1", "description": "Batch job", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     )
     assert response.status_code == 201
     body = response.json()
-    assert body["name"] == "Batch 1"
-    assert body["description"] == "Batch job"
+    assert body["code"] == JOB_CODE
     assert "id" in body
 
 
@@ -61,49 +62,48 @@ def test_list_batches(client: TestClient, auth_headers: dict[str, str]) -> None:
     """Two rows, so a query that returns only the first still fails."""
     client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Alpha", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     )
     client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Beta", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     )
 
     response = client.get("/api/v1/batch/", headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
-    names = [i["name"] for i in body["items"]]
-    assert "Alpha" in names
-    assert "Beta" in names
+    crons = [i["cron"] for i in body["items"]]
+    assert crons == [CRON, CRON]
     assert body["total"] == 2
 
 
-def test_list_batches_name_filter(client: TestClient, auth_headers: dict[str, str]) -> None:
-    """`?name=` narrows the page and the total together, and rejects an empty value.
+def test_list_batches_code_filter(client: TestClient, auth_headers: dict[str, str]) -> None:
+    """`?code=` narrows the page and the total together, and rejects an empty value.
 
     The filter is part of the cache key, so the assertion runs a filtered read
     after an unfiltered one: a key that ignored it would serve these two rows as
     the whole collection to the next caller.
     """
-    for name in ("Nightly sync", "Weekly report"):
+    for code in (JOB_CODE, OTHER_JOB_CODE):
         client.post(
             "/api/v1/batch/",
-            json={"code": JOB_CODE, "name": name, "cron": CRON},
+            json={"code": code, "cron": CRON},
             headers=auth_headers,
         )
     client.get("/api/v1/batch/", headers=auth_headers)
 
-    response = client.get("/api/v1/batch/", params={"name": "NIGHTLY"}, headers=auth_headers)
+    response = client.get("/api/v1/batch/", params={"code": "REFRESHES"}, headers=auth_headers)
     assert response.status_code == 200
     body = response.json()
-    assert [item["name"] for item in body["items"]] == ["Nightly sync"]
+    assert [item["code"] for item in body["items"]] == [JOB_CODE]
     assert body["total"] == 1
 
-    unmatched = client.get("/api/v1/batch/", params={"name": "nothing"}, headers=auth_headers)
+    unmatched = client.get("/api/v1/batch/", params={"code": "nothing"}, headers=auth_headers)
     assert unmatched.json() == {"items": [], "total": 0}
 
-    empty = client.get("/api/v1/batch/", params={"name": ""}, headers=auth_headers)
+    empty = client.get("/api/v1/batch/", params={"code": ""}, headers=auth_headers)
     assert empty.status_code == 422
 
 
@@ -111,14 +111,14 @@ def test_get_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """The id from the create response resolves — the write really committed."""
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Glob", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
 
     response = client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers)
     assert response.status_code == 200
-    assert response.json()["name"] == "Glob"
+    assert response.json()["code"] == JOB_CODE
 
 
 def test_get_batch_not_found(client: TestClient, auth_headers: dict[str, str]) -> None:
@@ -133,21 +133,24 @@ def test_update_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """A partial payload changes only the field it names."""
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Old", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
 
-    response = client.patch(f"/api/v1/batch/{batch_id}", json={"name": "New"}, headers=auth_headers)
+    response = client.patch(
+        f"/api/v1/batch/{batch_id}", json={"cron": "30 4 * * *"}, headers=auth_headers
+    )
     assert response.status_code == 200
-    assert response.json()["name"] == "New"
+    body = response.json()
+    assert (body["cron"], body["code"]) == ("30 4 * * *", JOB_CODE)
 
 
 def test_update_batch_not_found(client: TestClient, auth_headers: dict[str, str]) -> None:
     """Writing to a missing row is 404 rather than an implicit create."""
     response = client.patch(
         "/api/v1/batch/00000000-0000-0000-0000-000000000000",
-        json={"name": "New"},
+        json={"cron": "30 4 * * *"},
         headers=auth_headers,
     )
     assert response.status_code == 404
@@ -157,7 +160,7 @@ def test_delete_batch(client: TestClient, auth_headers: dict[str, str]) -> None:
     """The follow-up read proves the row is gone, not just that 200 was sent."""
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Temp", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
@@ -179,7 +182,7 @@ def test_delete_batch_not_found(client: TestClient, auth_headers: dict[str, str]
 
 
 def test_create_batch_missing_field_422(client: TestClient, auth_headers: dict[str, str]) -> None:
-    """Missing required field (name) → 422."""
+    """Missing required field (code) → 422."""
     response = client.post("/api/v1/batch/", json={}, headers=auth_headers)
     assert response.status_code == 422
 
@@ -207,7 +210,7 @@ def test_batch_reads_use_cache_and_writes_invalidate(
 
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Cached", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
@@ -220,15 +223,16 @@ def test_batch_reads_use_cache_and_writes_invalidate(
     detail = client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json()
     assert client.get(f"/api/v1/batch/{batch_id}", headers=auth_headers).json() == detail
     assert cache.set_keys == [
-        # The trailing segment is the name filter, empty on an unfiltered read:
-        # a filtered page and the whole collection must not share a key.
-        f"batches:v1:{user_id}:list:0:50:",
+        # The trailing segments are the code filter, the sort column and the
+        # order - empty on an unfiltered, unsorted read: a filtered or sorted
+        # page and the whole collection must not share a key.
+        f"batches:v1:{user_id}:list:0:50:::asc",
         f"batches:v1:{user_id}:detail:{batch_id}",
     ]
 
     assert (
         client.patch(
-            f"/api/v1/batch/{batch_id}", json={"name": "Updated"}, headers=auth_headers
+            f"/api/v1/batch/{batch_id}", json={"cron": "30 4 * * *"}, headers=auth_headers
         ).status_code
         == 200
     )
@@ -240,7 +244,7 @@ def test_create_batch_unknown_code_422(client: TestClient, auth_headers: dict[st
     """A code no build can run is refused at the boundary, not discovered at 03:00."""
     response = client.post(
         "/api/v1/batch/",
-        json={"code": "job_from_the_future", "name": "Ghost", "cron": CRON},
+        json={"code": "job_from_the_future", "cron": CRON},
         headers=auth_headers,
     )
     assert response.status_code == 422
@@ -250,7 +254,7 @@ def test_create_batch_broken_cron_422(client: TestClient, auth_headers: dict[str
     """An unparseable cron is a job that never fires — the write is the last check."""
     response = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Ghost", "cron": "every tuesday"},
+        json={"code": JOB_CODE, "cron": "every tuesday"},
         headers=auth_headers,
     )
     assert response.status_code == 422
@@ -272,7 +276,7 @@ def test_batch_writes_drive_the_running_scheduler(
 
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Scheduled", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
@@ -309,7 +313,7 @@ def test_list_reports_the_live_run_state(client: TestClient, auth_headers: dict[
 
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Watched", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
@@ -344,7 +348,7 @@ def test_run_and_stop_a_batch_job(client: TestClient, auth_headers: dict[str, st
 
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Runnable", "cron": CRON, "enabled": False},
+        json={"code": JOB_CODE, "cron": CRON, "enabled": False},
         headers=auth_headers,
     ).json()
     batch_id = created["id"]
@@ -382,7 +386,7 @@ def test_run_batch_without_a_scheduler_409(
     """A process that runs no jobs says so, instead of accepting a run nobody executes."""
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "Unscheduled", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     ).json()
 
@@ -402,7 +406,7 @@ def test_list_batch_runs_answers_history_and_404(client, auth_headers) -> None:
     """
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "history", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     )
     batch_id = created.json()["id"]
@@ -435,13 +439,13 @@ def test_list_batch_run_steps_reads_one_run_and_guards_its_parentage(client, aut
 
     created = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "steps", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     )
     batch_id = created.json()["id"]
     other = client.post(
         "/api/v1/batch/",
-        json={"code": JOB_CODE, "name": "other", "cron": CRON},
+        json={"code": JOB_CODE, "cron": CRON},
         headers=auth_headers,
     )
     other_id = other.json()["id"]

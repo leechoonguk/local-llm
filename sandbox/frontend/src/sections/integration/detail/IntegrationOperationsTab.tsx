@@ -44,8 +44,10 @@ export default function IntegrationOperationsTab({
   const columns: TableColumn[] = [
     { key: 'method', label: t('operation.method'), width: '9%' },
     { key: 'code', label: t('operation.code'), width: '23%' },
-    { key: 'path', label: t('operation.path_template'), width: '40%' },
-    { key: 'fieldCount', label: t('operation.field_count'), width: '7%', align: 'center' },
+    { key: 'path', label: t('operation.path_template'), width: '38%' },
+    // 9%, not 7%: the English header 'Fields' is 83px of ink and a header clips
+    // rather than wraps, so the count column carries its own name whole.
+    { key: 'fieldCount', label: t('operation.field_count'), width: '9%', align: 'center' },
     { key: 'enabled', label: t('table.enabled'), width: '11%', align: 'center' },
   ]
 

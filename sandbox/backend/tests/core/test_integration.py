@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime
+from time import perf_counter
 
 import httpx2
 import pytest
@@ -46,6 +47,7 @@ def response_field(**overrides) -> IntegrationField:
     values = {
         "direction": "RESPONSE",
         "location": "BODY",
+        "locator_kind": "POINTER",
         "value_type": "STRING",
         "required": False,
     }
@@ -58,6 +60,7 @@ def response_header(**overrides) -> IntegrationField:
     values = {
         "direction": "RESPONSE",
         "location": "HEADER",
+        "locator_kind": "POINTER",
         "value_type": "STRING",
         "required": False,
     }
@@ -80,6 +83,9 @@ def operation(**overrides) -> IntegrationOperation:
         code="test",
         display_name="Test",
         base_url="https://example.com",
+        transport=overrides.pop("transport", "HTTP_JSON"),
+        min_interval_ms=overrides.pop("min_interval_ms", 0),
+        bootstrap_path=overrides.pop("bootstrap_path", None),
         enabled=True,
     )
     fields = list(overrides.pop("fields", []))
@@ -589,6 +595,7 @@ async def test_from_database_and_client_lifecycle(factory) -> None:
             code="stored",
             display_name="Stored",
             base_url="https://example.com",
+            min_interval_ms=0,
             enabled=True,
         )
         provider.operations = [
@@ -1193,3 +1200,373 @@ def test_paging_windows_of_both_families_speak_in_the_same_rows() -> None:
     assert window_rows(paging_window("PAGE", 1, 500)) == (501, 1000)
     with pytest.raises(IntegrationConfigurationError, match="Unknown paging family"):
         paging_window("OFFSET", 0, 10)
+
+
+SCREEN = """
+<html><body>
+  <p>총 213,690건</p>
+  <table class="board_list"><tbody>
+    <tr><td><a href="javascript:fnFoodDetail('1');">가공식품</a></td>
+        <td>수입사</td><td>커피원두</td></tr>
+    <tr><td><a href="javascript:fnFoodDetail('2');">축산물</a></td>
+        <td>다른 수입사</td><td>치즈</td></tr>
+    <tr><td colspan="3"><span class="nodata">조회 결과가 없습니다.</span></td></tr>
+  </tbody></table>
+</body></html>
+"""
+
+# What the portal answers when the session cookie is missing or expired: HTTP 200,
+# no rows, no table - measured 2026-09-13, 5 KB against the screen's 658 KB.
+ERROR_SCREEN = "<html><head><title>Error</title></head><body>오류</body></html>"
+
+DETAIL_SCREEN = """
+<html><body><table>
+  <tr><th>제품명(한글)</th><td>커피원두</td></tr>
+  <tr><th>부적합내용</th><td></td></tr>
+  <tr><th>제조국</th>
+      <td>케냐</td></tr>
+</table></body></html>
+"""
+
+
+def screen_operation(**overrides) -> dict[str, object]:
+    """An operation against a form screen: multipart out, rows selected out of HTML."""
+    values: dict[str, object] = {
+        "transport": "HTML_FORM",
+        "bootstrap_path": "/CFCCC01F01",
+        "method": "POST",
+        "path_template": "/CFCCC01F01/getList",
+        "request_media_type": "multipart/form-data",
+        "response_format": "HTML",
+        # `:has(a)`: the screen answers "no rows" as a row (measured: one
+        # `td colspan=10` reading 조회 결과가 없습니다), and only real records link.
+        "response_root": "table.board_list tbody tr:has(a)",
+    }
+    values.update(overrides)
+    return values
+
+
+def screen_fields() -> list[IntegrationField]:
+    """The row a form screen needs: a paging input, the two envelope reads, two cells."""
+    return [
+        request_field(
+            location="BODY",
+            key="page_no",
+            wire_path="/page",
+            value_source="CALLER",
+            value_type="INTEGER",
+            required=True,
+        ),
+        response_field(
+            location="ENVELOPE",
+            locator_kind="CSS",
+            key="result_ok",
+            wire_path="table.board_list",
+            match_mode="PRESENT",
+        ),
+        response_field(
+            location="ENVELOPE",
+            locator_kind="REGEX",
+            key="total_count",
+            wire_path=r"총 ([\d,]+)건",
+            value_type="INTEGER",
+        ),
+        response_field(locator_kind="CSS", key="kind", wire_path="td:nth-child(1)"),
+        response_field(
+            locator_kind="CSS", key="product_name", wire_path="td:nth-child(3)", ordinal=1
+        ),
+        response_field(locator_kind="CSS", key="detail_link", wire_path="a@href", ordinal=2),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_execute_reads_rows_off_an_html_screen() -> None:
+    """A form screen is one operation: cookie, multipart body, rows by selector.
+
+    Measured on impfood.mfds.go.kr (2026-09-13): the list is a multipart POST that
+    only answers behind the screen's own cookie and Referer, the rows live in
+    `table.board_list`, and the total is printed in the page text.
+    """
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        if request.method == "GET":
+            return httpx2.Response(200, text="<html></html>", headers={"set-cookie": "S=1"})
+        return httpx2.Response(200, text=SCREEN)
+
+    configured = client(handler, fields=screen_fields(), **screen_operation())
+    try:
+        result = await configured.execute({"page_no": 3})
+        # The cookie is minted once per client: a second window reuses the jar
+        # rather than paying for the screen again.
+        await configured.execute({"page_no": 4})
+    finally:
+        await configured.aclose()
+
+    assert [request.method for request in seen] == ["GET", "POST", "POST"]
+    bootstrap, listing = seen[0], seen[1]
+    assert bootstrap.url.path == "/CFCCC01F01"
+    assert listing.headers["referer"] == "https://example.com/CFCCC01F01"
+    assert listing.headers["content-type"].startswith("multipart/form-data")
+    assert b'name="page"' in listing.content
+    assert b"3" in listing.content
+    assert result.canonical_payload == [
+        {
+            "kind": "가공식품",
+            "product_name": "커피원두",
+            "detail_link": "javascript:fnFoodDetail('1');",
+        },
+        {
+            "kind": "축산물",
+            "product_name": "치즈",
+            "detail_link": "javascript:fnFoodDetail('2');",
+        },
+    ]
+    assert result.metadata["total_count"] == 213690
+
+
+@pytest.mark.asyncio
+async def test_expired_session_is_bootstrapped_again_once() -> None:
+    """An answer with no table is a stale cookie: fetch the screen again and retry.
+
+    The second refusal is the portal's answer and not the session's age, so the
+    call fails there instead of looping between the screen and the form.
+    """
+    calls: list[str] = []
+
+    def recovering(request: httpx2.Request) -> httpx2.Response:
+        calls.append(request.method)
+        if request.method == "GET":
+            return httpx2.Response(200, text="<html></html>")
+        posts = [call for call in calls if call == "POST"]
+        return httpx2.Response(200, text=ERROR_SCREEN if len(posts) == 1 else SCREEN)
+
+    configured = client(recovering, fields=screen_fields(), **screen_operation())
+    try:
+        result = await configured.execute({"page_no": 1})
+    finally:
+        await configured.aclose()
+    assert calls == ["GET", "POST", "GET", "POST"]
+    assert len(result.canonical_payload) == 2
+
+    persistent: list[str] = []
+
+    def always_stale(request: httpx2.Request) -> httpx2.Response:
+        persistent.append(request.method)
+        text = "<html></html>" if request.method == "GET" else ERROR_SCREEN
+        return httpx2.Response(200, text=text)
+
+    refused = client(always_stale, fields=screen_fields(), **screen_operation())
+    with pytest.raises(IntegrationError, match="result_ok"):
+        await refused.execute({"page_no": 1})
+    await refused.aclose()
+    assert persistent.count("POST") == 2
+
+
+@pytest.mark.asyncio
+async def test_label_locator_reads_the_cell_beside_its_header() -> None:
+    """A detail screen is read by label, because its header order is not fixed.
+
+    Measured 2026-09-13 on `CFCCC01F03`: a record carrying 부적합 or 회수 rows moves
+    every later header, so a positional locator reads a neighbour. An empty cell
+    reads as absent, which is what `required` decides on.
+    """
+    configured = client(
+        lambda request: httpx2.Response(200, text=DETAIL_SCREEN),
+        **screen_operation(response_root=None, bootstrap_path=None),
+        fields=[
+            response_field(locator_kind="LABEL", key="product_name", wire_path="제품명(한글)"),
+            response_field(locator_kind="LABEL", key="origin", wire_path="제조국", ordinal=1),
+            response_field(
+                locator_kind="LABEL", key="violation", wire_path="부적합내용", ordinal=2
+            ),
+            response_field(locator_kind="LABEL", key="absent", wire_path="없는 항목", ordinal=3),
+        ],
+    )
+    try:
+        result = await configured.execute({})
+    finally:
+        await configured.aclose()
+
+    assert result.canonical_payload == {"product_name": "커피원두", "origin": "케냐"}
+
+
+@pytest.mark.asyncio
+async def test_form_body_travels_urlencoded_when_the_operation_says_so() -> None:
+    """`request_media_type` is the whole encoding decision, both form spellings."""
+    seen: list[httpx2.Request] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(200, text=SCREEN)
+
+    configured = client(
+        handler,
+        **screen_operation(
+            request_media_type="application/x-www-form-urlencoded", bootstrap_path=None
+        ),
+        fields=[
+            request_field(
+                location="BODY",
+                key="page_no",
+                wire_path="/page",
+                value_source="CALLER",
+                value_type="INTEGER",
+                required=True,
+            ),
+            response_field(locator_kind="CSS", key="kind", wire_path="td:nth-child(1)"),
+        ],
+    )
+    try:
+        await configured.execute({"page_no": 2})
+    finally:
+        await configured.aclose()
+
+    assert seen[0].headers["content-type"] == "application/x-www-form-urlencoded"
+    assert seen[0].content == b"page=2"
+
+
+@pytest.mark.asyncio
+async def test_html_locator_against_a_json_response_is_a_configuration_error() -> None:
+    """A CSS locator on a JSON operation is a seed that cannot be read, not a 502."""
+    configured = client(
+        lambda request: httpx2.Response(200, json={"name": "라면"}),
+        fields=[response_field(locator_kind="CSS", key="name", wire_path="td")],
+    )
+    with pytest.raises(IntegrationConfigurationError, match="needs an HTML response"):
+        await configured.execute({})
+    await configured.aclose()
+
+
+@pytest.mark.asyncio
+async def test_a_screen_number_that_is_not_a_number_blames_the_portal() -> None:
+    """A total the screen prints as text is an upstream failure, not a 500."""
+    configured = client(
+        lambda request: httpx2.Response(200, text="<html><body>총 없음건</body></html>"),
+        **screen_operation(response_root=None, bootstrap_path=None),
+        fields=[
+            response_field(
+                locator_kind="REGEX",
+                key="total_count",
+                wire_path=r"총 (\S+)건",
+                value_type="INTEGER",
+            )
+        ],
+    )
+    with pytest.raises(IntegrationError, match="does not match configured type"):
+        await configured.execute({})
+    await configured.aclose()
+
+
+@pytest.mark.asyncio
+async def test_a_paced_provider_waits_between_calls() -> None:
+    """The host's minimum interval holds across the calls of one client.
+
+    Measured 2026-09-13 on impfood: two calls a second were answered and three
+    got every connection to the host refused for about fifteen minutes, the
+    nightly list job included. The pace is the provider's, so it holds whatever
+    the operation - and it is only a rate because one client makes a pass's calls.
+    """
+    sent: list[float] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        sent.append(perf_counter())
+        return httpx2.Response(200, json={"name": "라면"})
+
+    configured = client(
+        handler,
+        min_interval_ms=40,
+        fields=[response_field(key="name", wire_path="/name")],
+    )
+    try:
+        await configured.execute({})
+        await configured.execute({})
+    finally:
+        await configured.aclose()
+
+    assert len(sent) == 2
+    assert sent[1] - sent[0] >= 0.04
+
+
+@pytest.mark.asyncio
+async def test_section_locator_reads_the_block_its_heading_introduces() -> None:
+    """A repeating group is found by the heading above it, not by position.
+
+    Measured 2026-09-13 on `CFCCC01F03`: four tables share one class in
+    anonymous divs, and which one holds 원재료 depends on the record's 구분 -
+    the `h3` above each is the only stable anchor. The heading is in a div of
+    its own and the table in the next one, so the block is found by walking out
+    of the heading's own wrapper.
+    """
+    screen = (
+        "<html><body>"
+        "<div><h3>원재료 정보</h3></div>"
+        "<span>※ 어려운 원재료명을 터치하면 네이버 지식백과로 갑니다</span>"
+        "<div><table><tbody>"
+        "<tr><td>1</td><td class='pc-td'>정제수</td><td class='pc-td'>WATER</td></tr>"
+        "<tr><td>2</td><td class='pc-td'>맥아</td><td class='pc-td'></td></tr>"
+        "</tbody></table></div>"
+        "<div><h3>세부품목(유형) 정보</h3></div>"
+        "<div><table><tbody><tr><td>1</td><td>C0314170000000000000</td></tr></tbody></table></div>"
+        "</body></html>"
+    )
+    configured = client(
+        lambda request: httpx2.Response(200, text=screen),
+        **screen_operation(response_root=None, bootstrap_path=None),
+        fields=[
+            response_field(
+                locator_kind="SECTION",
+                key="raw_material_names",
+                wire_path="원재료 정보|tbody tr td.pc-td:nth-child(2)[]",
+            ),
+            response_field(
+                locator_kind="SECTION",
+                key="item_code",
+                wire_path="세부품목(유형) 정보|tbody tr td:nth-child(2)",
+                ordinal=1,
+            ),
+            response_field(
+                locator_kind="SECTION",
+                key="absent",
+                wire_path="없는 제목|td",
+                ordinal=2,
+            ),
+        ],
+    )
+    try:
+        result = await configured.execute({})
+    finally:
+        await configured.aclose()
+
+    assert result.canonical_payload == {
+        "raw_material_names": "정제수\n맥아",
+        "item_code": "C0314170000000000000",
+    }
+
+
+@pytest.mark.asyncio
+async def test_an_optional_body_field_missing_on_one_record_keeps_the_page() -> None:
+    """A sparse record is one record, not a refused window.
+
+    Measured 2026-09-14 on the first live 500-row window of 수입신고별 한글표시사항:
+    one of the 500 carries an empty 수입업체, and with that column `required` the
+    whole window was refused - the 100-row windows that had passed before simply
+    held other rows. So a verdict belongs to the ENVELOPE row and a BODY row is
+    optional; the record arrives with the key absent and the ledger drops it.
+    """
+    page = {"rows": [{"name": "김치", "maker": "대한식품"}, {"name": "라면"}]}
+    configured = client(
+        lambda request: httpx2.Response(200, json=page),
+        response_root="/rows",
+        fields=[
+            response_field(key="name", wire_path="/name"),
+            response_field(key="maker", wire_path="/maker", ordinal=1),
+        ],
+    )
+    try:
+        result = await configured.execute({})
+    finally:
+        await configured.aclose()
+
+    assert result.canonical_payload == [{"name": "김치", "maker": "대한식품"}, {"name": "라면"}]

@@ -11,12 +11,21 @@ from fastapi import APIRouter, status
 from app.core.settings import settings
 from app.dependencies.auth import CurrentUserDep
 from app.dependencies.integrations import IntegrationHttpClientDep
-from app.dependencies.query import LimitQuery, OffsetQuery, TextFilterQuery
+from app.dependencies.query import (
+    IntegrationSortQuery,
+    LimitQuery,
+    OffsetQuery,
+    OrderQuery,
+    TextFilterQuery,
+)
 from app.dependencies.services import (
+    IntegrationCallServiceDep,
     IntegrationOperationServiceDep,
     IntegrationProviderServiceDep,
     IntegrationSecretServiceDep,
 )
+from app.schemas.integration.call import IntegrationCallReadResponse
+from app.schemas.integration.call import to_read_list as to_call_read_list
 from app.schemas.integration.operation import IntegrationExecuteRequest, IntegrationExecuteResponse
 from app.schemas.integration.provider import (
     IntegrationCreateRequest,
@@ -63,10 +72,14 @@ async def list_integrations(
     limit: LimitQuery = settings.items_per_user,
     code: TextFilterQuery = None,
     display_name: TextFilterQuery = None,
+    sort: IntegrationSortQuery = None,
+    order: OrderQuery = "asc",
 ) -> Page[IntegrationReadResponse]:
     return Page(
         items=to_read_list(
-            await integration_provider_service.list_integrations(offset, limit, code, display_name)
+            await integration_provider_service.list_integrations(
+                offset, limit, code, display_name, sort, order
+            )
         ),
         total=await integration_provider_service.count_integrations(code, display_name),
     )
@@ -188,4 +201,30 @@ async def execute_integration_operation(
         canonical_payload=result.canonical_payload,
         metadata=result.metadata,
         status_code=result.status_code,
+    )
+
+
+@router.get("/{integration_id}/calls")
+async def list_integration_calls(
+    integration_id: UUID,
+    integration_call_service: IntegrationCallServiceDep,
+    current_user: CurrentUserDep,
+    offset: OffsetQuery = 0,
+    limit: LimitQuery = settings.items_per_user,
+) -> Page[IntegrationCallReadResponse]:
+    """One provider's calls, newest first — what left this process and what came back.
+
+    Uncached, for the reason `GET /batch/{batch_id}/runs` is: the rows are
+    written by whatever exercised the operation — a nightly sync job outside any
+    HTTP request — so no write path here could invalidate a cache, and a cached
+    answer would report last night's failure as the current state.
+
+    Bodies and headers are stored but not listed (`IntegrationCallReadResponse`):
+    a page of twenty would otherwise carry twenty provider pages.
+    """
+    return Page(
+        items=to_call_read_list(
+            await integration_call_service.list_provider_calls(integration_id, offset, limit)
+        ),
+        total=await integration_call_service.count_provider_calls(integration_id),
     )

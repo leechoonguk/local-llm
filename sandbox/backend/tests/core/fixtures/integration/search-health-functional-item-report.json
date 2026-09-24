@@ -1,0 +1,90 @@
+{
+  "why": "One 건강기능식품 품목제조신고 window: the fourth registry's own numbering space, with the four columns only it publishes (주된기능성, 섭취시주의사항, 보관방법, 기준규격) and its three 원재료 lists.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "range_start": 1,
+    "range_end": 1
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "I0030": {
+        "total_count": "46086",
+        "RESULT": {
+          "CODE": "INFO-000",
+          "MSG": "정상처리되었습니다."
+        },
+        "row": [
+          {
+            "PRDLST_REPORT_NO": "20140017002183",
+            "FRMLC_MTHD": "PE 재질의 포장지와 알미늄 Pack 재질의 포장지로 이중 포장한 후 하드종이박스에 넣는다.",
+            "PRMS_DT": "20201027",
+            "PRDT_SHAP_CD_NM": "분말",
+            "LAST_UPDT_DTM": "20260721",
+            "LCNS_NO": "20140017002",
+            "PRDLST_NM": "11종 혼합유산균",
+            "IFTKN_ATNT_MATR_CN": "1. 질환이 있거나 의약품 복용 시 전문가와 상담하십시오.\n2. 알레르기 체질 등은 개인에 따라 과민반응을 나타낼 수 있습니다.\n3. 어린이가 함부로 섭취하지 않도록 일일섭취량 방법을 지도해 주십시오.\n4. 이상사례 발생 시 섭취를 중단하고 전문가와 상담하십시오.",
+            "BSSH_NM": "일동바이오사이언스(주)",
+            "CHILD_CRTFC_YN": "",
+            "ETC_RAWMTRL_NM": "",
+            "PRIMARY_FNCLTY": "유산균 증식 및 유해균 억제·배변활동 원활에 도움을 줄 수 있음",
+            "FRMLC_MTRQLT": "내피:PE, 외피:알미늄Pack",
+            "CSTDY_MTHD": "",
+            "NTK_MTHD": "건강기능식품 원료로 사용",
+            "HIENG_LNTRT_DVS_NM": "해당없음",
+            "PRODUCTION": "아니오",
+            "CAP_RAWMTRL_NM": "",
+            "STDR_STND": "1. 성상 : 고유의 향미가 있고 이미·이취가 없는 노랑 하양색의 입자성이 있는 분말\n2. 프로바이오틱스 수(표시량 300,000,000,000(3,000억) CFU/g) : 표시량 이상\n3. 대장균군 : 음성\n4. 납 : 1.0 mg/kg 이하\n5. 카드뮴 : 0.3 mg/kg 이하",
+            "PRDLST_CDNM": "프로바이오틱스",
+            "INDUTY_CD_NM": "건강기능식품전문제조업",
+            "DISPOS": "고유의 향미가 있고 이미·이취가 없는 노랑 하양색의 입자성이 있는 분말",
+            "POG_DAYCNT": "제조일로부터 24개월까지",
+            "INDIV_RAWMTRL_NM": "Streptococcus thermophilus(고시형), Lacticaseibacillus casei(고시형), Bifidobacterium breve(고시형), Lactobacillus acidophilus(고시형), Lactiplantibacillus plantarum(고시형), Lactobacillus gasseri(고시형), Limosilactobacillus fermentum(고시형), Limosilactobacillus reuteri(고시형), Lactococcus lactis(고시형), Lacticaseibacillus rhamnosus(고시형), Bifidobacterium animalis ssp. lactis(고시형)",
+            "RAWMTRL_NM": "프로바이오틱스"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/api/issued-key/I0030/json/1/1",
+    "query": {},
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "item_report_no": "20140017002183",
+        "product_name": "11종 혼합유산균",
+        "business_name": "일동바이오사이언스(주)",
+        "license_no": "20140017002",
+        "permit_date": "20201027",
+        "product_type_name": "프로바이오틱스",
+        "product_shape": "분말",
+        "product_form": "고유의 향미가 있고 이미·이취가 없는 노랑 하양색의 입자성이 있는 분말",
+        "intake_method": "건강기능식품 원료로 사용",
+        "primary_functionality": "유산균 증식 및 유해균 억제·배변활동 원활에 도움을 줄 수 있음",
+        "intake_caution": "1. 질환이 있거나 의약품 복용 시 전문가와 상담하십시오.\n2. 알레르기 체질 등은 개인에 따라 과민반응을 나타낼 수 있습니다.\n3. 어린이가 함부로 섭취하지 않도록 일일섭취량 방법을 지도해 주십시오.\n4. 이상사례 발생 시 섭취를 중단하고 전문가와 상담하십시오.",
+        "storage_method": "",
+        "standard_spec": "1. 성상 : 고유의 향미가 있고 이미·이취가 없는 노랑 하양색의 입자성이 있는 분말\n2. 프로바이오틱스 수(표시량 300,000,000,000(3,000억) CFU/g) : 표시량 이상\n3. 대장균군 : 음성\n4. 납 : 1.0 mg/kg 이하\n5. 카드뮴 : 0.3 mg/kg 이하",
+        "shelf_life": "제조일로부터 24개월까지",
+        "packaging_material": "내피:PE, 외피:알미늄Pack",
+        "packaging_method": "PE 재질의 포장지와 알미늄 Pack 재질의 포장지로 이중 포장한 후 하드종이박스에 넣는다.",
+        "functional_indicator": "프로바이오틱스",
+        "functional_raw_material_names": "Streptococcus thermophilus(고시형), Lacticaseibacillus casei(고시형), Bifidobacterium breve(고시형), Lactobacillus acidophilus(고시형), Lactiplantibacillus plantarum(고시형), Lactobacillus gasseri(고시형), Limosilactobacillus fermentum(고시형), Limosilactobacillus reuteri(고시형), Lactococcus lactis(고시형), Lacticaseibacillus rhamnosus(고시형), Bifidobacterium animalis ssp. lactis(고시형)",
+        "other_raw_material_names": "",
+        "capsule_raw_material_names": "",
+        "high_calorie_low_nutrition": "해당없음",
+        "production_ended": "아니오",
+        "child_favorite_certified_yn": "",
+        "industry_name": "건강기능식품전문제조업",
+        "source_updated_at": "20260721"
+      }
+    ],
+    "metadata": {
+      "result_code": "INFO-000",
+      "result_message": "정상처리되었습니다.",
+      "total_count": "46086"
+    }
+  }
+}

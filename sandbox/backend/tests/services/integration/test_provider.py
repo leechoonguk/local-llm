@@ -91,6 +91,39 @@ def test_integration_service_validates_configuration_boundaries() -> None:
     )
 
 
+def test_integration_service_validates_a_screen_operation() -> None:
+    """An HTML operation reads by locator and roots at a row selector; a JSON one never does.
+
+    Both directions were reachable through the API before this: a pointer row on
+    a parsed screen has nothing to point into, and a CSS row on a JSON body is
+    refused by the client at the first call - a configuration nobody can run.
+    """
+    service = IntegrationProviderService(cast(AsyncSession, None))
+    screen_row = response_field(locator_kind="CSS", wire_path="td:nth-child(1)")
+    service._validate_response_root(
+        configured_operation(
+            response_format="HTML", response_root="table tbody tr", fields=[screen_row]
+        )
+    )
+    with pytest.raises(IntegrationConfigurationError, match="row selector, not a JSON Pointer"):
+        service._validate_response_root(
+            configured_operation(response_format="HTML", response_root="/body/items")
+        )
+    with pytest.raises(IntegrationConfigurationError, match="by CSS, LABEL or REGEX"):
+        service._validate_response_root(
+            configured_operation(
+                response_format="HTML", response_root="table tr", fields=[response_field()]
+            )
+        )
+    with pytest.raises(IntegrationConfigurationError, match="reads its response by pointer"):
+        service._validate_response_root(configured_operation(fields=[screen_row]))
+    # A locator addresses the screen's body or its envelope; a header is not on the screen.
+    with pytest.raises(IntegrationConfigurationError, match="body or its envelope only"):
+        service._validate_response_field(
+            response_field(location="HEADER", locator_kind="CSS", wire_path="td")
+        )
+
+
 def test_integration_service_validates_response_root() -> None:
     """Mapping is the only contract, so the root carries the whole decision."""
     service = IntegrationProviderService(cast(AsyncSession, None))

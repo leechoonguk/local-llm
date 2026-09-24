@@ -7,11 +7,12 @@ proven in `test_operation_walk.py`, and the key-pool rotation under it in
 
 from __future__ import annotations
 
+from typing import cast
 from uuid import uuid4
 
 import httpx2
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.exceptions import (
     ConflictError,
@@ -21,11 +22,46 @@ from app.core.exceptions import (
 )
 from app.core.integration import IntegrationClient
 from app.models.integration.call import IntegrationCall
+from app.models.integration.operation import IntegrationOperation
 from app.models.integration.provider import Integration
 from app.schemas.integration.provider import IntegrationUpdateRequest
 from app.services.integration.operation import IntegrationOperationService
 from app.services.integration.provider import IntegrationProviderService
-from tests.services.integration.helpers import configured_integration
+from tests.services.integration.helpers import (
+    configured_integration,
+    configured_operation,
+    request_field,
+    response_field,
+)
+
+
+def _paged():
+    """A portal paging by row interval, the records under `/rows` - two per window."""
+    return configured_operation(
+        code="feed",
+        path_template="/feed/{range_start}/{range_end}",
+        response_root="/rows",
+        fields=[
+            request_field(
+                key="range_start", wire_path="range_start", location="PATH", value_type="INTEGER"
+            ),
+            request_field(
+                key="range_end", wire_path="range_end", location="PATH", value_type="INTEGER"
+            ),
+            {
+                "direction": "RESPONSE",
+                "location": "ENVELOPE",
+                "key": "result_code",
+                "wire_path": "/RESULT/CODE",
+                "value_type": "STRING",
+                "required": True,
+                "match_mode": "ONE_OF",
+                "expected_values": ["INFO-000"],
+            },
+            response_field(key="name", wire_path="/name", required=False),
+        ],
+        page_size=2,
+    )
 
 
 @pytest.mark.asyncio
@@ -226,3 +262,93 @@ async def test__create_call_log_without_an_exchange_writes_nothing(factory) -> N
 
     async with factory() as session:
         assert (await session.execute(select(IntegrationCall))).scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_a_segment_count_leaves_the_session_ready_for_the_walk(factory, monkeypatch) -> None:
+    """The probe and the walk share one session, and the probe must hand it back clean.
+
+    A segmented feed asks how many records a coordinate holds and then walks the
+    coordinates it answered for, both on the batch job's one call session.
+    `execute_operation` reads the configuration on that session and leaves the
+    read open, so the probe owns a transaction - measured 2026-09-16 07:02 KST
+    without one: 건기식 생산실적 died on "A transaction is already begun on this
+    Session" in the walk's own `begin()`, with no window walked and the portal
+    never called.
+    """
+    asked: list[tuple[int, int]] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        _, _, start, end = request.url.path.split("/")
+        asked.append((int(start), int(end)))
+        rows = [{"name": name} for name in ["a", "b", "c"][int(start) - 1 : int(end)]]
+        return httpx2.Response(200, json={"RESULT": {"CODE": "INFO-000"}, "rows": rows})
+
+    real_client_cls = httpx2.AsyncClient
+    monkeypatch.setattr(
+        httpx2,
+        "AsyncClient",
+        lambda: real_client_cls(transport=httpx2.MockTransport(handler)),
+    )
+    async with factory() as session:
+        await IntegrationProviderService(session).create_integration(
+            configured_integration(code="portal", operations=[_paged()]), "tester"
+        )
+        await session.rollback()
+        service = IntegrationOperationService(session)
+
+        total = await service.segment_total("portal", "feed", {}, actor="tester")
+
+        pages = [
+            page
+            async for page in service.walk_operation(
+                "portal", "feed", actor="tester", end_codes=frozenset()
+            )
+        ]
+
+    # The probe asks for one row, and reads the portal's own count - this
+    # fixture publishes none, which is zero rather than an error.
+    assert asked[0] == (1, 1)
+    assert total == 0
+    assert [[cast(dict[str, object], row)["name"] for row in page.records] for page in pages] == [
+        ["a", "b"],
+        ["c"],
+    ]
+
+
+@pytest.mark.asyncio
+async def test_segmentation_is_read_from_the_operation_row(factory) -> None:
+    """Whether a feed is addressed by a coordinate is the service's fact, not the job's.
+
+    A walk asks here before it decides how to read a feed. The pair is stored
+    together - a key with no values has nothing to ask for - so a feed that
+    states neither answers None and is walked as one flat sequence.
+
+    The coordinate is seeded by a migration and has no API writer, so this test
+    writes the columns the way a revision does rather than through the create
+    request.
+    """
+    async with factory() as session:
+        await IntegrationProviderService(session).create_integration(
+            configured_integration(
+                code="portal",
+                operations=[
+                    configured_operation(code="by-year"),
+                    configured_operation(code="flat"),
+                ],
+            ),
+            "tester",
+        )
+        await session.execute(
+            update(IntegrationOperation)
+            .where(IntegrationOperation.code == "by-year")
+            .values(segment_key="report_year", segment_values=["2016"])
+        )
+        await session.commit()
+        service = IntegrationOperationService(session)
+
+        segmented = await service.segmentation_of("portal", "by-year")
+        flat = await service.segmentation_of("portal", "flat")
+
+    assert segmented == ("report_year", ["2016"])
+    assert flat is None

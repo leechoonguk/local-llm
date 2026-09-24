@@ -52,7 +52,14 @@ const StyledLabel = styled('span', {
       border: `1px solid ${isDefault ? alpha(theme.palette.grey[500], 0.32) : tone.main}`,
     }),
     ...(ownerState.variant === 'soft' && {
-      color: isDefault ? theme.palette.text.primary : tone.dark,
+      // The text takes the shade that reads against the surface: `dark` on a
+      // light page, `light` on a dark one. `dark` in both modes is a badge that
+      // disappears into its own 16% tint on a dark page.
+      color: isDefault
+        ? theme.palette.text.primary
+        : theme.palette.mode === 'dark'
+          ? tone.light
+          : tone.dark,
       backgroundColor: alpha(isDefault ? theme.palette.grey[500] : tone.main, 0.16),
     }),
   }

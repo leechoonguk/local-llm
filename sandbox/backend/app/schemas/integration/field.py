@@ -41,6 +41,11 @@ ValueType = Literal[
 HeaderMatchMode = Literal["IGNORE", "PRESENT", "EXACT", "ONE_OF"]
 
 
+#: How a RESPONSE row's `wire_path` is read: a pointer into the decoded body, or
+#: one of the three HTML locators a screen needs because it has no pointers.
+LocatorKind = Literal["POINTER", "CSS", "LABEL", "REGEX", "SECTION"]
+
+
 class IntegrationFieldCreateRequest(BaseModel):
     """One wire field of an operation, inbound or outbound.
 
@@ -54,6 +59,7 @@ class IntegrationFieldCreateRequest(BaseModel):
     location: FieldLocation
     key: str = Field(min_length=1, max_length=128)
     wire_path: str = Field(min_length=1, max_length=512)
+    locator_kind: LocatorKind = "POINTER"
     value_source: RequestValueSource | None = None
     value: object | None = None
     secret_name: str | None = Field(default=None, max_length=64)
@@ -76,6 +82,7 @@ class IntegrationFieldReadResponse(BaseModel):
     location: FieldLocation
     key: str
     wire_path: str
+    locator_kind: LocatorKind = "POINTER"
     value_source: RequestValueSource | None = None
     value: object | None = None
     secret_name: str | None = None

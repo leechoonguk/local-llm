@@ -13,7 +13,7 @@ from app.schemas.batch.run import BatchRunUpdateRequest, to_read, to_read_list
 from app.services.batch.run import BatchRunService
 
 
-CODE = "sync_food_barcode_ledger"
+CODE = "sync_mfds_ledgers"
 
 
 @pytest.mark.asyncio
@@ -41,8 +41,8 @@ async def test_list_schedule_runs_is_scoped_and_newest_first(factory) -> None:
     schedule's deletion) must not appear, and the newest run comes first.
     """
     async with factory() as session:
-        mine_row = BatchSchedule(code=CODE, name="mine", cron="0 2 * * *", created_by="t")
-        other_row = BatchSchedule(code=CODE, name="other", cron="0 3 * * *", created_by="t")
+        mine_row = BatchSchedule(code=CODE, cron="0 2 * * *", created_by="t")
+        other_row = BatchSchedule(code=CODE, cron="0 3 * * *", created_by="t")
         session.add(mine_row)
         session.add(other_row)
         await session.commit()
@@ -125,6 +125,27 @@ async def test_update_interrupted_runs_settles_only_unfinished_rows(factory) -> 
 
     async with factory() as session:
         assert await BatchRunService(session).update_interrupted_runs("scheduler") == 0
+
+
+@pytest.mark.asyncio
+async def test_list_running_codes_names_the_jobs_in_flight_and_no_finished_one(factory) -> None:
+    """A code is listed while one of its runs is RUNNING, and not once every run has ended."""
+    async with factory() as session:
+        running = await BatchRunService(session).create_started_run(None, CODE, "CRON", "scheduler")
+    async with factory() as session:
+        done = await BatchRunService(session).create_started_run(
+            None, "purge_old_batch_runs", "CRON", "scheduler"
+        )
+    async with factory() as session:
+        await BatchRunService(session).update_finished_run(done.id, "SUCCEEDED", "scheduler")
+
+    async with factory() as session:
+        assert await BatchRunService(session).list_running_codes() == {CODE}
+
+    async with factory() as session:
+        await BatchRunService(session).update_finished_run(running.id, "FAILED", "scheduler")
+    async with factory() as session:
+        assert await BatchRunService(session).list_running_codes() == set()
 
 
 @pytest.mark.asyncio
@@ -271,7 +292,7 @@ async def test_count_schedule_runs_counts_one_schedule_only(factory) -> None:
     this schedule can reach.
     """
     async with factory() as session:
-        mine_row = BatchSchedule(code=CODE, name="mine", cron="0 2 * * *", created_by="t")
+        mine_row = BatchSchedule(code=CODE, cron="0 2 * * *", created_by="t")
         session.add(mine_row)
         await session.commit()
         mine = mine_row.id

@@ -5,11 +5,14 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
 from app.core.integration import CallMethod, CallOutcome, IntegrationExchange
+from app.models.integration.call import IntegrationCall
 
 
 # ============================================================
@@ -87,3 +90,45 @@ class IntegrationCallCreateInternal(BaseModel):
             secret_name=exchange.secret_name,
             created_by=created_by,
         )
+
+
+class IntegrationCallReadResponse(BaseModel):
+    """One logged call, as the provider's log surface reads it.
+
+    The bodies and headers are not here. They are stored — scrubbed — for an
+    incident, and a list endpoint that carried a provider's XML page per row
+    would send megabytes to draw a table of twenty. What a reader asks of a log
+    is which operation, when, how long, and whether it answered; a body is a
+    question about one call, and the row that answers it is its own read.
+    """
+
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: UUID
+    operation_id: UUID | None = None
+    provider_code: str
+    operation_code: str
+    method: CallMethod
+    url: str
+    status_code: int | None = None
+    outcome: CallOutcome
+    duration_ms: int
+    attempts: int
+    request_id: str | None = None
+    error_code: str | None = None
+    error_detail: str | None = None
+    secret_name: str | None = None
+    created_by: str | None = None
+    updated_by: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    version: int
+
+
+# ============================================================
+# Functions
+# ============================================================
+
+
+def to_read_list(calls: list[IntegrationCall]) -> list[IntegrationCallReadResponse]:
+    return [IntegrationCallReadResponse.model_validate(call) for call in calls]

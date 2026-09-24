@@ -1,0 +1,48 @@
+### Integration · search-food-additive-manufacturing-closure API — 외부 API 실행 (식품안전나라 파일 다운로드 I2813)
+### 전제: backend 서버 실행 중 + `make db-init` (시드 provider/operation/필드/시크릿 + 시드 계정)
+### 순차 실행: 상태를 바꾸지 않는다 — 외부 API 호출만 하고 행을 만들지 않는다.
+###           연동 하나가 파일 하나다: operation 코드가 파일명이다 (backend-api-http.md)
+###           이 연동은 페이지가 아니라 **파일**이다(response_format CSV): GET 한 번이 전체 피드
+###           (1,707행, gzip 41KB · 2026-09-23 실측)이고, CALLER 필드가 없다.
+###           execute 는 행이 아니라 다운로드 결과(파일명·타입·바이트·행수)를 metadata 로 답한다 —
+###           행은 배치의 stream 이 청크로 읽어 원장에 넣는다.
+###           쿼터는 API 와 별개: 인증키·서비스당 1일 10회(INFO-330, HTTP 429).
+@base = {{$dotenv API_ORIGIN}}/api/v1
+# 시드 마이그레이션(64_seed_food_safety_korea_integration_provider)이 만든 고정 provider UUID
+@seededProviderId = 3c4802b0-06b3-5924-8d1a-14dbce279ca3
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
+
+### 1. 로그인 — 200 (시드 계정으로 인증 — access_token이 이후 블록에 주입된다)
+# @name login
+POST {{base}}/auth/login
+Content-Type: application/x-www-form-urlencoded
+
+username=api-actor&password=api-actor-secret
+
+### 2. 외부 API 실행 — 200 (파일 다운로드 결과: canonical_payload 는 빈 페이지, metadata 에 file_name/content_type/content_length/row_count)
+# 측정(2026-09-23): I2813.csv.gz, application/gzip, 41KB, 1,707행. 하루 10회 중 1회를 쓴다.
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-additive-manufacturing-closure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {}
+}
+
+### 3. 외부 API 실행 — 404 (없는 provider)
+POST {{base}}/integration/{{missingId}}/operations/search-food-additive-manufacturing-closure/execute
+Authorization: Bearer {{login.response.body.access_token}}
+Content-Type: application/json
+
+{
+  "inputs": {}
+}
+
+### 4. 외부 API 실행 — 401 (토큰 없음)
+POST {{base}}/integration/{{seededProviderId}}/operations/search-food-additive-manufacturing-closure/execute
+Content-Type: application/json
+
+{
+  "inputs": {}
+}

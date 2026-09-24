@@ -35,7 +35,10 @@ RUNNING = "RUNNING"
 
 
 #: `ck_batch_run_status` — a run is RUNNING or it is one of four endings.
-BatchRunStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "STOPPED", "INTERRUPTED"]
+# `SKIPPED` is an ending, not a failure: the derive job fires every day and
+# stands down on the days a ledger is still being walked, and the run says so
+# rather than leaving the reader to infer it from a zero.
+BatchRunStatus = Literal["RUNNING", "SUCCEEDED", "FAILED", "STOPPED", "INTERRUPTED", "SKIPPED"]
 
 
 #: `ck_batch_run_trigger` — the clock started it, or a person did.

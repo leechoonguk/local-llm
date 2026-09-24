@@ -9,6 +9,7 @@ from starlette.testclient import TestClient
 
 from app.core.exceptions import (
     AuthenticationError,
+    BatchSkippedError,
     ConflictError,
     IntegrationConfigurationError,
     IntegrationError,
@@ -60,6 +61,10 @@ def test_setup_exception_handler_registers_handlers() -> None:
     async def auth() -> None:
         raise AuthenticationError()
 
+    @app.get("/skipped")
+    async def skipped() -> None:
+        raise BatchSkippedError("ledger jobs are still walking: sync_food_ledger_recall")
+
     setup_exception_handler(app)
 
     with TestClient(app) as c:
@@ -69,6 +74,16 @@ def test_setup_exception_handler_registers_handlers() -> None:
         assert r.json() == {
             "detail": "Resource not found",
             "code": "not_found",
+            "request_id": "test-request",
+        }
+
+        r = c.get("/skipped", headers=headers)
+        # A job that stood down, answered to the operator who asked for it by
+        # hand: the request was fine and the moment was not.
+        assert r.status_code == 409
+        assert r.json() == {
+            "detail": "ledger jobs are still walking: sync_food_ledger_recall",
+            "code": "batch_skipped",
             "request_id": "test-request",
         }
 

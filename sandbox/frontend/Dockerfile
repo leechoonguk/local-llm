@@ -1,5 +1,5 @@
 # --- build stage ---
-FROM node:22-alpine AS build
+FROM node:22-alpine@sha256:b6f26b36c8ff49624cfdac716b8ea1138d606df02586a77d364bb5536a634f85 AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 # --ignore-scripts: the manifest also carries the harness's tools (ast-grep, the
@@ -13,7 +13,7 @@ COPY . .
 RUN npm run build
 
 # --- serve stage ---
-FROM nginx:alpine
+FROM nginx:alpine@sha256:62ff2089abf5a9ed33bd232895bef5e22f7bb4b200675cec49a5ebc48e3d4ac8
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80

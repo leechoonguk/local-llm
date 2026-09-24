@@ -1,15 +1,19 @@
 /**
- * Integration service — provider CRUD plus the two child collections the
- * backend exposes (named secrets, operation execution).
+ * Integration service — provider CRUD plus the child collections the backend
+ * exposes (named secrets, operation execution, and the call log those
+ * executions leave behind).
  *
  * A secret's value is write-only: `create` sends it, and nothing reads it back
  * (`IntegrationSecretReadResponse` has no `value`).
  */
 
+import { EXECUTE_TIMEOUT_MS } from '@/config'
 import { api } from '@/lib/api/client'
 import { INTEGRATION_ENDPOINTS } from '@/lib/api/endpoints'
 import type { OkResponse, Page } from '@/types/api'
+import type { OffsetLimitParams } from '@/types/api'
 import type {
+  IntegrationCall,
   IntegrationExecuteRequest,
   IntegrationExecuteResponse,
   Integration,
@@ -36,7 +40,9 @@ export const integrationService = {
   remove: (id: string) => api.delete<OkResponse>(INTEGRATION_ENDPOINTS.DELETE(id)),
 
   execute: (id: string, operation: string, data: IntegrationExecuteRequest) =>
-    api.post<IntegrationExecuteResponse>(INTEGRATION_ENDPOINTS.EXECUTE(id, operation), data),
+    api.post<IntegrationExecuteResponse>(INTEGRATION_ENDPOINTS.EXECUTE(id, operation), data, {
+      timeout: EXECUTE_TIMEOUT_MS,
+    }),
 
   createSecret: (id: string, data: IntegrationSecretCreateRequest) =>
     api.post<IntegrationSecret>(INTEGRATION_ENDPOINTS.SECRETS(id), data),
@@ -47,4 +53,8 @@ export const integrationService = {
 
   removeSecret: (id: string, name: string) =>
     api.delete<OkResponse>(INTEGRATION_ENDPOINTS.SECRET(id, name)),
+
+  /** This provider's calls, newest first — the evidence its operations ran. */
+  calls: (id: string, params: OffsetLimitParams) =>
+    api.get<Page<IntegrationCall>>(INTEGRATION_ENDPOINTS.CALLS(id), { params }),
 }

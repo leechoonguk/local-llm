@@ -1,10 +1,10 @@
 /**
- * Route component for the raw material ledger.
+ * Route component for the raw material list.
  */
 
 import { useTranslation } from 'react-i18next'
 import PageHeader from '@/components/page-header/PageHeader'
-import FoodRawMaterialLedgerList from '@/sections/food/FoodRawMaterialLedgerList'
+import FoodRawMaterialDerivedList from '@/sections/food/FoodRawMaterialDerivedList'
 import { PATHS } from '@/routes/paths'
 
 export default function FoodRawMaterialPage() {
@@ -22,7 +22,7 @@ export default function FoodRawMaterialPage() {
           { label: t('raw_material.title') },
         ]}
       />
-      <FoodRawMaterialLedgerList />
+      <FoodRawMaterialDerivedList />
     </>
   )
 }

@@ -27,6 +27,11 @@ from tests.services.integration.helpers import configured_integration, configure
 
 
 QUOTA_CODE = "INFO-320"
+
+# What 식품안전나라 answers between 09:00 and 19:00 KST, and the window revision
+# 258 seeds for it: ten hours, the length of the shut period.
+DAYTIME_BLOCK_CODE = "ERROR-503"
+DAYTIME_BLOCK_SECONDS = 36000
 KEYS = {"key-a": "value-a", "key-b": "value-b", "key-c": "value-c"}
 NAMES = {value: name for name, value in KEYS.items()}
 
@@ -263,3 +268,33 @@ async def test_the_sit_out_is_the_code_s_own(factory) -> None:
         for until in marked.values():
             reference = now if until.tzinfo is not None else now.replace(tzinfo=None)
             assert until - reference < timedelta(seconds=61)
+
+
+@pytest.mark.asyncio
+async def test_a_service_shut_for_the_day_is_waited_out_not_failed(factory) -> None:
+    """식품안전나라 answers ERROR-503 from 09:00 to 19:00 KST; that is a wait, not a failure.
+
+    Measured 2026-09-15: a run that met it mid-walk failed the feed it was on
+    and nine more inside two seconds. Seeded as a quota code, the same refusal
+    reaches the caller as the error a walk sleeps on and asks the same window
+    again after.
+    """
+    async with factory() as session:
+        await _create(session, quota_codes={DAYTIME_BLOCK_CODE: DAYTIME_BLOCK_SECONDS})
+
+        def handler(request: httpx2.Request) -> httpx2.Response:
+            return httpx2.Response(
+                200,
+                json={
+                    "RESULT": {
+                        "CODE": DAYTIME_BLOCK_CODE,
+                        "MSG": "09시~19시에는 서비스가 제한됩니다. 이용에 참고바랍니다.",
+                    }
+                },
+            )
+
+        with pytest.raises(IntegrationQuotaError) as refusal:
+            await _execute(session, handler)
+
+    waits = refusal.value.retry_at - datetime.now(UTC)
+    assert timedelta(hours=9) < waits <= timedelta(seconds=DAYTIME_BLOCK_SECONDS)

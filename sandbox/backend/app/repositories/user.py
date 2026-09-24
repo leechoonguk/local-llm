@@ -2,6 +2,14 @@
 # Imports
 # ============================================================
 
+# Deferred annotations, as every other repository declares them. Without it a
+# `-> list[...]` written after this class's own `list` method resolves to that
+# method instead of the builtin: the class body is a scope, and the name is
+# taken there first. Python 3.14 evaluates annotations lazily so nothing broke
+# at runtime, and the two repositories that lacked this line were the only two
+# a type checker could see it in.
+from __future__ import annotations
+
 from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
@@ -9,6 +17,7 @@ from uuid import UUID
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sorting import ordered
 from app.models.user import User
 from app.schemas.user import UserCreateInternal, UserUpdateInternal
 
@@ -39,8 +48,10 @@ class UserRepository:
         limit: int = 100,
         username: str | None = None,
         email: str | None = None,
+        sort: str | None = None,
+        order: str = "asc",
     ) -> list[User]:
-        query = _apply_filters(select(User), username, email)
+        query = ordered(_apply_filters(select(User), username, email), User, sort, order, User.id)
         result = await self.session.execute(query.offset(offset).limit(limit))
         return list(result.scalars().all())
 

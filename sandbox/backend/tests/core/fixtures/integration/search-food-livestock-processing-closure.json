@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 축산물 가공업 폐업정보 (I2824): one GET answers the whole feed as gzip CSV (8,071 rows, 0.2MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2824.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE63QwUrDQBAG4Huh79Cjwgqzidk2R5scDKRp6UZBL3kVW+JFkQQkWGIqLXoMmNJULAZ8n90JvoIkreJBpAdvM/PPwMd8vL3bhsM9p0+6nB97To8Mhtx03KqyHPPEPdvMetwzXWLYvGud/6xOuWeY1YrdNwbekWkOieVwt7pvNqjOGECHATCyh4/Fvpw/y5sMx4XIIkLwJcJxJtNCZBdiucK7ywNMZt8Nqc+ZAkQB0KhCGSmDsArQTzB+La/WcunjddLCyUjeLsogFav0z7Am6TWJamSrmSViWdS8nUg6qNAmCtBDoFT9L5La1gHo5kvlKJXTAuMcIx+nOUZPOEtwmu/I00CvPtYBpmhfPJFFeB9uBQ8hricy8FtlPEd/IVbZ73mz8QkB99aHHwIAAA=="
+ },
+ "expect": {
+  "path": "/api/issued-key/I2824/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2824.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 310,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "19660086006",
+    "business_name": "(주)롯데삼강",
+    "president_name": "",
+    "industry_name": "축산물가공업-유가공업",
+    "permit_date": "19660620",
+    "closed_date": "20051216",
+    "closure_kind": "폐업",
+    "district": "서울특별시 영등포구",
+    "institution_name": "서울특별시 영등포구"
+   },
+   {
+    "license_no": "19690086015",
+    "business_name": "롯데제과(주)",
+    "president_name": "",
+    "industry_name": "축산물가공업-유가공업",
+    "permit_date": "19690307",
+    "closed_date": "20140113",
+    "closure_kind": "폐업",
+    "district": "서울특별시 영등포구",
+    "institution_name": "서울특별시 영등포구"
+   },
+   {
+    "license_no": "19690379001",
+    "business_name": "(주)크라운아이앤제이",
+    "president_name": "",
+    "industry_name": "축산물가공업-유가공업",
+    "permit_date": "19690509",
+    "closed_date": "20080625",
+    "closure_kind": "폐업",
+    "district": "강원특별자치도 횡성군",
+    "institution_name": "강원특별자치도"
+   }
+  ]
+ }
+}

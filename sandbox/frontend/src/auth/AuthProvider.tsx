@@ -8,10 +8,12 @@
  */
 
 import { createContext, useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import type { ReactNode } from 'react'
 import { authService } from '@/lib/api/services/auth.service'
 import { getAccessToken, onSessionExpired, setAccessToken } from '@/lib/api/token'
 import { setSessionRefresher } from '@/lib/api/client'
+import { useToast } from '@/hooks/useToast'
 import type { User } from '@/types/user'
 
 interface AuthState {
@@ -28,6 +30,8 @@ export interface AuthContextValue extends AuthState {
 export const AuthContext = createContext<AuthContextValue | null>(null)
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
+  const { t } = useTranslation('auth')
+  const toast = useToast()
   // No token means there is nothing to restore, so the session is already
   // resolved at mount — deciding that in an effect would render one frame of
   // "still initialising" and cascade a second render for no new information.
@@ -60,12 +64,17 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setSessionRefresher(() => authService.refresh().then((token) => token.access_token))
   }, [])
 
+  // A session that ends mid-screen is told, not just undone: the guard's
+  // redirect to the login form looks identical to a sign-out the user asked
+  // for, and a reader who was mid-edit is owed the reason. Only a session that
+  // existed is reported — an anonymous 401 is the login form's own answer.
   useEffect(
     () =>
       onSessionExpired(() => {
+        if (state.user !== null) toast.error(t('errors.session_expired'))
         setState({ user: null, isInitialised: true })
       }),
-    [],
+    [state.user, toast, t],
   )
 
   const login = useCallback(async (username: string, password: string) => {

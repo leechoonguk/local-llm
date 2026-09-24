@@ -2,8 +2,10 @@
 # Imports
 # ============================================================
 
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 # ============================================================
@@ -39,30 +41,23 @@ class Settings(BaseSettings):
     integration_max_retries: int
     integration_retry_base_seconds: float
     integration_retry_max_seconds: float
+    # The wall clock every `batch_schedule.cron` is read against. Required, not
+    # defaulted: without it APScheduler reads a cron in the container's zone,
+    # which is UTC, and a row an operator wrote as 04:00 fires at 13:00 Seoul
+    # time with nothing anywhere saying so. Day anchors are where that turns
+    # into a wrong day - "the 1st at 04:00" written as UTC is the 31st.
+    scheduler_timezone: str
 
-    @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        """Let `.env` outrank an exported variable.
-
-        pydantic-settings defaults to environment variables winning over the
-        dotenv file, so a shell that exported docker-compose's values silently
-        redirected every local run at hosts that resolve only inside compose
-        (measured: alembic and uvicorn died with "nodename nor servname
-        provided"). `.env` is the declared source for a local run
-        (environment.md), so it wins here and no caller has to strip anything.
-
-        The container is unaffected: the image copies no `.env`
-        (backend/Dockerfile), so this source is empty there and docker-compose's
-        environment stays the only input.
-        """
-        return (init_settings, dotenv_settings, env_settings, file_secret_settings)
+    # Source order is pydantic-settings' own: an environment variable outranks
+    # `.env`. That is the deployment contract - every container gets its values
+    # injected by compose and carries no file (backend/.dockerignore) - and the
+    # file is the local fallback for a process started by hand. It was reversed
+    # once, so that a shell which had exported compose's values could not point
+    # a local run at hosts only compose resolves; that run died loudly
+    # ("nodename nor servname provided"), which is the right outcome for a
+    # polluted shell, whereas the reversal made the test suite read the
+    # developer's `.env` over the environment the suite declares for itself
+    # and pass locally on values CI never saw.
 
     @field_validator("env")
     @classmethod
@@ -76,6 +71,17 @@ class Settings(BaseSettings):
     def validate_allowed_hosts(cls, value: list[str]) -> list[str]:
         if len(value) == 0:
             raise ValueError("allowed_hosts must name at least one host")
+        return value
+
+    @field_validator("scheduler_timezone")
+    @classmethod
+    def validate_scheduler_timezone(cls, value: str) -> str:
+        # Resolved here so a typo stops startup rather than every cron row
+        # silently falling back to the container's zone at the first fire.
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError) as exc:
+            raise ValueError(f"scheduler_timezone is not a known IANA zone: {value}") from exc
         return value
 
     @field_validator("database_url")

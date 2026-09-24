@@ -1,0 +1,63 @@
+{
+ "why": "The file door of 식품(첨가물) 생산실적: one GET answers the whole feed as gzip CSV (7,927,213 records, 123.8 MB, measured 2026-09-20) where the paged walk needed 7,928 windows and left the ledger holding 1,034,296 rows of 2025 alone. Three of its rows as the file carries them, header in the portal's order, BOM and CRLF. This feed carries SITE_ADDR where the other two production feeds carry GUBUN.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I0300.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE62QzUrDQBSF94LvEHcKdzEziS0u22akhWSaTgYhq3mVLqqIEfyjIBgXQqQIhYZCZUCD75O5xVeQoV240VWX955z73c43x9fUU+kWgyhm6Z9LWJIB4rrThhK4GeRziQkMoxSpSVPhlI5Z18PFI+ddyuJGE4zLnUiw54SutOVSo8y2I6jbH+PEcoIOwlYm0JTjXH6ub4z9qGAZlk3prI3E8++j3FZYF54+HRrF6ZZzYER2oJftz7gxTVelfb18RBfKrswmD+v7y+PwE7PsX7bqEAJIdBukZ1x2Z9ct58YnLnXB57N51iX4Ds+Ow52F4D+GyAvNgE8OysdP3B8n7gCfgBjlzJK4QEAAA=="
+ },
+ "expect": {
+  "path": "/api/issued-key/I0300/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I0300.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 274,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "item_report_no": "201202942713",
+    "report_year": "2016",
+    "product_name": "땅콩소스",
+    "business_name": "가야푸드",
+    "license_no": "20120294271",
+    "product_type_name": "소스류(조미식품)",
+    "production_qty": "760",
+    "annual_capacity_qty": "1000",
+    "site_address": "경기도 부천시 원미구"
+   },
+   {
+    "item_report_no": "201202942712",
+    "report_year": "2016",
+    "product_name": "소세지야! 달콤",
+    "business_name": "가야푸드",
+    "license_no": "20120294271",
+    "product_type_name": "소스류(조미식품)",
+    "production_qty": "2540",
+    "annual_capacity_qty": "3000",
+    "site_address": "경기도 부천시 원미구"
+   },
+   {
+    "item_report_no": "201202942711",
+    "report_year": "2016",
+    "product_name": "소시지야 매콤",
+    "business_name": "가야푸드",
+    "license_no": "20120294271",
+    "product_type_name": "소스류(조미식품)",
+    "production_qty": "3060",
+    "annual_capacity_qty": "4000",
+    "site_address": "경기도 부천시 원미구"
+   }
+  ]
+ }
+}

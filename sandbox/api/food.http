@@ -1,11 +1,13 @@
-### Food API — 원장 조회 (읽기 전용)
+### Food API — 파생 테이블 조회 (읽기 전용)
 ### 전제: backend 서버 실행 중 (cd backend && make dev) + 시드 계정 적용 (`make db-init`)
-###           + 원재료 원장이 한 번 이상 적재됨 (`sync_food_raw_material_ledger`, cron 또는 수동)
-### 순차 실행: 1번이 로그인하고, 나머지는 목록을 읽는다. DB는 바뀌지 않는다.
-# 읽기 전용인 이유: food_* 테이블은 매일 밤 배치가 프로바이더에서 채우는 원장이다. 손으로 쓴 행은
-# 다음 패스에서 프로바이더 레코드와 비교돼 덮인다. 그래서 POST/PATCH/DELETE가 없고,
-# check-backend-domain 은 원장 도메인의 쓰기 엔드포인트를 요구하는 대신 거부한다.
+###           + 파생 잡이 한 번 이상 돈 뒤 (`derive_food_tables`, cron 또는 `POST /batch/{id}/run`)
+### 순차 실행: 1번이 로그인하고, 2번의 첫 행 id를 3번이 읽는다. DB는 바뀌지 않는다.
+# 읽기 전용인 이유: API가 내는 food_* 테이블은 파생 테이블이다 — 파생 잡이 매일 밤 원장을 읽어
+# 통째로 다시 쓴다(rule://backend-ledger). 손으로 쓴 행은 아침이면 없다. 그래서 POST/PATCH/DELETE가
+# 없고, check-backend-domain 은 파생 테이블의 쓰기 엔드포인트를 요구하는 대신 거부한다. 원장은 라우트가 없다.
 @base = {{$dotenv API_ORIGIN}}/api/v1
+# 존재하지 않는 id — 404 경로 검증용
+@missingId = 00000000-0000-0000-0000-000000000000
 
 ### 1. 로그인 — 200 (공용 계정으로 인증 — access_token이 이후 블록에 주입된다)
 # @name login
@@ -14,31 +16,168 @@ Content-Type: application/x-www-form-urlencoded
 
 username=api-actor&password=api-actor-secret
 
-### 2. 원재료 목록 — 200 (items + total; total은 필터 없는 원장 전체 43,609)
+### 2. 품목 보고 목록 — 200 (items + total; total은 필터 없는 파생 테이블 전체 1,933,036 — 국내 1,072,302 + 축산 567,910 + 수입 292,824)
+# @name listItemReports
+GET {{base}}/food/item-report/?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 3. 품목 보고 상세 — 200 (2번 목록의 첫 행. 엣지 세 개가 실린다: product_classifications, ingredients, nutritions)
+GET {{base}}/food/item-report/{{listItemReports.response.body.items[0].id}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 4. 수입식품 제품 찾기 — 200 (수입 슬라이스 292,824행 — 신고 이력을 가진 제품을 먼저 집는다)
+# @name listImportReports
+GET {{base}}/food/item-report/?offset=0&limit=20&report_kind=import
+Authorization: Bearer {{login.response.body.access_token}}
+### 5. 신고 이력 — 200 (items + total; 처리일자 내림차순. 제품당 평균 3.6건, 최대 1,388건)
+# 제품 컬럼(수입업체·제품명·영문명·해외제조업소·제조국)은 여기 없다 — 제품 행이 갖는다.
+GET {{base}}/food/item-report/{{listImportReports.response.body.items[0].id}}/declarations?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+### 6. 신고 이력 — 200 (국내 제조 제품은 빈 페이지 — 두 등록부는 신고를 발행하지 않는다)
+GET {{base}}/food/item-report/{{listItemReports.response.body.items[0].id}}/declarations?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+### 7. 검사·조치 이력 — 200 (수거검사 판정 + 회수·검사부적합 중 이 제품에 닿는 것, 기록일 내림차순)
+# 품목번호가 우리 표에 닿는 행만 제품의 이력이 된다 — 84,129개 제품이 하나 이상 갖는다.
+GET {{base}}/food/item-report/{{listItemReports.response.body.items[0].id}}/safety-records?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 8. 품목 보고 규격 — 200 (types[]: 유형마다 분류 경로, 개별규격(제5), 상속된 공통규격(제2) — 제외 반영)
+GET {{base}}/food/item-report/{{listItemReports.response.body.items[0].id}}/standards
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 9. 라벨 있는 품목 찾기 — 200 (푸드QR 라벨은 1,424개 보고에만 있다 — 라벨을 가진 제품을 먼저 집는다)
+# @name listLabelledReports
+GET {{base}}/food/item-report/?offset=0&limit=20&product_name=대추차플러스
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 10. 품목 보고 라벨 — 200 (labels[]: 표시사항 + 영양표시 패널(nutrients) + 알레르기(allergens))
+# 측정(2026-09-12): 라벨 2,278건 / 표시 25,663줄 / 알레르겐 8,580건.
+# 분석값(nutritions)과 다른 축이다: 패널은 자기 기준량(총 내용량당·단위 내용량당)을 말한다.
+GET {{base}}/food/item-report/{{listLabelledReports.response.body.items[0].id}}/labels
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 11. 품목 보고 라벨 — 200 (라벨이 없는 보고는 빈 배열 — 대부분의 보고가 그렇다)
+GET {{base}}/food/item-report/{{listItemReports.response.body.items[0].id}}/labels
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 12. 목록 필터 — 200 (report_kind 정확 일치 — `domestic`·`livestock`·`import`; total이 목록과 같은 필터를 센다)
+GET {{base}}/food/item-report/?offset=0&limit=20&report_kind=livestock
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 13. 목록 필터 — 200 (product_name 부분일치 — 필드마다 별도 파라미터, AND 결합)
+GET {{base}}/food/item-report/?offset=0&limit=20&product_name=찐빵
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 14. 목록 필터 — 200 (business_name 부분일치 + product_type_name 정확 일치 — 패싯에서 고른 값, AND)
+GET {{base}}/food/item-report/?offset=0&limit=20&business_name=농업회사법인&product_type_name=빵류
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 15. 목록 필터 — 200 (item_report_no 부분일치 — 등록번호 앞자리로 연도 범위를 잡는다)
+GET {{base}}/food/item-report/?offset=0&limit=20&item_report_no=2025
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 16. 품목 보고 패싯 — 200 (식품유형 셀렉트의 선택지 — 파생 테이블이 실제로 가진 이름 814개, 이름순)
+GET {{base}}/food/item-report/facets
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 17. 품목 보고 상세 — 404 (없는 id)
+GET {{base}}/food/item-report/{{missingId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 18. 원재료 목록 — 200 (items + total; 코드순. total은 파생 테이블 전체 42,431 — I2520에서 기구·용기포장·위생용품을 뺀 것)
 # @name listRawMaterials
 GET {{base}}/food/raw-material/?offset=0&limit=20
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 3. 원재료 목록 필터 — 200 (raw_material_code 부분일치 — total이 목록과 같은 필터를 센다)
-GET {{base}}/food/raw-material/?offset=0&limit=20&raw_material_code=A10007
-Authorization: Bearer {{login.response.body.access_token}}
-
-### 4. 원재료 목록 필터 — 200 (대표원재료명 부분일치 — 필드마다 별도 파라미터, AND 결합)
-GET {{base}}/food/raw-material/?offset=0&limit=20&representative_raw_material_name=고추
-Authorization: Bearer {{login.response.body.access_token}}
-
-### 5. 원재료 목록 필터 — 200 (이명 부분일치 — 동의어 목록 안의 한 단어)
-GET {{base}}/food/raw-material/?offset=0&limit=20&raw_material_alias=고추
-Authorization: Bearer {{login.response.body.access_token}}
-
-### 6. 셀렉트 필터 옵션 — 200 (대분류·중분류·상태의 distinct 값 — 원장이 오늘 밤 가진 값이다)
-# @name facets
+### 19. 원재료 패싯 — 200 (셀렉트 필터의 선택지 — 대분류 5·중분류 17·상태 85, 중분류는 대분류별로도)
 GET {{base}}/food/raw-material/facets
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 7. 원재료 목록 셀렉트 필터 — 200 (대분류 정확 일치 — 6번 목록의 첫 값. 부분일치가 아니라 `식물`이 `식물성유지`를 끌어오지 않는다)
-GET {{base}}/food/raw-material/?offset=0&limit=20&raw_material_large_class={{facets.response.body.raw_material_large_class[0]}}
+### 20. 원재료 상세 — 200 (14번 목록의 첫 행. variants: 같은 base_code의 모든 코드, 자신 포함)
+GET {{base}}/food/raw-material/{{listRawMaterials.response.body.items[0].id}}
 Authorization: Bearer {{login.response.body.access_token}}
 
-### 8. 원재료 목록 — 401 (토큰 없음 — 원장도 인증 뒤에 있다)
-GET {{base}}/food/raw-material/?offset=0&limit=20
+### 21. 원재료 목록 필터 — 200 (representative_raw_material_name 부분일치 + raw_material_large_class 정확 일치, AND)
+GET {{base}}/food/raw-material/?offset=0&limit=20&representative_raw_material_name=밀&raw_material_large_class=식품원료(A코드)
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 22. 원재료 사용 제품 — 200 (14번 목록의 첫 행. items + total: 라벨의 원재료명이 이 코드로 풀린 품목제조보고, 파생 시점에 결정)
+GET {{base}}/food/raw-material/{{listRawMaterials.response.body.items[0].id}}/item-reports?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 23. 원재료 목록 필터 — 200 (use_yn 정확 일치 — `Y` 사용 / `N` 폐지, 스키마가 닫은 쌍)
+GET {{base}}/food/raw-material/?offset=0&limit=20&use_yn=N
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 24. 원재료 상세 — 404 (없는 id)
+GET {{base}}/food/raw-material/{{missingId}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 25. 챗 — 200 (SSE. `token` 이벤트가 단어마다 40ms 간격으로 오고 마지막에 `end` 하나. REST Client는 스트림을 그대로 출력한다)
+POST {{base}}/food/chat
+Content-Type: application/json
+Accept: text/event-stream
+Authorization: Bearer {{login.response.body.access_token}}
+
+{
+  "message": "밀가루 들어간 제품 알려줘"
+}
+
+### 26. 챗 — 422 (빈 메시지 — 보낼 말이 없는 턴은 경계에서 거절된다)
+POST {{base}}/food/chat
+Content-Type: application/json
+Authorization: Bearer {{login.response.body.access_token}}
+
+{
+  "message": ""
+}
+
+### 27. 품목 보고 목록 — 401 (토큰 없음 — 파생 테이블도 인증 뒤에 있다)
+GET {{base}}/food/item-report/?offset=0&limit=20
+
+### 28. 검사·조치 이력 목록 — 200 (2,046,422행 중 제품에 닿는 473,385행, 기록일 내림차순 — 제품이 아니라 당국의 기록을 훑는 화면)
+# 품목번호가 우리 표에 닿지 않는 행은 기본으로 빠진다 — 화면이 무엇에 대한 기록인지 말할 수 없기 때문이다.
+GET {{base}}/food/safety-record/?offset=0&limit=10
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 29. 검사·조치 이력 목록 필터 — 200 (구분·판정·연도 정확 일치 + 업소명 부분일치, AND 결합)
+# 판정은 포털의 한글이 아니라 우리 코드로 거른다: 포털 낱말은 화면이 보여주는 값이다.
+GET {{base}}/food/safety-record/?record_kind=collection_inspection&judgment_code=failed&record_year=2026
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 30. 검사·조치 이력 목록 필터 — 200 (기록일 구간 — 발행일 문자열의 경계값, 양끝 포함)
+GET {{base}}/food/safety-record/?recorded_on_from=20260101&recorded_on_to=20261231
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 31. 검사·조치 이력 목록 — 200 (mapped=false: 품목번호가 우리 표에 닿지 않는 1,573,037행까지 포함)
+GET {{base}}/food/safety-record/?mapped=false&offset=0&limit=10
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 32. 검사·조치 이력 패싯 — 200 (구분·판정·연도 셀렉트의 선택지 — 이 테이블이 실제로 가진 값)
+GET {{base}}/food/safety-record/facets
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 33. 업체 목록 — 200 (items + total; 인허가번호순. total은 파생 테이블 전체 299,019 — 영업중 96,367 + 폐업 202,652, 2026-09-23 실측)
+# @name listBusinesses
+GET {{base}}/food/business/?offset=0&limit=20
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 34. 업체 패싯 — 200 (업종 셀렉트의 선택지 — 이 표가 가진 10개 업종)
+GET {{base}}/food/business/facets
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 35. 업체 상세 — 200 (33번 목록의 첫 행. same_name: 같은 이름키의 다른 행, same_site: 같은 부지의 다른 인허가 — 후보이지 한 법인이 아니다)
+GET {{base}}/food/business/{{listBusinesses.response.body.items[0].id}}
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 36. 업체 목록 필터 — 200 (business_name 부분일치 + industry_name 정확 일치 + status 정확 일치, AND)
+GET {{base}}/food/business/?offset=0&limit=20&business_name=식품&industry_name=식품제조가공업&status=ACTIVE
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 37. 업체 목록 필터 — 422 (status 는 ACTIVE|CLOSED 두 값 — 스키마가 닫은 쌍)
+GET {{base}}/food/business/?status=OPEN
+Authorization: Bearer {{login.response.body.access_token}}
+
+### 38. 업체 상세 — 404 (없는 id)
+GET {{base}}/food/business/{{missingId}}
+Authorization: Bearer {{login.response.body.access_token}}

@@ -4,9 +4,11 @@
 
 from __future__ import annotations
 
+from asyncio import AbstractEventLoop, Lock, get_running_loop
 from contextvars import ContextVar
 from datetime import UTC, datetime
 from uuid import UUID
+from weakref import WeakKeyDictionary
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,6 +40,29 @@ INTERRUPTED = "INTERRUPTED"
 # It lives with the run rather than with the scheduler because the scheduler
 # imports the jobs, and a job importing the scheduler back is a cycle.
 current_run_id: ContextVar[UUID | None] = ContextVar("current_run_id", default=None)
+
+#: One gate per event loop. An `asyncio.Lock` binds to the loop that first
+#: acquires it and raises on any other, and a module-level lock outlives the
+#: loop under a test suite that opens one per test. Weakly keyed, so a finished
+#: loop takes its gate with it.
+_start_gates: WeakKeyDictionary[AbstractEventLoop, Lock] = WeakKeyDictionary()
+
+
+#: Held while a run row is opened, and while a job reads the rows to decide
+#: whether it has anything to do. The two readings have to be ordered or they
+#: are not readings at all: measured 2026-09-15, three ledger jobs and the
+#: derive job were fired in the same millisecond, every row was opened after
+#: the derive job had looked, and the derive job rebuilt fifteen tables against
+#: ledgers that were being replaced under it. Process-local, like the run map
+#: the scheduler cancels from - a run of another process is another process's.
+def run_start_gate() -> Lock:
+    """This loop's start gate, made on first use."""
+    loop = get_running_loop()
+    gate = _start_gates.get(loop)
+    if gate is None:
+        gate = _start_gates.setdefault(loop, Lock())
+    return gate
+
 
 # What a swept run says happened. There is no writer for a process that was
 # killed, so the sweep speaks for it — and says only what it knows.
@@ -157,6 +182,19 @@ class BatchRunService:
                     error_detail=INTERRUPTED_DETAIL,
                 )
             return len(unfinished)
+
+    async def list_running_codes(self, excluding: UUID | None = None) -> set[str]:
+        """The job codes with an execution in flight - what a job that depends on others asks.
+
+        A derivation reads the ledgers other jobs write, and a ledger mid-pass
+        is fine to read (a pass lands in one short transaction) but its night
+        is not over: the derivation would be rebuilt against last night's rows
+        and stand until tomorrow. So it asks, and waits its next turn instead.
+        """
+        unfinished = await self.batch_run_repository.list_unfinished()
+        # The asking job's own run is in flight by definition - it is the one
+        # asking - so it is not an answer to "is anything else running".
+        return {run.code for run in unfinished if run.id != excluding}
 
     async def delete_run(self, run_id: UUID) -> None:
         async with self.session.begin():

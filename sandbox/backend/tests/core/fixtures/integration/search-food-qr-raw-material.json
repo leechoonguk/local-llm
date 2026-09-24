@@ -1,0 +1,67 @@
+{
+  "why": "One measured page of the 푸드QR 원재료정보 service: inputs travel in the query string and `items` is a plain array, so an element is the record itself.",
+  "secrets": {
+    "service-key": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1,
+    "num_of_rows": 3
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE."
+      },
+      "body": {
+        "pageNo": 1,
+        "numOfRows": 3,
+        "totalCount": 2301,
+        "items": [
+          {
+            "ELB_MNG_NO": "202410221000001856",
+            "RWMT_LTID_SN": "1665",
+            "PRDCT_NM": "전복삼계죽 420g",
+            "BRCD_NO": "08801007901244",
+            "VER_NO": "1",
+            "VLD_BGNG_YMD": "20241101",
+            "VLD_END_YMD": "99991231",
+            "RWMT_INDCT_GRCN": "전복삼계죽 420g",
+            "PRVW_CN": "<a href=\"https://terms.naver.com/search.naver?query=정제수\" class=\"link\" target=\"_blank\"><span>정제수</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=멥쌀\" class=\"link\" target=\"_blank\"><span>멥쌀(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=닭고기\" class=\"link\" target=\"_blank\"><span>닭고기(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=새송이버섯\" class=\"link\" target=\"_blank\"><span>새송이버섯(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=전복살\" class=\"link\" target=\"_blank\"><span>전복살(<p class=\"bold\">외국산 : 필리핀, 말레이시아, 인도네시아 등</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=과.채가공품\" class=\"link\" target=\"_blank\"><span>표고버섯 홀</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=옥수수기름(옥배유)\" class=\"link\" target=\"_blank\"><span>옥배유</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=추출가공식품\" class=\"link\" target=\"_blank\"><span>치킨엑기스</span></a>[<a href=\"https://terms.naver.com/search.naver?query=닭뼈\" class=\"link\" target=\"_blank\"><span>닭뼈(<p class=\"bold\">닭고기:국산</p>)</span></a>],   <a href=\"https://terms.naver.com/search.naver?query=수삼(고시형)\" class=\"link\" target=\"_blank\"><span>수삼(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>다시마엑기스</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=식품첨가물혼합제제\" class=\"link\" target=\"_blank\"><span>혼합제제</span></a>(<a href=\"https://terms.naver.com/search.naver?query=변성전분\" class=\"link\" target=\"_blank\"><span>변성전분</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=덱스트린\" class=\"link\" target=\"_blank\"><span>덱스트린</span></a>),   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>파엑기스</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>복합조미식품A</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>복합조미식품B</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>소스</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=추출가공식품\" class=\"link\" target=\"_blank\"><span>추출가공식품</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>마늘조미액</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=혼합제제\" class=\"link\" target=\"_blank\"><span>혼합제제</span></a>(<a href=\"https://terms.naver.com/search.naver?query=변성전분\" class=\"link\" target=\"_blank\"><span>변성전분</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=설탕분말\" class=\"link\" target=\"_blank\"><span>설탕분말</span></a>),   <a href=\"https://terms.naver.com/search.naver?query=혼합제제\" class=\"link\" target=\"_blank\"><span>혼합제제</span></a>(<a href=\"https://terms.naver.com/search.naver?query=폴리인산나트륨\" class=\"link\" target=\"_blank\"><span>폴리인산나트륨</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=피로인산나트륨\" class=\"link\" target=\"_blank\"><span>피로인산나트륨</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=메타인산나트륨\" class=\"link\" target=\"_blank\"><span>메타인산나트륨</span></a>),   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>야채육수분말</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=효모식품\" class=\"link\" target=\"_blank\"><span>효모식품</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>복합조미식품C</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=향미증진제\" class=\"link\" target=\"_blank\"><span>향미증진제</span></a>",
+            "LAST_MDFCN_DT": "2026-07-30 19:03:34"
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/1471000/FoodQrInfoService02/getFoodQrProdRawmtrl02",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1",
+      "numOfRows": "3",
+      "type": "json"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "label_no": "202410221000001856",
+        "raw_material_serial": "1665",
+        "raw_material_group_name": "전복삼계죽 420g",
+        "raw_material_html": "<a href=\"https://terms.naver.com/search.naver?query=정제수\" class=\"link\" target=\"_blank\"><span>정제수</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=멥쌀\" class=\"link\" target=\"_blank\"><span>멥쌀(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=닭고기\" class=\"link\" target=\"_blank\"><span>닭고기(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=새송이버섯\" class=\"link\" target=\"_blank\"><span>새송이버섯(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=전복살\" class=\"link\" target=\"_blank\"><span>전복살(<p class=\"bold\">외국산 : 필리핀, 말레이시아, 인도네시아 등</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=과.채가공품\" class=\"link\" target=\"_blank\"><span>표고버섯 홀</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=옥수수기름(옥배유)\" class=\"link\" target=\"_blank\"><span>옥배유</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=추출가공식품\" class=\"link\" target=\"_blank\"><span>치킨엑기스</span></a>[<a href=\"https://terms.naver.com/search.naver?query=닭뼈\" class=\"link\" target=\"_blank\"><span>닭뼈(<p class=\"bold\">닭고기:국산</p>)</span></a>],   <a href=\"https://terms.naver.com/search.naver?query=수삼(고시형)\" class=\"link\" target=\"_blank\"><span>수삼(<p class=\"bold\">국산</p>)</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>다시마엑기스</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=식품첨가물혼합제제\" class=\"link\" target=\"_blank\"><span>혼합제제</span></a>(<a href=\"https://terms.naver.com/search.naver?query=변성전분\" class=\"link\" target=\"_blank\"><span>변성전분</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=덱스트린\" class=\"link\" target=\"_blank\"><span>덱스트린</span></a>),   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>파엑기스</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>복합조미식품A</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>복합조미식품B</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>소스</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=추출가공식품\" class=\"link\" target=\"_blank\"><span>추출가공식품</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=소스\" class=\"link\" target=\"_blank\"><span>마늘조미액</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=혼합제제\" class=\"link\" target=\"_blank\"><span>혼합제제</span></a>(<a href=\"https://terms.naver.com/search.naver?query=변성전분\" class=\"link\" target=\"_blank\"><span>변성전분</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=설탕분말\" class=\"link\" target=\"_blank\"><span>설탕분말</span></a>),   <a href=\"https://terms.naver.com/search.naver?query=혼합제제\" class=\"link\" target=\"_blank\"><span>혼합제제</span></a>(<a href=\"https://terms.naver.com/search.naver?query=폴리인산나트륨\" class=\"link\" target=\"_blank\"><span>폴리인산나트륨</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=피로인산나트륨\" class=\"link\" target=\"_blank\"><span>피로인산나트륨</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=메타인산나트륨\" class=\"link\" target=\"_blank\"><span>메타인산나트륨</span></a>),   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>야채육수분말</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=효모식품\" class=\"link\" target=\"_blank\"><span>효모식품</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=복합조미식품\" class=\"link\" target=\"_blank\"><span>복합조미식품C</span></a>,   <a href=\"https://terms.naver.com/search.naver?query=향미증진제\" class=\"link\" target=\"_blank\"><span>향미증진제</span></a>",
+        "product_name": "전복삼계죽 420g",
+        "barcode_no": "08801007901244",
+        "version_no": "1",
+        "valid_from": "20241101",
+        "valid_to": "99991231",
+        "source_updated_at": "2026-07-30 19:03:34"
+      }
+    ],
+    "metadata": {
+      "result_code": "00",
+      "result_message": "NORMAL SERVICE.",
+      "total_count": 2301
+    }
+  }
+}

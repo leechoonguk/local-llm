@@ -4,19 +4,16 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Select, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
+from app.core.sorting import ordered
 from app.models.food.raw_material import FoodRawMaterial
-from app.schemas.food.raw_material import (
-    FoodRawMaterialCreateInternal,
-    FoodRawMaterialFilter,
-    FoodRawMaterialUpdateInternal,
-)
+from app.schemas.food.raw_material import FoodRawMaterialFilter
 
 
 # ============================================================
@@ -25,27 +22,42 @@ from app.schemas.food.raw_material import (
 
 
 class FoodRawMaterialRepository:
+    """Reads over the derived raw material table. Nothing here writes: the derive job does."""
+
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
     async def get(self, food_raw_material_id: UUID) -> FoodRawMaterial | None:
-        return await self.session.get(FoodRawMaterial, food_raw_material_id)
+        """One material with its composition's siblings loaded, along the model's own edge."""
+        result = await self.session.execute(
+            select(FoodRawMaterial)
+            .where(FoodRawMaterial.id == food_raw_material_id)
+            .options(selectinload(FoodRawMaterial.variants))
+        )
+        return result.scalar_one_or_none()
 
     async def list(
-        self, offset: int = 0, limit: int = 100, filters: FoodRawMaterialFilter | None = None
+        self,
+        offset: int = 0,
+        limit: int = 100,
+        filters: FoodRawMaterialFilter | None = None,
+        sort: str | None = None,
+        order: str = "asc",
     ) -> list[FoodRawMaterial]:
-        query = _apply_filters(select(FoodRawMaterial), filters).order_by(
-            FoodRawMaterial.raw_material_code
+        query = (
+            ordered(
+                _apply_filters(select(FoodRawMaterial), filters),
+                FoodRawMaterial,
+                sort,
+                order,
+                FoodRawMaterial.raw_material_code,
+            )
+            .offset(offset)
+            .limit(limit)
         )
-        result = await self.session.execute(query.offset(offset).limit(limit))
-        return list(result.scalars().all())
+        return list((await self.session.execute(query)).scalars().all())
 
     async def count(self, filters: FoodRawMaterialFilter | None = None) -> int:
-        """How many rows the unwindowed `list` would return, under the same filters.
-
-        The filters are applied here too, or the footer counts the collection
-        while the grid shows a subset of it - "1-3 of 43,609" on three matching rows.
-        """
         query = _apply_filters(select(func.count()).select_from(FoodRawMaterial), filters)
         return (await self.session.execute(query)).scalar_one()
 
@@ -73,40 +85,12 @@ class FoodRawMaterialRepository:
     async def distinct_values(self, column: str) -> list[str]:
         """Every value one closed-vocabulary column holds, sorted, NULL left out.
 
-        The select filter's options: a value the ledger does not hold cannot
+        The select filter's options: a value the table does not hold cannot
         match anything, and NULL is the absence of a value, not a choice.
         """
         attribute = getattr(FoodRawMaterial, column)
         query = select(attribute).where(attribute.is_not(None)).distinct().order_by(attribute)
         return list((await self.session.execute(query)).scalars().all())
-
-    async def create(self, data: FoodRawMaterialCreateInternal) -> FoodRawMaterial:
-        material = FoodRawMaterial(**data.model_dump())
-        self.session.add(material)
-        await self.session.flush()
-        return material
-
-    async def update(
-        self, food_raw_material_id: UUID, data: FoodRawMaterialUpdateInternal
-    ) -> FoodRawMaterial | None:
-        material = await self.session.get(FoodRawMaterial, food_raw_material_id)
-        if material is None:
-            return None
-        for field, value in data.model_dump(exclude_unset=True).items():
-            setattr(material, field, value)
-        # Set before the flush: the column's onupdate=func.now() is a SQL function
-        # whose lazy evaluation raises MissingGreenlet, and a post-flush assignment
-        # would cost a second UPDATE (and a second version bump).
-        material.updated_at = datetime.now(UTC)
-        await self.session.flush()
-        return material
-
-    async def delete(self, food_raw_material_id: UUID) -> bool:
-        material = await self.session.get(FoodRawMaterial, food_raw_material_id)
-        if material is None:
-            return False
-        await self.session.delete(material)
-        return True
 
 
 # ============================================================
@@ -117,14 +101,12 @@ class FoodRawMaterialRepository:
 def _apply_filters(query: Select[Any], filters: FoodRawMaterialFilter | None) -> Select[Any]:
     """Narrow a raw material query by each field the caller named.
 
-    One builder for the page and its count, because two spellings of the same
-    predicate is how a filtered list and its total start disagreeing. Combined
-    with AND - each is a separate box on the screen.
-
-    Two match kinds, decided by the column: free text is `ilike` with the
-    wildcards added here so a caller never sends SQL syntax; a closed vocabulary
-    is `==`, because its value was picked from the column's own list and a
-    contains-match would widen it (`식물` is a prefix of `식물성유지`).
+    One builder for the page and its count, so the two cannot disagree. AND
+    across fields - each is its own box on the screen. Free text matches a
+    fragment (`ilike`, wildcards added here so a caller never sends SQL); a
+    closed vocabulary matches whole, because its value was picked from the
+    column's own list and a contains-match would only widen it (`식물` is a
+    prefix of `식물성유지`).
     """
     if filters is None:
         return query
@@ -142,6 +124,7 @@ def _apply_filters(query: Select[Any], filters: FoodRawMaterialFilter | None) ->
         (FoodRawMaterial.raw_material_large_class, filters.raw_material_large_class),
         (FoodRawMaterial.raw_material_medium_class, filters.raw_material_medium_class),
         (FoodRawMaterial.raw_material_status_code_name, filters.raw_material_status_code_name),
+        (FoodRawMaterial.use_yn, filters.use_yn),
     ):
         if value is not None:
             query = query.where(column == value)

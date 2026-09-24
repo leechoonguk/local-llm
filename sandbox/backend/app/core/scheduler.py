@@ -4,11 +4,12 @@
 
 from __future__ import annotations
 
-from asyncio import CancelledError, Task, current_task
+from asyncio import CancelledError, Lock, Task, current_task
 from collections.abc import Awaitable, Callable, Mapping
 from contextlib import suppress
 from types import MappingProxyType
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 import structlog
 from apscheduler.jobstores.base import JobLookupError
@@ -17,14 +18,81 @@ from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.batch.derive_food_tables import derive_food_tables
 from app.batch.purge_expired_refreshes import purge_expired_refreshes
 from app.batch.purge_old_batch_runs import purge_old_batch_runs
-from app.batch.sync_data_go_kr_ledgers import sync_data_go_kr_ledgers
-from app.batch.sync_mfds_ledgers import sync_mfds_ledgers
+from app.batch.sync_food_ledger_additive_manufacturing_closure import (
+    sync_food_ledger_additive_manufacturing_closure,
+)
+from app.batch.sync_food_ledger_admin_disposition import sync_food_ledger_admin_disposition
+from app.batch.sync_food_ledger_barcode import sync_food_ledger_barcode
+from app.batch.sync_food_ledger_business import sync_food_ledger_business
+from app.batch.sync_food_ledger_business_site import sync_food_ledger_business_site
+from app.batch.sync_food_ledger_collection_inspection import (
+    sync_food_ledger_collection_inspection,
+)
+from app.batch.sync_food_ledger_common_standard import sync_food_ledger_common_standard
+from app.batch.sync_food_ledger_common_standard_exclusion import (
+    sync_food_ledger_common_standard_exclusion,
+)
+from app.batch.sync_food_ledger_common_standard_type import sync_food_ledger_common_standard_type
+from app.batch.sync_food_ledger_haccp_label import sync_food_ledger_haccp_label
+from app.batch.sync_food_ledger_health_functional_closure import (
+    sync_food_ledger_health_functional_closure,
+)
+from app.batch.sync_food_ledger_health_functional_item_report import (
+    sync_food_ledger_health_functional_item_report,
+)
+from app.batch.sync_food_ledger_health_functional_production import (
+    sync_food_ledger_health_functional_production,
+)
+from app.batch.sync_food_ledger_import_business_closure import (
+    sync_food_ledger_import_business_closure,
+)
+from app.batch.sync_food_ledger_import_food_label import sync_food_ledger_import_food_label
+from app.batch.sync_food_ledger_individual_standard import sync_food_ledger_individual_standard
+from app.batch.sync_food_ledger_inspection_failure import sync_food_ledger_inspection_failure
+from app.batch.sync_food_ledger_item_report import sync_food_ledger_item_report
+from app.batch.sync_food_ledger_item_report_raw_material import (
+    sync_food_ledger_item_report_raw_material,
+)
+from app.batch.sync_food_ledger_livestock_item_report_raw_material import (
+    sync_food_ledger_livestock_item_report_raw_material,
+)
+from app.batch.sync_food_ledger_livestock_processing_closure import (
+    sync_food_ledger_livestock_processing_closure,
+)
+from app.batch.sync_food_ledger_livestock_production import sync_food_ledger_livestock_production
+from app.batch.sync_food_ledger_manufacturing_closure import sync_food_ledger_manufacturing_closure
+from app.batch.sync_food_ledger_meat_packaging_closure import (
+    sync_food_ledger_meat_packaging_closure,
+)
+from app.batch.sync_food_ledger_nutrition import sync_food_ledger_nutrition
+from app.batch.sync_food_ledger_product_classification import (
+    sync_food_ledger_product_classification,
+)
+from app.batch.sync_food_ledger_production import sync_food_ledger_production
+from app.batch.sync_food_ledger_qr_allergy import sync_food_ledger_qr_allergy
+from app.batch.sync_food_ledger_qr_caution import sync_food_ledger_qr_caution
+from app.batch.sync_food_ledger_qr_label import sync_food_ledger_qr_label
+from app.batch.sync_food_ledger_qr_manufacture import sync_food_ledger_qr_manufacture
+from app.batch.sync_food_ledger_qr_nutrition import sync_food_ledger_qr_nutrition
+from app.batch.sync_food_ledger_qr_packaging import sync_food_ledger_qr_packaging
+from app.batch.sync_food_ledger_qr_raw_material import sync_food_ledger_qr_raw_material
+from app.batch.sync_food_ledger_qr_storage import sync_food_ledger_qr_storage
+from app.batch.sync_food_ledger_raw_material import sync_food_ledger_raw_material
+from app.batch.sync_food_ledger_recall import sync_food_ledger_recall
+from app.batch.sync_food_ledger_test_item import sync_food_ledger_test_item
 from app.core.database import engine
-from app.core.exceptions import ConflictError
-from app.schemas.batch.run import BatchRunStatus, BatchTrigger
-from app.services.batch.run import BatchRunService, current_run_id
+from app.core.exceptions import BatchSkippedError, ConflictError
+from app.core.settings import settings
+from app.schemas.batch.run import (
+    ERROR_CODE_MAX_LENGTH,
+    ERROR_DETAIL_MAX_LENGTH,
+    BatchRunStatus,
+    BatchTrigger,
+)
+from app.services.batch.run import BatchRunService, current_run_id, run_start_gate
 
 
 # ============================================================
@@ -49,10 +117,105 @@ SCHEDULER_UNAVAILABLE_CODE = "scheduler_unavailable"
 # instead of failing silently at 03:00.
 BATCH_JOBS: Mapping[str, BatchJob] = MappingProxyType(
     {
+        "derive_food_tables": derive_food_tables,
         "purge_expired_refreshes": purge_expired_refreshes,
         "purge_old_batch_runs": purge_old_batch_runs,
-        "sync_data_go_kr_ledgers": sync_data_go_kr_ledgers,
-        "sync_mfds_ledgers": sync_mfds_ledgers,
+        "sync_food_ledger_barcode": sync_food_ledger_barcode,
+        "sync_food_ledger_additive_manufacturing_closure": (
+            sync_food_ledger_additive_manufacturing_closure
+        ),
+        "sync_food_ledger_business": sync_food_ledger_business,
+        "sync_food_ledger_business_site": sync_food_ledger_business_site,
+        "sync_food_ledger_collection_inspection": sync_food_ledger_collection_inspection,
+        "sync_food_ledger_common_standard": sync_food_ledger_common_standard,
+        "sync_food_ledger_common_standard_exclusion": sync_food_ledger_common_standard_exclusion,
+        "sync_food_ledger_common_standard_type": sync_food_ledger_common_standard_type,
+        "sync_food_ledger_haccp_label": sync_food_ledger_haccp_label,
+        "sync_food_ledger_health_functional_closure": sync_food_ledger_health_functional_closure,
+        "sync_food_ledger_health_functional_item_report": (
+            sync_food_ledger_health_functional_item_report
+        ),
+        "sync_food_ledger_health_functional_production": (
+            sync_food_ledger_health_functional_production
+        ),
+        "sync_food_ledger_import_food_label": sync_food_ledger_import_food_label,
+        "sync_food_ledger_import_business_closure": sync_food_ledger_import_business_closure,
+        "sync_food_ledger_individual_standard": sync_food_ledger_individual_standard,
+        "sync_food_ledger_admin_disposition": sync_food_ledger_admin_disposition,
+        "sync_food_ledger_inspection_failure": sync_food_ledger_inspection_failure,
+        "sync_food_ledger_item_report": sync_food_ledger_item_report,
+        "sync_food_ledger_item_report_raw_material": sync_food_ledger_item_report_raw_material,
+        "sync_food_ledger_livestock_item_report_raw_material": (
+            sync_food_ledger_livestock_item_report_raw_material
+        ),
+        "sync_food_ledger_livestock_production": sync_food_ledger_livestock_production,
+        "sync_food_ledger_livestock_processing_closure": (
+            sync_food_ledger_livestock_processing_closure
+        ),
+        "sync_food_ledger_manufacturing_closure": sync_food_ledger_manufacturing_closure,
+        "sync_food_ledger_meat_packaging_closure": sync_food_ledger_meat_packaging_closure,
+        "sync_food_ledger_nutrition": sync_food_ledger_nutrition,
+        "sync_food_ledger_product_classification": sync_food_ledger_product_classification,
+        "sync_food_ledger_production": sync_food_ledger_production,
+        "sync_food_ledger_qr_allergy": sync_food_ledger_qr_allergy,
+        "sync_food_ledger_qr_caution": sync_food_ledger_qr_caution,
+        "sync_food_ledger_qr_label": sync_food_ledger_qr_label,
+        "sync_food_ledger_qr_manufacture": sync_food_ledger_qr_manufacture,
+        "sync_food_ledger_qr_nutrition": sync_food_ledger_qr_nutrition,
+        "sync_food_ledger_qr_packaging": sync_food_ledger_qr_packaging,
+        "sync_food_ledger_qr_raw_material": sync_food_ledger_qr_raw_material,
+        "sync_food_ledger_qr_storage": sync_food_ledger_qr_storage,
+        "sync_food_ledger_raw_material": sync_food_ledger_raw_material,
+        "sync_food_ledger_recall": sync_food_ledger_recall,
+        "sync_food_ledger_test_item": sync_food_ledger_test_item,
+    }
+)
+
+# Which provider a job's walk queues behind. Two jobs of one provider share a
+# host, a key pool and whatever that portal limits; running them at once buys
+# nothing and spends the same quota, so the scheduler lets one through at a
+# time. Two providers share nothing and overlap freely. A code missing here -
+# the purges, the derive job - waits for nobody.
+JOB_PROVIDERS: Mapping[str, str] = MappingProxyType(
+    {
+        "sync_food_ledger_barcode": "mfds-food-safety-korea",
+        "sync_food_ledger_business": "mfds-food-safety-korea",
+        "sync_food_ledger_business_site": "mfds-food-safety-korea",
+        "sync_food_ledger_manufacturing_closure": "mfds-food-safety-korea",
+        "sync_food_ledger_additive_manufacturing_closure": "mfds-food-safety-korea",
+        "sync_food_ledger_import_business_closure": "mfds-food-safety-korea",
+        "sync_food_ledger_health_functional_closure": "mfds-food-safety-korea",
+        "sync_food_ledger_livestock_processing_closure": "mfds-food-safety-korea",
+        "sync_food_ledger_meat_packaging_closure": "mfds-food-safety-korea",
+        "sync_food_ledger_collection_inspection": "mfds-food-safety-korea",
+        "sync_food_ledger_common_standard": "mfds-food-safety-korea",
+        "sync_food_ledger_common_standard_exclusion": "mfds-food-safety-korea",
+        "sync_food_ledger_common_standard_type": "mfds-food-safety-korea",
+        "sync_food_ledger_haccp_label": "data-go-kr",
+        "sync_food_ledger_health_functional_item_report": "mfds-food-safety-korea",
+        "sync_food_ledger_health_functional_production": "mfds-food-safety-korea",
+        "sync_food_ledger_import_food_label": "data-go-kr",
+        "sync_food_ledger_individual_standard": "mfds-food-safety-korea",
+        "sync_food_ledger_admin_disposition": "mfds-food-safety-korea",
+        "sync_food_ledger_inspection_failure": "mfds-food-safety-korea",
+        "sync_food_ledger_item_report": "mfds-food-safety-korea",
+        "sync_food_ledger_item_report_raw_material": "mfds-food-safety-korea",
+        "sync_food_ledger_livestock_item_report_raw_material": "mfds-food-safety-korea",
+        "sync_food_ledger_livestock_production": "mfds-food-safety-korea",
+        "sync_food_ledger_nutrition": "data-go-kr",
+        "sync_food_ledger_product_classification": "mfds-food-safety-korea",
+        "sync_food_ledger_production": "mfds-food-safety-korea",
+        "sync_food_ledger_qr_allergy": "data-go-kr",
+        "sync_food_ledger_qr_caution": "data-go-kr",
+        "sync_food_ledger_qr_label": "data-go-kr",
+        "sync_food_ledger_qr_manufacture": "data-go-kr",
+        "sync_food_ledger_qr_nutrition": "data-go-kr",
+        "sync_food_ledger_qr_packaging": "data-go-kr",
+        "sync_food_ledger_qr_raw_material": "data-go-kr",
+        "sync_food_ledger_qr_storage": "data-go-kr",
+        "sync_food_ledger_raw_material": "mfds-food-safety-korea",
+        "sync_food_ledger_recall": "mfds-food-safety-korea",
+        "sync_food_ledger_test_item": "mfds-food-safety-korea",
     }
 )
 
@@ -101,9 +264,21 @@ class BatchScheduler:
     interrupting the coroutine it already handed to the event loop.
     """
 
-    def __init__(self, jobs: Mapping[str, BatchJob] = BATCH_JOBS) -> None:
+    def __init__(
+        self,
+        jobs: Mapping[str, BatchJob] = BATCH_JOBS,
+        providers: Mapping[str, str] = JOB_PROVIDERS,
+    ) -> None:
         self._jobs = jobs
-        self._scheduler = AsyncIOScheduler()
+        self._providers = providers
+        # One lock per provider, made on first use: the jobs of one provider
+        # take turns, and a job whose code names none takes nobody's.
+        self._provider_locks: dict[str, Lock] = {}
+        # The zone every cron row is read against, stated rather than inherited:
+        # an APScheduler with no timezone takes the process's, which in a
+        # container is UTC, and each row would then mean nine hours from what
+        # its author wrote (settings.scheduler_timezone).
+        self._scheduler = AsyncIOScheduler(timezone=ZoneInfo(settings.scheduler_timezone))
         self._running: dict[UUID, Task[None]] = {}
         # The run each executing row is writing into, so a stop can close it
         # from the request — the one place that is not being cancelled.
@@ -134,7 +309,11 @@ class BatchScheduler:
             return
         self._scheduler.add_job(
             self._run,
-            CronTrigger.from_crontab(cron),
+            # The zone belongs on the trigger, not only on the scheduler: a
+            # trigger handed in ready-made keeps whatever zone it was built
+            # with, and `from_crontab` builds with the *process's* — measured,
+            # a row read as Seoul on a laptop and as UTC in the container.
+            CronTrigger.from_crontab(cron, timezone=ZoneInfo(settings.scheduler_timezone)),
             kwargs={"batch_id": batch_id, "code": code, "job": job},
             id=str(batch_id),
             replace_existing=True,
@@ -231,20 +410,53 @@ class BatchScheduler:
     ) -> None:
         """Execute one run and record how it ended.
 
+        Not while another execution of the row is in flight: APScheduler's
+        `max_instances` only knows a job id, and a manual run carries a
+        different one (`MANUAL_RUN_SUFFIX`), so a cron fire during a manual
+        run — or the reverse — would have two runs writing over the same
+        ledgers at once. Checked here rather than only in `run_now`, because
+        this is the one entry every execution passes; the skip is a log line,
+        as APScheduler's own skip of a cron fire during a cron run is
+        (observed 2026-09-08 00:00, the 22:38 run still walking).
+
         The three endings are told apart here because this is the only place
         that can: the job sees its own exception but not a cancellation's
         meaning, and nothing at all sees a killed process — that one is settled
         by the next startup's sweep.
         """
+        if self.is_running(batch_id):
+            logger.warning(
+                "batch_job_overlapped", batch_id=str(batch_id), code=code, trigger=trigger
+            )
+            return
         task = current_task()
         if task is not None:
             self._running[batch_id] = task
+        # The job's task is a copy of whichever context last woke the
+        # scheduler, a request's included: measured 2026-09-08, a night's
+        # 3,505 provider calls carried the `request_id` of the PATCH that had
+        # edited a cron hours before. Cleared here, so the run's log lines and
+        # call rows name the run and nothing else.
+        structlog.contextvars.clear_contextvars()
         run_id = await self._open_run(batch_id, code, trigger, triggered_by)
+        structlog.contextvars.bind_contextvars(
+            batch_id=str(batch_id), code=code, run_id=str(run_id), trigger=trigger
+        )
         if run_id is not None:
             self._runs[batch_id] = run_id
         token = current_run_id.set(run_id)
+        provider = self._providers.get(code)
+        lock = self._provider_locks.setdefault(provider, Lock()) if provider else None
         try:
-            result = await job()
+            if lock is None:
+                result = await job()
+            else:
+                # Held across the whole walk: the portal is the resource, and a
+                # second walk of it would spend the same quota to go slower. A
+                # job waiting here is RUNNING with no calls yet, which is what
+                # the derive job's dependency check wants to see.
+                async with lock:
+                    result = await job()
         except CancelledError:
             # Cancellation is an operator decision, not a failure: it is logged
             # as such and re-raised so the task really ends cancelled.
@@ -252,6 +464,12 @@ class BatchScheduler:
             # so the ending was recorded by `stop` before the cancellation.
             logger.warning("batch_job_stopped", batch_id=str(batch_id), code=code)
             raise
+        except BatchSkippedError as exc:
+            # The job decided this fire has nothing to do. An ending of its
+            # own, so a reader of the log can tell a quiet day from a broken
+            # one without opening the job's source.
+            logger.info("batch_job_skipped", code=code, reason=exc.reason)
+            await self._close_run(run_id, "SKIPPED", error_detail=exc.reason)
         except Exception as exc:
             # A job that raises must not take its own schedule down with it:
             # the next fire is the recovery, and the traceback is the record.
@@ -280,10 +498,13 @@ class BatchScheduler:
         exception says so.
         """
         try:
+            # Under the start gate: a job that decides whether to run by
+            # reading the running rows must not read them while this row is
+            # half-written, or two jobs each find the table empty.
             # expire_on_commit=False, like the request factory: the id is read
             # after the commit, and an expired instance would lazy-load there —
             # which under asyncio is a MissingGreenlet, not a query.
-            async with AsyncSession(engine, expire_on_commit=False) as session:
+            async with run_start_gate(), AsyncSession(engine, expire_on_commit=False) as session:
                 run = await BatchRunService(session).create_started_run(
                     batch_id, code, trigger, triggered_by
                 )
@@ -302,9 +523,18 @@ class BatchScheduler:
         error_code: str | None = None,
         error_detail: str | None = None,
     ) -> None:
-        """Write the ending, if a run was opened at all."""
+        """Write the ending, if a run was opened at all.
+
+        The ending is cut to what the row can hold before it is written. A
+        driver's message is as long as it likes (asyncpg prints the offending
+        value), and an ending refused for its own length would leave the run
+        RUNNING for ever - which is worse than a clipped message, because a
+        run that never ends is a run no schedule will fire again.
+        """
         if run_id is None:
             return
+        error_code = None if error_code is None else error_code[:ERROR_CODE_MAX_LENGTH]
+        error_detail = None if error_detail is None else error_detail[:ERROR_DETAIL_MAX_LENGTH]
         try:
             async with AsyncSession(engine, expire_on_commit=False) as session:
                 await BatchRunService(session).update_finished_run(

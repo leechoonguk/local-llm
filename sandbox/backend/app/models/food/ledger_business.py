@@ -1,0 +1,58 @@
+# ============================================================
+# Imports
+# ============================================================
+
+from __future__ import annotations
+
+import uuid
+from uuid import uuid4
+
+from sqlalchemy import String, Text, Uuid
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import AuditMixin, Base
+
+
+# ============================================================
+# Constants
+# ============================================================
+
+# 인허가번호 is 11 characters on every row; the parcel and building keys of the
+# GIS feed reach 19 and 28. The same bound the sibling ledgers use.
+CODE_LENGTH = 32
+
+# YYYYMMDD.
+DATE_LENGTH = 16
+
+# The closed vocabularies - 업종 (17 characters at the widest), 폐업구분 (8),
+# 소재지 (구 단위, 18), 관할기관명 (15). 업소명 is free text and goes to `Text`.
+NAME_LENGTH = 120
+
+# 산 여부 - one character.
+FLAG_LENGTH = 4
+
+
+# ============================================================
+# Classes
+# ============================================================
+
+
+class FoodLedgerBusiness(Base, AuditMixin):
+    """인허가 업소 정보 원장 - our own copy of the I2500 file.
+
+    One row per 인허가번호. 1,548,814 rows in the file of 2026-09-23 (gzip 30.1MB), every column
+    filled but the ones the schema declines (`UNSTORED_KEYS`). 살아 있는 인허가 전부, 음식점 포함
+    — 52개 업종. 우리가 읽는 9개 업종(제조·첨가물·건기식 제조 2·축산 가공
+    3·식육포장·수입판매)은 94,751행이고, 파생(food_business)이 거른다. 같은 번호가 두 번 오는
+    행이 72쌍 있다(행정구역 개편으로 다시 적힌 같은 업소 — 인천 중구/제물포구) — 스테이지가 먼저
+    온 것을 남긴다.
+    """
+
+    __tablename__ = "food_ledger_business"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid4)
+    license_no: Mapped[str] = mapped_column(String(CODE_LENGTH), unique=True, index=True)
+    industry_name: Mapped[str | None] = mapped_column(String(NAME_LENGTH), default=None)
+    business_name: Mapped[str | None] = mapped_column(Text, default=None)
+    permit_date: Mapped[str | None] = mapped_column(String(DATE_LENGTH), default=None)
+    district: Mapped[str | None] = mapped_column(String(NAME_LENGTH), default=None)

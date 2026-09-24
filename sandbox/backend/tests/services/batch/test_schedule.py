@@ -27,10 +27,10 @@ async def test_batch_service_crud(factory) -> None:
     """
     async with factory() as session:
         created = await BatchScheduleService(session).create_batch(
-            BatchCreateRequest(code=JOB_CODE, name="A", description="d", cron=CRON), "tester"
+            BatchCreateRequest(code=JOB_CODE, cron=CRON), "tester"
         )
         item_id = created.id
-        assert created.name == "A"
+        assert created.code == JOB_CODE
         assert created.created_by == "tester"
 
     async with factory() as session:
@@ -41,9 +41,9 @@ async def test_batch_service_crud(factory) -> None:
 
     async with factory() as session:
         updated = await BatchScheduleService(session).update_batch(
-            item_id, BatchUpdateRequest(name="B"), "tester"
+            item_id, BatchUpdateRequest(cron="30 4 * * *"), "tester"
         )
-        assert updated.name == "B"
+        assert updated.cron == "30 4 * * *"
 
     async with factory() as session:
         await BatchScheduleService(session).delete_batch(item_id)
@@ -65,7 +65,7 @@ async def test_batch_service_not_found(factory) -> None:
     async with factory() as session:
         with pytest.raises(NotFoundError):
             await BatchScheduleService(session).update_batch(
-                MISSING_UUID, BatchUpdateRequest(name="x"), "tester"
+                MISSING_UUID, BatchUpdateRequest(cron="30 4 * * *"), "tester"
             )
     async with factory() as session:
         with pytest.raises(NotFoundError):
@@ -81,7 +81,7 @@ async def test_concurrent_update_raises_stale_data(factory) -> None:
     """
     async with factory() as session:
         created = await BatchScheduleService(session).create_batch(
-            BatchCreateRequest(code=JOB_CODE, name="seed", cron=CRON), "a"
+            BatchCreateRequest(code=JOB_CODE, cron=CRON), "a"
         )
     assert created.version == 1
 
@@ -91,11 +91,11 @@ async def test_concurrent_update_raises_stale_data(factory) -> None:
         loaded_first = await first.get(BatchSchedule, created.id)
         loaded_second = await second.get(BatchSchedule, created.id)
 
-        loaded_first.name = "winner"
+        loaded_first.cron = "0 1 * * *"
         await first.commit()
         assert loaded_first.version == 2
 
-        loaded_second.name = "loser"
+        loaded_second.cron = "0 2 * * *"
         with pytest.raises(StaleDataError):
             await second.commit()
     finally:
@@ -104,7 +104,7 @@ async def test_concurrent_update_raises_stale_data(factory) -> None:
 
     async with factory() as session:
         survivor = await session.get(BatchSchedule, created.id)
-        assert survivor.name == "winner"
+        assert survivor.cron == "0 1 * * *"
         assert survivor.version == 2
 
 
@@ -113,11 +113,9 @@ async def test_batch_service_list_enabled_batches(factory) -> None:
     """The startup read returns the running schedule, not the whole table."""
     async with factory() as session:
         service = BatchScheduleService(session)
-        await service.create_batch(
-            BatchCreateRequest(code=JOB_CODE, name="on", cron=CRON), "tester"
-        )
+        await service.create_batch(BatchCreateRequest(code=JOB_CODE, cron=CRON), "tester")
         stopped = await service.create_batch(
-            BatchCreateRequest(code=JOB_CODE, name="off", cron=CRON), "tester"
+            BatchCreateRequest(code=JOB_CODE, cron="0 5 * * *"), "tester"
         )
 
     async with factory() as session:
@@ -127,7 +125,7 @@ async def test_batch_service_list_enabled_batches(factory) -> None:
 
     async with factory() as session:
         enabled = await BatchScheduleService(session).list_enabled_batches()
-        assert [batch.name for batch in enabled] == ["on"]
+        assert [batch.cron for batch in enabled] == [CRON]
 
 
 @pytest.mark.asyncio
@@ -135,10 +133,8 @@ async def test_count_batches_ignores_the_window(factory) -> None:
     """The total is the collection's size, not the page's."""
     async with factory() as session:
         service = BatchScheduleService(session)
-        for name in ("a", "b", "c"):
-            await service.create_batch(
-                BatchCreateRequest(code=JOB_CODE, name=name, cron=CRON), "tester"
-            )
+        for cron in ("0 1 * * *", "0 2 * * *", "0 3 * * *"):
+            await service.create_batch(BatchCreateRequest(code=JOB_CODE, cron=cron), "tester")
 
     async with factory() as session:
         service = BatchScheduleService(session)

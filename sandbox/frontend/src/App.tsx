@@ -22,7 +22,11 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'))
 const DashboardPage = lazy(() => import('@/pages/DashboardPage'))
 
 const UserPage = lazy(() => import('@/pages/UserPage'))
+const FoodItemReportPage = lazy(() => import('@/pages/FoodItemReportPage'))
+const FoodSafetyRecordPage = lazy(() => import('@/pages/FoodSafetyRecordPage'))
 const FoodRawMaterialPage = lazy(() => import('@/pages/FoodRawMaterialPage'))
+const FoodBusinessPage = lazy(() => import('@/pages/FoodBusinessPage'))
+const FoodChatPage = lazy(() => import('@/pages/FoodChatPage'))
 
 const BatchPage = lazy(() => import('@/pages/BatchPage'))
 
@@ -42,7 +46,11 @@ export default function App() {
           <Route path={PATHS.root} element={<Navigate to={PATHS.dashboard} replace />} />
           <Route path={PATHS.dashboard} element={<DashboardPage />} />
           <Route path={PATHS.user} element={<UserPage />} />
+          <Route path={PATHS.food.itemReport} element={<FoodItemReportPage />} />
+          <Route path={PATHS.food.safetyRecord} element={<FoodSafetyRecordPage />} />
           <Route path={PATHS.food.rawMaterial} element={<FoodRawMaterialPage />} />
+          <Route path={PATHS.food.business} element={<FoodBusinessPage />} />
+          <Route path={PATHS.food.chat} element={<FoodChatPage />} />
           <Route path={PATHS.batch} element={<BatchPage />} />
           <Route path={PATHS.integration} element={<IntegrationPage />} />
         </Route>

@@ -1,0 +1,99 @@
+{
+ "why": "The file door of 영업소재지 GIS 코드 (I2560): one GET answers the whole feed as gzip CSV (1,545,751 rows, 46.3MB, measured 2026-09-23). The first three rows as the file carries them - the header in the portal's order, a BOM and CRLF - so the incremental reader is proved on the shapes a line-based one gets wrong. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I2560.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE22QzWrbQBSF94G8Qx7gLu6dH0uzlDSOqiKNVE2dQjd+ltjaNC4kgSbEJCkuDTSLLJyWloQm9H2sEX2FIlk1NfSuzhwO9zt3fv/8lUbGjk0OobUvxiaDNI+KNAIbGEhNWEJircnhdW5iCAMDtojSQOuyFUWhW7tT61iZB9pkNolNPIp0/2zjw0zrA7ttbAVCvZ+W25FQ52USb7auLTsKt5xNn8KMxpGGUGfDMh5mgQnioclhtJ/ocaR3d8j3GXL0EQma+QdX3bvzJ3f9HlZfn1cPy/q42muO3zXTaze7AgKmPCAk6EYQYwj/aCKGSMgJEVEAKW/AUAhFQnLl+cQF/h0I2+R6GD94+fZN14Wj8Lou7ubUnc3r80/uyym4RVX/OGyOHutvlft44h4v2l5uUbnPT252tefmlZssV9/vgGAgCGRfqq8miYiE1wIHooVKgI6mUCqGyMFdXNaTRT27cUd3q4dlMz1r73fTw3py26GWz+7ypENV9xuU8oH3CJ9YL9eamOzuUz62+0n5iksmPSk5KeZJosH/fiLkCX/Fd3f+AA/bRfOBAgAA"
+ },
+ "expect": {
+  "path": "/api/issued-key/I2560/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I2560.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 435,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "license_no": "18820308001",
+    "business_name": "화성얼음",
+    "district": "경기도 평택시",
+    "is_mountain": "1",
+    "lot_main_no": "297",
+    "lot_sub_no": "101",
+    "tong": "",
+    "ban": "",
+    "special_address": "",
+    "special_dong": "",
+    "special_sub_no": "",
+    "road_district_code": "41220",
+    "road_emd_kind": "",
+    "road_emd_code": "",
+    "road_floor_kind": "",
+    "road_building_main_no": "",
+    "road_building_sub_no": "",
+    "road_special_address": "",
+    "parcel_code": "4122011200103100004",
+    "building_no": "1976204491453978134000000000",
+    "ufid": "B001000000023VJZW"
+   },
+   {
+    "license_no": "18830478001",
+    "business_name": "중앙떡집",
+    "district": "전북특별자치도 전주시 완산구",
+    "is_mountain": "1",
+    "lot_main_no": "641",
+    "lot_sub_no": "5",
+    "tong": "",
+    "ban": "",
+    "special_address": "",
+    "special_dong": "",
+    "special_sub_no": "",
+    "road_district_code": "",
+    "road_emd_kind": "",
+    "road_emd_code": "",
+    "road_floor_kind": "",
+    "road_building_main_no": "",
+    "road_building_sub_no": "",
+    "road_special_address": "",
+    "parcel_code": "4511114700106410005",
+    "building_no": "",
+    "ufid": ""
+   },
+   {
+    "license_no": "18890592003",
+    "business_name": "옛날다슬기탕",
+    "district": "경상남도 창원시 성산구",
+    "is_mountain": "1",
+    "lot_main_no": "98",
+    "lot_sub_no": "3",
+    "tong": "",
+    "ban": "",
+    "special_address": "",
+    "special_dong": "",
+    "special_sub_no": "",
+    "road_district_code": "48123",
+    "road_emd_kind": "",
+    "road_emd_code": "",
+    "road_floor_kind": "",
+    "road_building_main_no": "",
+    "road_building_sub_no": "",
+    "road_special_address": "",
+    "parcel_code": "4812312500100980003",
+    "building_no": "1989352575531927511600000000",
+    "ufid": "B0010000000B3I3Q3"
+   }
+  ]
+ }
+}

@@ -1,0 +1,72 @@
+{
+ "why": "The file door of 수거검사: one GET answers the whole feed as gzip CSV (2,046,504 rows, 62.8 MB, 4 s, measured 2026-09-19) where the paged API dies at 73 % of its 2,047 windows against a daily ceiling of ~500 calls a key. Three of its rows as the file carries them - the header in the portal's order, a BOM, CRLF, and one product name carrying a newline inside its quotes - so the incremental reader is proved on the shapes that break a line-based one. execute answers the download; stream answers the rows.",
+ "secrets": {
+  "service-key": "issued-key"
+ },
+ "inputs": {},
+ "response": {
+  "status": 200,
+  "headers": {
+   "content-type": "application/gzip",
+   "content-disposition": "attachment; filename=\"I0460.csv.gz\""
+  },
+  "gzip_base64": "H4sIAAAAAAAAE3WR3WrbQBCF7w1+B5GrBlZBP/Vf7lzLtGptWUgbWl/pVRRVTtUoIXaJsZtIqULTOgGZrC05JNTQ99kd01cokm0otIWFhd0z58w38+vHT91omA0Vd/WOqmFL1ZQD3G0oltZGL0zzVXabKm5adUUxkG4oWGsj/Kb+tqvgNnqtvGxr2FrLm+8alqqZGFtbiak3VAt39eZaoBtKy8SW0dQ7Bra0DmrVTWwd6Aq2MrO8RDe0DtJbdc3CKm4VC+CHq08eRAFcE0psmixg1EMw6q/OXfhsQ5jCxIavy0x3cQJOzNE0BYdkwqtv2V/UR/BwB/MpezhkZ+72f0EQjAg78+ApZZGHJEEqC1WphNiDDdHhanj3v7JNG3ljSBLEivBcliuy9Lwi5i68UOWlKicI+/nZE9avzBnzkihXELtfwmWfpjaLbjnwxnRG6NwGJy4WYDJg/i19/Ah+CEcnCIKIEhuCCJ7GcNlH7MSmi5imAxhNwQ845sfgznIWb8zOXLqcwsRes9TEKqJze3UUwc3g78okpbOUJQuY2HQx5SBw4X0I0RBmPZos0XbuA0rCbOIbshovVjmxvC+V9ku1vXKlLJdElEXxmwBiQ+jywnoSHOs9suuAkXMIU/YlhuMbjpI++AHMU5q4HDgxjHrFAkJoB0YfKPEgTAvPKBky5zbDvjrPIsu8KO3ubLHKaLsfN4CLx9XxE0vcjAn8gN0v6SylZJgzbRi2TOzoFBzC4uUfNGVOlLM9SZU9uVaSpSr6V3iuZz2Xyyy88dqFg6EHkZst8nvM0cRdXZxuWt8tFn4DVnMupFoDAAA="
+ },
+ "expect": {
+  "path": "/api/issued-key/I0460/file",
+  "query": {},
+  "status_code": 200,
+  "canonical_payload": [],
+  "metadata": {
+   "file_name": "I0460.csv.gz",
+   "content_type": "application/gzip",
+   "content_length": 620,
+   "row_count": 3,
+   "status_code": 200
+  },
+  "rows": [
+   {
+    "collection_no": "2026-나-2137",
+    "product_name": "연돈카레",
+    "business_name": "에프와이지주식회사 괴산공장지점",
+    "address": "충청북도 괴산군",
+    "industry_name": "식품제조가공업",
+    "specimen_type": "가공식품",
+    "collected_on": "20260825",
+    "judgment": "부적합",
+    "institution_name": "충청북도 괴산군",
+    "item_report_no": "20170433732471",
+    "plan_title": "민원관련 수거검사",
+    "source_updated_text": "2026-08-28 00:00:00.0"
+   },
+   {
+    "collection_no": "0918-대구가을-01",
+    "product_name": "수도꼭지",
+    "business_name": "유가유치원",
+    "address": "대구광역시 달성군",
+    "industry_name": "집단급식소",
+    "specimen_type": "식품접객업",
+    "collected_on": "20260918",
+    "judgment": "검토중",
+    "institution_name": "대구광역시 보건복지국 위생정책과",
+    "item_report_no": "",
+    "plan_title": "2026 노로바이러스 감시체계 사업",
+    "source_updated_text": "2026-09-18 16:25:59.676351"
+   },
+   {
+    "collection_no": "강남유잔09-16-12",
+    "product_name": "엇갈이\n(강남유잔09-16-12)",
+    "business_name": "",
+    "address": "",
+    "industry_name": "",
+    "specimen_type": "농산물",
+    "collected_on": "20260916",
+    "judgment": "적합",
+    "institution_name": "서울특별시 시민건강국 식품정책과",
+    "item_report_no": "",
+    "plan_title": "2026년 농수산물 안전관리 계획(강남)",
+    "source_updated_text": "2026-09-16 13:00:27.395328"
+   }
+  ]
+ }
+}

@@ -1,0 +1,109 @@
+{
+  "why": "One measured window of 수입신고별 한글표시사항: each record is wrapped in its own `item` node, and `KORLABEL` carries the printed label - 원재료명, 내용량, 보관방법 - as one paragraph, which is the column the screen crawl was going to be paid 25 days for.",
+  "secrets": {
+    "service-key-import-food": "issued-key"
+  },
+  "inputs": {
+    "page_no": 1200,
+    "num_of_rows": 2
+  },
+  "response": {
+    "status": 200,
+    "json": {
+      "header": {
+        "resultCode": "00",
+        "resultMsg": "NORMAL SERVICE."
+      },
+      "body": {
+        "pageNo": 1200,
+        "totalCount": 1087781,
+        "numOfRows": 2,
+        "items": [
+          {
+            "item": {
+              "DCL_PRDUCT_SE_CD_NM": "가공식품",
+              "BSN_OFC_NAME": "주식회사 쏠트코리아",
+              "PRDUCT_KOREAN_NM": "천일염(식용)",
+              "PRDUCT_NM": "SEA SALT",
+              "EXPIRDE_DTM": "20180810 ~ 20280809",
+              "PROCS_DTM": "20200508",
+              "OVSMNFST_NM": "UBAIDIA MINERALS",
+              "ITM_NM": "천일염",
+              "XPORT_NTNCD_NM": "파키스탄",
+              "MNF_NTNCD_NM": "파키스탄",
+              "KORLABEL": "식품위생법에 의한 한글표시사항\n\n생산지 또는 원산지 : 파키스탄\n                           UBAIDIA MINERALS\n수입자 상호 : (주)쏠트코리아\n          주소 : 인천광역시 미추홀구 아암대로287번길 79\n제조일 : 2018 / AUG / 10\n전화번호 : 032-821-8210\n염의종류 : 천일염\n중량 : 1250KG\n성분표시 : 염화나트륨 90%이상\n유통기한 : 제조일로부터 10년\n부정불량식품신고는 국번없이 1399번\n\n*자사제조용입니다.  품목제조보고서 파일 첨부합니다.",
+              "IRDNT_NM": null,
+              "EXPIRDE_BEGIN_DTM": "20180810",
+              "EXPIRDE_END_DTM": "20280809"
+            }
+          },
+          {
+            "item": {
+              "DCL_PRDUCT_SE_CD_NM": "가공식품",
+              "BSN_OFC_NAME": "초이스",
+              "PRDUCT_KOREAN_NM": "이태룡 보이차/500g",
+              "PRDUCT_NM": "YI TAI LONG PUER TEA",
+              "EXPIRDE_DTM": "20200328 ~ 20500327",
+              "PROCS_DTM": "20200519",
+              "OVSMNFST_NM": "XISHUANGBANNA MANSA TEA CO.,LTD YIWU TEA FACTORY",
+              "ITM_NM": "침출차",
+              "XPORT_NTNCD_NM": "중국",
+              "MNF_NTNCD_NM": "중국",
+              "KORLABEL": "제품명:이태룡 보이차\r\n식품의유형:침출차\r\n수입원:주식회사 초이스\r\n인천광역시 미추홀구 용정공원로83번길 43 (용현동, e편한세상 시티 인하대역 101동) 2502호\r\n내용량 : 2.8kg(400gX7ea)\r\n원재료명및함량:차잎100%(카멜리아시넨시스)\r\n제조년월일: 2020년03월28일\r\n품질유지기한:제조일로부터30년까지\r\n포장재질 : 종이\r\n교환및반품:구입처 및 판매원\r\n제조회사: XISHUANGBANNA MANSA TEA CO.,LTD YIWU TEA FACTORY\r\n원산지:중 국\r\n*부정불량식품신고는 국번없이 1399",
+              "IRDNT_NM": null,
+              "EXPIRDE_BEGIN_DTM": "20200328",
+              "EXPIRDE_END_DTM": "20500327"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "expect": {
+    "path": "/1471000/IprtFoodPrdtKoreanLabelingText/getIprtFoodPrdtKoreanLabelingText",
+    "query": {
+      "serviceKey": "issued-key",
+      "pageNo": "1200",
+      "numOfRows": "2",
+      "type": "json"
+    },
+    "status_code": 200,
+    "canonical_payload": [
+      {
+        "importer_name": "주식회사 쏠트코리아",
+        "product_name": "천일염(식용)",
+        "product_name_en": "SEA SALT",
+        "declaration_kind": "가공식품",
+        "product_type_name": "천일염",
+        "overseas_maker_name": "UBAIDIA MINERALS",
+        "origin_country": "파키스탄",
+        "export_country": "파키스탄",
+        "processed_date": "20200508",
+        "expiry_text": "20180810 ~ 20280809",
+        "expiry_from": "20180810",
+        "expiry_to": "20280809",
+        "label_text": "식품위생법에 의한 한글표시사항\n\n생산지 또는 원산지 : 파키스탄\n                           UBAIDIA MINERALS\n수입자 상호 : (주)쏠트코리아\n          주소 : 인천광역시 미추홀구 아암대로287번길 79\n제조일 : 2018 / AUG / 10\n전화번호 : 032-821-8210\n염의종류 : 천일염\n중량 : 1250KG\n성분표시 : 염화나트륨 90%이상\n유통기한 : 제조일로부터 10년\n부정불량식품신고는 국번없이 1399번\n\n*자사제조용입니다.  품목제조보고서 파일 첨부합니다."
+      },
+      {
+        "importer_name": "초이스",
+        "product_name": "이태룡 보이차/500g",
+        "product_name_en": "YI TAI LONG PUER TEA",
+        "declaration_kind": "가공식품",
+        "product_type_name": "침출차",
+        "overseas_maker_name": "XISHUANGBANNA MANSA TEA CO.,LTD YIWU TEA FACTORY",
+        "origin_country": "중국",
+        "export_country": "중국",
+        "processed_date": "20200519",
+        "expiry_text": "20200328 ~ 20500327",
+        "expiry_from": "20200328",
+        "expiry_to": "20500327",
+        "label_text": "제품명:이태룡 보이차\r\n식품의유형:침출차\r\n수입원:주식회사 초이스\r\n인천광역시 미추홀구 용정공원로83번길 43 (용현동, e편한세상 시티 인하대역 101동) 2502호\r\n내용량 : 2.8kg(400gX7ea)\r\n원재료명및함량:차잎100%(카멜리아시넨시스)\r\n제조년월일: 2020년03월28일\r\n품질유지기한:제조일로부터30년까지\r\n포장재질 : 종이\r\n교환및반품:구입처 및 판매원\r\n제조회사: XISHUANGBANNA MANSA TEA CO.,LTD YIWU TEA FACTORY\r\n원산지:중 국\r\n*부정불량식품신고는 국번없이 1399"
+      }
+    ],
+    "metadata": {
+      "result_code": "00",
+      "result_message": "NORMAL SERVICE.",
+      "total_count": 1087781
+    }
+  }
+}

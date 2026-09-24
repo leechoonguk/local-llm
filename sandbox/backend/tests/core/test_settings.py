@@ -21,6 +21,7 @@ def _settings(**overrides) -> Settings:
         "integration_retry_base_seconds": 0.5,
         "integration_retry_max_seconds": 8.0,
         "allowed_hosts": ["testserver"],
+        "scheduler_timezone": "Asia/Seoul",
     }
     base.update(overrides)
     return Settings(_env_file=None, **base)  # type: ignore[call-arg]
@@ -94,19 +95,32 @@ def test_settings_rejects_an_empty_host_allowlist() -> None:
         _settings(allowed_hosts=[])
 
 
+def test_settings_rejects_an_unknown_scheduler_timezone() -> None:
+    """A misspelt zone must stop startup, not silently schedule somewhere else.
+
+    Unresolved, every cron row would fall back to the container's clock — UTC —
+    and a nightly job would run nine hours from where its author put it.
+    """
+    with pytest.raises(ValidationError, match="not a known IANA zone"):
+        _settings(scheduler_timezone="Asia/Sowl")
+
+
 def test_settings_validates_async_database_url() -> None:
     """A sync driver URL is refused at startup instead of blocking the loop."""
     with pytest.raises(ValidationError, match="async PostgreSQL or SQLite"):
         _settings(database_url="postgresql://user:pass@host/db")
 
 
-def test_dotenv_outranks_an_exported_variable(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
-    """The declared file wins over the process environment.
+def test_an_exported_variable_outranks_the_dotenv_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """The process environment wins over the declared file.
 
-    pydantic-settings defaults to the opposite, and that default pointed local
-    alembic and uvicorn at compose-only hosts whenever a shell had exported
-    docker-compose's values. `settings_customise_sources` reverses it, so this
-    asserts the reversal instead of trusting a comment.
+    The deployment injects every value as an environment variable and ships no
+    file, and the file is the local fallback - so a value the environment
+    states must never be shadowed by one on disk. This is pydantic-settings'
+    own order; it was reversed once and the test suite then read a developer's
+    `.env` over the environment it declares for itself.
     """
     env_file = tmp_path / ".env"
     env_file.write_text(
@@ -121,7 +135,8 @@ def test_dotenv_outranks_an_exported_variable(monkeypatch: pytest.MonkeyPatch, t
         "INTEGRATION_CONNECT_TIMEOUT_SECONDS = 1.0\n"
         "INTEGRATION_MAX_RETRIES = 1\n"
         "INTEGRATION_RETRY_BASE_SECONDS = 1.0\n"
-        "INTEGRATION_RETRY_MAX_SECONDS = 1.0\n",
+        "INTEGRATION_RETRY_MAX_SECONDS = 1.0\n"
+        "SCHEDULER_TIMEZONE = Asia/Seoul\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("DATABASE_URL", "postgresql+asyncpg://app:app@postgres:5432/exported")
@@ -129,8 +144,10 @@ def test_dotenv_outranks_an_exported_variable(monkeypatch: pytest.MonkeyPatch, t
 
     s = Settings(_env_file=str(env_file))  # type: ignore[call-arg]
 
-    assert s.database_url.endswith("/file")
-    assert s.app_name == "from-file"
+    assert s.database_url.endswith("/exported")
+    assert s.app_name == "from-environment"
+    # Keys the environment does not state still come from the file.
+    assert s.admin_email == "file@example.com"
 
 
 def test_environment_still_supplies_keys_the_file_omits(
@@ -153,6 +170,7 @@ def test_environment_still_supplies_keys_the_file_omits(
         "INTEGRATION_MAX_RETRIES": "2",
         "INTEGRATION_RETRY_BASE_SECONDS": "2.0",
         "INTEGRATION_RETRY_MAX_SECONDS": "2.0",
+        "SCHEDULER_TIMEZONE": "Asia/Seoul",
     }.items():
         monkeypatch.setenv(key, value)
 
